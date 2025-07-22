@@ -1,0 +1,268 @@
+// lib/screens/debt/add_debt_screen.dart
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:pacta/models/debt_model.dart';
+import 'package:pacta/models/user_model.dart'; // UserModel'i import et
+import 'package:pacta/models/saved_contact_model.dart';
+import 'package:pacta/services/firestore_service.dart';
+import 'package:intl/intl.dart';
+import 'saved_contacts_screen.dart';
+
+class AddDebtScreen extends StatefulWidget {
+  final String? initialPersonEmail;
+  final String? initialAmount;
+  const AddDebtScreen({super.key, this.initialPersonEmail, this.initialAmount});
+
+  @override
+  State<AddDebtScreen> createState() => _AddDebtScreenState();
+}
+
+class _AddDebtScreenState extends State<AddDebtScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _descriptionController = TextEditingController();
+  final _amountController = TextEditingController();
+  final _personController = TextEditingController();
+
+  final _firestoreService = FirestoreService();
+  final _currentUser = FirebaseAuth.instance.currentUser!;
+
+  DateTime? _selectedDueDate;
+  bool _showNote = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialPersonEmail != null) {
+      _personController.text = widget.initialPersonEmail!;
+    }
+    if (widget.initialAmount != null) {
+      _amountController.text = widget.initialAmount!;
+    }
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    _amountController.dispose();
+    _personController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: DateTime(now.year + 5),
+      locale: const Locale('tr', 'TR'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepPurple,
+              brightness: Theme.of(context).brightness,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDueDate = picked;
+      });
+    }
+  }
+
+  void _saveDebt() async {
+    final now = DateTime.now();
+    final isNote = _showNote;
+    final currentUserId = _currentUser.uid;
+    final otherParty = _personController.text;
+    final amount =
+        double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    DebtModel newDebt;
+    if (isNote) {
+      newDebt = DebtModel(
+        debtId: null,
+        borcluId: currentUserId,
+        alacakliId: otherParty,
+        miktar: amount,
+        aciklama: _descriptionController.text,
+        islemTarihi: now,
+        status: 'note',
+        isShared: false,
+        requiresApproval: false,
+        visibleTo: [currentUserId],
+      );
+    } else {
+      newDebt = DebtModel(
+        debtId: null,
+        borcluId: otherParty,
+        alacakliId: currentUserId,
+        miktar: amount,
+        aciklama: _descriptionController.text,
+        islemTarihi: now,
+        status: 'pending',
+        isShared: true,
+        requiresApproval: true,
+        visibleTo: [currentUserId, otherParty],
+      );
+    }
+    await _firestoreService.addDebt(newDebt);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Alacak kaydı oluşturuldu!')));
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
+    final textMain = isDark ? Colors.white : const Color(0xFF111827);
+    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final green = const Color(0xFF4ADE80);
+    final bg = isDark ? const Color(0xFF181A20) : const Color(0xFFF9FAFB);
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textMain),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          'Yeni Alacak Ekle',
+          style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Açıklama',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: textMain,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _descriptionController,
+                minLines: 2,
+                maxLines: 4,
+                enabled: _showNote,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: textMain.withOpacity(_showNote ? 1 : 0.5),
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Açıklama ekle',
+                  filled: true,
+                  fillColor: cardColor,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white24 : Colors.grey.shade300,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white24 : Colors.grey.shade300,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: green, width: 2),
+                  ),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : textSec,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Tahmini Ödeme Tarihi',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: textMain,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _selectedDueDate == null
+                          ? 'Tarih seçilmedi'
+                          : DateFormat(
+                              'd MMMM y',
+                              'tr_TR',
+                            ).format(_selectedDueDate!),
+                      style: TextStyle(fontSize: 15, color: textSec),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.calendar_month_rounded, color: green),
+                    onPressed: _pickDueDate,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Switch(
+                    value: _showNote,
+                    onChanged: (val) => setState(() => _showNote = val),
+                    activeColor: green,
+                    inactiveTrackColor: isDark ? Colors.white24 : null,
+                  ),
+                  Text(
+                    'Not Modu',
+                    style: TextStyle(
+                      color: textMain,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saveDebt,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: green,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Kaydet',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "842011786529",
+    "project_id": "pacta-76686",
+    "storage_bucket": "pacta-76686.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:842011786529:android:9b09be7e99928fe8d65260",
+        "android_client_info": {
+          "package_name": "com.example.pacta"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "842011786529-60nfg89ha3hl67c61257b9v3ct34vqar.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pacta",
+            "certificate_hash": "0438a8a807e358d997ed41e45435841f08e94afd"
+          }
+        },
+        {
+          "client_id": "842011786529-pkbajrjrmvulpbb19386oimssgpp11kr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEa38-G-X1BXzKsa4kVSuAJm-wNkj6ABI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "842011786529-pkbajrjrmvulpbb19386oimssgpp11kr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "842011786529-0jinkestn95iemigeep459dvfo0m01s9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pacta"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
