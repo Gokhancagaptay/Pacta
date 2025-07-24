@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pacta/screens/notifications/notification_screen.dart';
 import 'package:pacta/services/auth_service.dart';
 import 'package:pacta/screens/debt/add_debt_screen.dart';
 import 'package:pacta/screens/debt/saved_contacts_screen.dart';
@@ -376,7 +377,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                                             color: textMain,
                                             size: width * 0.07,
                                           ),
-                                          onPressed: () {},
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const NotificationScreen(),
+                                              ),
+                                            );
+                                          },
                                           tooltip: 'Pacta Bildirimleri',
                                         ),
                                         if (_hasNotification)

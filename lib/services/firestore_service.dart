@@ -100,6 +100,19 @@ class FirestoreService {
           }
         }
       }
+      // Borç onay bekliyorsa borçluya bildirim gönder (try bloğu içinde olmalı)
+      if (debt.status == 'pending') {
+        // Borcu oluşturan kişinin ad-soyadını Firestore'dan çekiyoruz
+        final alacakliAdSoyad = await getUserNameById(debt.alacakliId);
+        // Bildirim gönderiyoruz, mesajda ad-soyadı kullanıyoruz
+        await sendNotification(
+          toUserId: debt.borcluId,
+          type: 'approval_request',
+          relatedDebtId: docRef.id,
+          title: 'Yeni Borç Talebi',
+          massage: '$alacakliAdSoyad senden ${debt.miktar} borç istedi.',
+        );
+      }
     } catch (e) {
       print("Borç eklenirken hata oluştu: $e");
     }
@@ -298,5 +311,23 @@ class FirestoreService {
   // Tekil borcu stream ile getirir
   Stream<DebtModel?> getDebtByIdStream(String debtId) {
     return _debtsRef.doc(debtId).snapshots().map((doc) => doc.data());
+  }
+
+  Future<void> sendNotification({
+    required String toUserId,
+    required String type,
+    required String relatedDebtId,
+    required String title,
+    required String massage,
+  }) async {
+    await _db.collection('notifications').add({
+      'toUserId': toUserId,
+      'type': type,
+      'relatedDebtId': relatedDebtId,
+      'title': title,
+      'massage': massage,
+      'isRead': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
   }
 }
