@@ -13,6 +13,7 @@ class DebtModel {
   final bool isShared;
   final bool requiresApproval;
   final List<String> visibleTo;
+  final String? createdBy;
 
   DebtModel({
     this.debtId,
@@ -25,6 +26,7 @@ class DebtModel {
     required this.isShared,
     required this.requiresApproval,
     required this.visibleTo,
+    this.createdBy,
   });
 
   Map<String, dynamic> toMap() {
@@ -39,6 +41,7 @@ class DebtModel {
       'isShared': isShared,
       'requiresApproval': requiresApproval,
       'visibleTo': visibleTo,
+      'createdBy': createdBy,
     };
   }
 
@@ -54,6 +57,7 @@ class DebtModel {
       isShared: map['isShared'] ?? false,
       requiresApproval: map['requiresApproval'] ?? false,
       visibleTo: List<String>.from(map['visibleTo'] ?? []),
+      createdBy: map['createdBy'],
     );
   }
 }

@@ -22,6 +22,22 @@ class AuthService {
     String telefon,
   ) async {
     try {
+      // Önce email kontrolü
+      final existingUserByEmail = await _firestoreService.searchUserByEmail(
+        email,
+      );
+      if (existingUserByEmail != null) {
+        return 'Bu e-posta adresi zaten kullanılmıştır.';
+      }
+      // Telefon kontrolü (boş değilse)
+      if (telefon.isNotEmpty) {
+        final existingUserByPhone = await _firestoreService.searchUserByAny(
+          telefon,
+        );
+        if (existingUserByPhone != null) {
+          return 'Bu telefon numarası zaten kullanılmıştır.';
+        }
+      }
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(email: email, password: password);
       User? user = userCredential.user;

@@ -4,6 +4,7 @@ import 'firebase_options.dart'; // flutterfire configure ile oluşturulan dosya
 import 'package:pacta/auth_wrapper.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 // Uygulamayı çalıştırmadan önce Firebase'i başlatmak için main fonksiyonunu async yapıyoruz
 Future<void> main() async {
@@ -60,6 +61,12 @@ class _MyAppState extends State<MyApp> {
         brightness: Brightness.dark,
       ),
       themeMode: _themeMode,
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
       home: Stack(
         children: [
           const AuthWrapper(),

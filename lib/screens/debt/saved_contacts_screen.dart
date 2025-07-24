@@ -228,6 +228,9 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Size size = MediaQuery.of(context).size;
+    final double width = size.width;
+    final double height = size.height;
     final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
     final textMain = isDark ? Colors.white : const Color(0xFF111827);
     final green = const Color(0xFF4ADE80);
@@ -235,90 +238,149 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
       appBar: AppBar(
         title: Text(
           widget.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: width * 0.05,
+            color: textMain,
+          ),
         ),
         centerTitle: true,
         backgroundColor: cardColor,
         elevation: 0,
+        iconTheme: IconThemeData(color: textMain, size: width * 0.07),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Kişi ara',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: cardColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                width * 0.04,
+                height * 0.02,
+                width * 0.04,
+                0,
               ),
-              onChanged: (v) => setState(() => _search = v),
-            ),
-          ),
-          TabBar(
-            controller: _tabController,
-            onTap: (i) => setState(() => _tabIndex = i),
-            indicatorColor: green,
-            labelColor: green,
-            unselectedLabelColor: textMain.withOpacity(0.5),
-            tabs: const [
-              Tab(text: 'Tüm Kişiler'),
-              Tab(text: 'Favoriler'),
-            ],
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredContacts.isEmpty
-                ? const Center(child: Text('Kişi bulunamadı.'))
-                : ListView.separated(
-                    itemCount: _filteredContacts.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final contact = _filteredContacts[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          child: Text(
-                            contact.adSoyad.isNotEmpty
-                                ? contact.adSoyad[0]
-                                : '?',
-                          ),
-                        ),
-                        title: Text(
-                          contact.adSoyad,
-                          style: TextStyle(color: textMain),
-                        ),
-                        subtitle: Text(contact.email),
-                        trailing: IconButton(
-                          icon: Icon(
-                            _favorites.contains(contact.uid)
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: _favorites.contains(contact.uid)
-                                ? Colors.red
-                                : textMain.withOpacity(0.5),
-                          ),
-                          onPressed: () => _toggleFavorite(contact.uid),
-                          tooltip: _favorites.contains(contact.uid)
-                              ? 'Favorilerden çıkar'
-                              : 'Favorilere ekle',
-                        ),
-                        onTap: () {
-                          Navigator.pop(context, contact.uid);
-                        },
-                      );
-                    },
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Kişi ara',
+                  hintStyle: TextStyle(
+                    fontSize: width * 0.042,
+                    color: textMain.withOpacity(0.5),
                   ),
-          ),
-        ],
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: width * 0.06,
+                    color: textMain.withOpacity(0.7),
+                  ),
+                  filled: true,
+                  fillColor: cardColor,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                style: TextStyle(fontSize: width * 0.045, color: textMain),
+                onChanged: (v) => setState(() => _search = v),
+              ),
+            ),
+            SizedBox(height: height * 0.01),
+            TabBar(
+              controller: _tabController,
+              onTap: (i) => setState(() => _tabIndex = i),
+              indicatorColor: green,
+              labelColor: green,
+              unselectedLabelColor: textMain.withOpacity(0.5),
+              labelStyle: TextStyle(
+                fontSize: width * 0.045,
+                fontWeight: FontWeight.bold,
+              ),
+              tabs: const [
+                Tab(text: 'Tüm Kişiler'),
+                Tab(text: 'Favoriler'),
+              ],
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredContacts.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Kişi bulunamadı.',
+                        style: TextStyle(
+                          fontSize: width * 0.045,
+                          color: textMain.withOpacity(0.7),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: EdgeInsets.symmetric(vertical: height * 0.01),
+                      itemCount: _filteredContacts.length,
+                      separatorBuilder: (_, __) =>
+                          Divider(height: height * 0.01),
+                      itemBuilder: (context, index) {
+                        final contact = _filteredContacts[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            radius: width * 0.06,
+                            backgroundColor: green.withOpacity(0.15),
+                            child: Text(
+                              contact.adSoyad.isNotEmpty
+                                  ? contact.adSoyad[0]
+                                  : '?',
+                              style: TextStyle(
+                                fontSize: width * 0.06,
+                                color: green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            contact.adSoyad,
+                            style: TextStyle(
+                              color: textMain,
+                              fontSize: width * 0.045,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(
+                            contact.email,
+                            style: TextStyle(
+                              fontSize: width * 0.035,
+                              color: textMain.withOpacity(0.7),
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: Icon(
+                              _favorites.contains(contact.uid)
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: _favorites.contains(contact.uid)
+                                  ? Colors.red
+                                  : textMain.withOpacity(0.5),
+                              size: width * 0.065,
+                            ),
+                            onPressed: () => _toggleFavorite(contact.uid),
+                            tooltip: _favorites.contains(contact.uid)
+                                ? 'Favorilerden çıkar'
+                                : 'Favorilere ekle',
+                          ),
+                          onTap: () {
+                            Navigator.pop(context, contact.uid);
+                          },
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: width * 0.03,
+                            vertical: height * 0.006,
+                          ),
+                          minVerticalPadding: height * 0.006,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addContactModal,
         backgroundColor: green,
-        child: const Icon(Icons.add, color: Colors.white),
+        child: Icon(Icons.add, color: Colors.white, size: width * 0.08),
         tooltip: 'Yeni kişi ekle',
       ),
     );

@@ -2,21 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'add_debt_screen.dart';
 
-final amountProvider = StateProvider<String>((ref) => '');
+final amountProvider = StateProvider.autoDispose<String>((ref) => '');
 
 class AmountInputScreen extends ConsumerWidget {
   final String? availableBalance;
   final String? selectedPersonEmail;
+  final bool isPactaAl;
   const AmountInputScreen({
     Key? key,
     this.availableBalance,
     this.selectedPersonEmail,
+    this.isPactaAl = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final amount = ref.watch(amountProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Size size = MediaQuery.of(context).size;
+    final double width = size.width;
+    final double height = size.height;
     final green = const Color(0xFF4ADE80);
     final darkGreen = const Color(0xFF14532D);
     final darkGradient = LinearGradient(
@@ -49,7 +54,11 @@ class AmountInputScreen extends ConsumerWidget {
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 leading: IconButton(
-                  icon: Icon(Icons.arrow_back_ios_new_rounded, color: textMain),
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: textMain,
+                    size: width * 0.07,
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
                 title: Text(
@@ -57,6 +66,7 @@ class AmountInputScreen extends ConsumerWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: textMain,
+                    fontSize: width * 0.055,
                   ),
                 ),
                 centerTitle: true,
@@ -67,7 +77,7 @@ class AmountInputScreen extends ConsumerWidget {
                 child: Text(
                   '${amount.isEmpty ? '0,00' : amount}₺',
                   style: TextStyle(
-                    fontSize: 54,
+                    fontSize: width * 0.13,
                     fontWeight: FontWeight.bold,
                     color: textMain,
                     letterSpacing: 1.5,
@@ -76,7 +86,10 @@ class AmountInputScreen extends ConsumerWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: width * 0.06,
+                vertical: height * 0.01,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   boxShadow: buttonShadow,
@@ -93,6 +106,7 @@ class AmountInputScreen extends ConsumerWidget {
                                 builder: (_) => AddDebtScreen(
                                   initialPersonEmail: selectedPersonEmail,
                                   initialAmount: amount,
+                                  isPactaAl: isPactaAl,
                                 ),
                               ),
                             );
@@ -105,16 +119,16 @@ class AmountInputScreen extends ConsumerWidget {
                       foregroundColor: isActive
                           ? (isDark ? darkGreen : green)
                           : (isDark ? Colors.white54 : Colors.white),
-                      minimumSize: const Size(double.infinity, 54),
+                      minimumSize: Size(double.infinity, height * 0.07),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(32),
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
+                    child: Text(
                       'Devam Et',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: width * 0.05,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -125,9 +139,9 @@ class AmountInputScreen extends ConsumerWidget {
             Container(
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF23262F) : Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(32),
-                  topRight: Radius.circular(32),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(width * 0.08),
+                  topRight: Radius.circular(width * 0.08),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -139,7 +153,7 @@ class AmountInputScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              child: _CustomNumberPad(isDark: isDark),
+              child: _CustomNumberPad(isDark: isDark, width: width),
             ),
           ],
         ),
@@ -150,14 +164,21 @@ class AmountInputScreen extends ConsumerWidget {
 
 class _CustomNumberPad extends ConsumerWidget {
   final bool isDark;
-  const _CustomNumberPad({this.isDark = false});
+  final double width;
+  const _CustomNumberPad({this.isDark = false, required this.width});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final amount = ref.watch(amountProvider);
     final keyText = isDark ? Colors.white : const Color(0xFF111827);
+    final keyFont = width * 0.07;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.only(bottom: 24, top: 16, left: 12, right: 12),
+      padding: EdgeInsets.only(
+        bottom: width * 0.06,
+        top: width * 0.04,
+        left: width * 0.02,
+        right: width * 0.02,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -172,21 +193,25 @@ class _CustomNumberPad extends ConsumerWidget {
               children: row.map((c) {
                 if (c == '<') {
                   return IconButton(
-                    icon: Icon(Icons.backspace_outlined, color: keyText),
+                    icon: Icon(
+                      Icons.backspace_outlined,
+                      color: keyText,
+                      size: keyFont,
+                    ),
                     onPressed: () {
                       if (amount.isNotEmpty) {
                         ref.read(amountProvider.notifier).state = amount
                             .substring(0, amount.length - 1);
                       }
                     },
-                    iconSize: 28,
-                    splashRadius: 28,
+                    iconSize: keyFont + 4,
+                    splashRadius: keyFont,
                   );
                 }
                 return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 4,
+                  padding: EdgeInsets.symmetric(
+                    vertical: width * 0.015,
+                    horizontal: width * 0.01,
                   ),
                   child: TextButton(
                     onPressed: () {
@@ -198,18 +223,18 @@ class _CustomNumberPad extends ConsumerWidget {
                     },
                     style: TextButton.styleFrom(
                       foregroundColor: keyText,
-                      textStyle: const TextStyle(
-                        fontSize: 24,
+                      textStyle: TextStyle(
+                        fontSize: keyFont,
                         fontWeight: FontWeight.bold,
                       ),
-                      minimumSize: const Size(56, 56),
+                      minimumSize: Size(width * 0.13, width * 0.13),
                       shape: const CircleBorder(),
                       padding: EdgeInsets.zero,
                     ),
                     child: Text(
                       c,
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: keyFont,
                         fontWeight: FontWeight.bold,
                         color: keyText,
                       ),

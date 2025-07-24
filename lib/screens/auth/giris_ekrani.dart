@@ -20,170 +20,263 @@ class _GirisEkraniState extends State<GirisEkrani> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Size size = MediaQuery.of(context).size;
+    final double width = size.width;
+    final double height = size.height;
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
+    final textMain = isDark ? Colors.white : const Color(0xFF111827);
+    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final green = const Color(0xFF4ADE80);
     return Scaffold(
       appBar: AppBar(
         title: const Text(''),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black,
+        foregroundColor: textMain,
+        iconTheme: IconThemeData(color: textMain, size: width * 0.07),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Tekrar Hoş Geldin 👋',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Lütfen giriş yapmak için e-posta ve şifreni gir.',
-                  style: TextStyle(fontSize: 16, color: Colors.black54),
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: 'E-posta',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: width * 0.07),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tekrar Hoş Geldin 👋',
+                    style: TextStyle(
+                      fontSize: width * 0.08,
+                      fontWeight: FontWeight.bold,
+                      color: textMain,
                     ),
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(
-                    labelText: 'Şifre',
-                    prefixIcon: Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    suffixIcon: Icon(Icons.visibility_off),
+                  SizedBox(height: height * 0.01),
+                  Text(
+                    'Lütfen giriş yapmak için e-posta ve şifreni gir.',
+                    style: TextStyle(fontSize: width * 0.045, color: textSec),
                   ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        // Şifremi unuttum fonksiyonu burada olacak
-                      },
-                      child: const Text('Şifremi Unuttum?'),
+                  SizedBox(height: height * 0.04),
+                  TextField(
+                    controller: _emailController,
+                    decoration: InputDecoration(
+                      labelText: 'E-posta',
+                      labelStyle: TextStyle(
+                        color: textSec,
+                        fontSize: width * 0.042,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: textSec,
+                        size: width * 0.06,
+                      ),
+                      filled: true,
+                      fillColor: cardColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: green, width: 2),
+                      ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final String? errorMessage = await _authService
-                          .signInWithEmailAndPassword(
-                            _emailController.text.trim(),
-                            _passwordController.text.trim(),
-                          );
-                      if (errorMessage == null) {
-                        // Ana ekrana yönlendir
-                        // TODO: DashboardScreen yerine kendi ana ekranını ekle
-                        if (context.mounted) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => const DashboardScreen(),
+                    keyboardType: TextInputType.emailAddress,
+                    style: TextStyle(fontSize: width * 0.045, color: textMain),
+                  ),
+                  SizedBox(height: height * 0.02),
+                  TextField(
+                    controller: _passwordController,
+                    decoration: InputDecoration(
+                      labelText: 'Şifre',
+                      labelStyle: TextStyle(
+                        color: textSec,
+                        fontSize: width * 0.042,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.lock_outline,
+                        color: textSec,
+                        size: width * 0.06,
+                      ),
+                      filled: true,
+                      fillColor: cardColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: green, width: 2),
+                      ),
+                      suffixIcon: Icon(
+                        Icons.visibility_off,
+                        color: textSec,
+                        size: width * 0.06,
+                      ),
+                    ),
+                    obscureText: true,
+                    style: TextStyle(fontSize: width * 0.045, color: textMain),
+                  ),
+                  SizedBox(height: height * 0.012),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          // Şifremi unuttum fonksiyonu burada olacak
+                        },
+                        child: Text(
+                          'Şifremi Unuttum?',
+                          style: TextStyle(
+                            fontSize: width * 0.042,
+                            color: green,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: height * 0.02),
+                  SizedBox(
+                    width: double.infinity,
+                    height: height * 0.065,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final String? errorMessage = await _authService
+                            .signInWithEmailAndPassword(
+                              _emailController.text.trim(),
+                              _passwordController.text.trim(),
+                            );
+                        if (errorMessage == null) {
+                          if (context.mounted) {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (context) => const DashboardScreen(),
+                              ),
+                            );
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Giriş başarısız: $errorMessage'),
                             ),
                           );
                         }
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Giriş başarısız: $errorMessage'),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
                       ),
-                    ),
-                    child: const Text(
-                      'Giriş Yap',
-                      style: TextStyle(fontSize: 18),
+                      child: Text(
+                        'Giriş Yap',
+                        style: TextStyle(
+                          fontSize: width * 0.05,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    icon: Image.asset(
-                      'assets/google_logo.png',
-                      height: 20,
-                      width: 20,
-                    ),
-                    label: const Text('Google ile Giriş Yap'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      side: const BorderSide(color: Colors.grey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  SizedBox(height: height * 0.015),
+                  SizedBox(
+                    width: double.infinity,
+                    height: height * 0.065,
+                    child: ElevatedButton.icon(
+                      icon: Image.asset(
+                        'assets/google_logo.png',
+                        height: width * 0.06,
+                        width: width * 0.06,
                       ),
-                    ),
-                    onPressed: () async {
-                      final String? errorMessage = await _authService
-                          .googleSignIn();
-                      if (errorMessage == null) {
-                        // Ana ekrana yönlendir
-                        if (context.mounted) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => const DashboardScreen(),
+                      label: Text(
+                        'Google ile Giriş Yap',
+                        style: TextStyle(fontSize: width * 0.045),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        side: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: () async {
+                        final String? errorMessage = await _authService
+                            .googleSignIn();
+                        if (errorMessage == null) {
+                          if (context.mounted) {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (context) => const DashboardScreen(),
+                              ),
+                            );
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Google ile giriş başarısız: $errorMessage',
+                              ),
                             ),
                           );
                         }
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Google ile giriş başarısız: $errorMessage',
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('Hesabın yok mu?'),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const KayitEkrani(),
-                          ),
-                        );
                       },
-                      child: const Text('Kayıt ol'),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  SizedBox(height: height * 0.025),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Hesabın yok mu?',
+                        style: TextStyle(
+                          fontSize: width * 0.042,
+                          color: textSec,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const KayitEkrani(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          'Kayıt ol',
+                          style: TextStyle(
+                            fontSize: width * 0.045,
+                            color: green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
