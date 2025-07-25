@@ -109,8 +109,8 @@ class FirestoreService {
           toUserId: debt.borcluId,
           type: 'approval_request',
           relatedDebtId: docRef.id,
-          title: 'Yeni Borç Talebi',
-          massage: '$alacakliAdSoyad senden ${debt.miktar} borç istedi.',
+          title: 'Yeni Pacta Talebi',
+          massage: '$alacakliAdSoyad senden ${debt.miktar} Borç istedi.',
         );
       }
     } catch (e) {
@@ -272,7 +272,8 @@ class FirestoreService {
       } else if (user != null && user.email.isNotEmpty) {
         return user.email;
       } else {
-        return uid.substring(0, 6);
+        // UID 6 karakterden kısaysa tamamını döndür, uzun ise ilk 6 karakterini döndür
+        return uid.length >= 6 ? uid.substring(0, 6) : uid;
       }
     } catch (e) {
       return uid.substring(0, 6);

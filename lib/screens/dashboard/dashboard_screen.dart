@@ -13,6 +13,7 @@ import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
+import 'package:pacta/screens/contacts/contacts_screen.dart'; // Kişiler ekranı için import
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -642,7 +643,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         selectedTab: _selectedTab,
         onTabChanged: (i) {
           setState(() => _selectedTab = i);
-          if (i == 3) {
+          if (i == 1) {
+            // Kişiler sekmesine basınca kişileri yöneteceğimiz ekrana yönlendir
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ContactsScreen()),
+            );
+          } else if (i == 3) {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
