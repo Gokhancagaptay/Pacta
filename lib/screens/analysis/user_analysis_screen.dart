@@ -5,27 +5,20 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 
-class ContactAnalysisScreen extends StatefulWidget {
-  final String contactId;
-  final String contactName;
-  const ContactAnalysisScreen({
-    Key? key,
-    required this.contactId,
-    required this.contactName,
-  }) : super(key: key);
+class UserAnalysisScreen extends StatefulWidget {
+  const UserAnalysisScreen({Key? key}) : super(key: key);
 
   @override
-  State<ContactAnalysisScreen> createState() => _ContactAnalysisScreenState();
+  State<UserAnalysisScreen> createState() => _UserAnalysisScreenState();
 }
 
-class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
+class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
   bool isLoading = true;
-  double borclarim = 0;
-  double alacaklarim = 0;
-  double notlarim = 0; // Notlar için yeni değişken
-  double notAlacaklarim = 0; // Not alacakları için
-  double notBorclarim = 0; // Not borçları için
-  List<Map<String, dynamic>> islemler = [];
+  double toplamBorclarim = 0;
+  double toplamAlacaklarim = 0;
+  double toplamNotAlacaklarim = 0;
+  double toplamNotBorclarim = 0;
+  List<Map<String, dynamic>> tumIslemler = [];
 
   // Filtreleme değişkenleri
   String selectedTransactionType = 'Tümü';
@@ -36,196 +29,88 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
   @override
   void initState() {
     super.initState();
-    print('ContactAnalysisScreen: initState başladı');
-    print('ContactAnalysisScreen: contactId: ${widget.contactId}');
-    print('ContactAnalysisScreen: contactName: ${widget.contactName}');
-    print('ContactAnalysisScreen: isLoading başlangıç: $isLoading');
-    fetchAnalysis();
-    print('ContactAnalysisScreen: fetchAnalysis() çağrıldı');
+    print('UserAnalysisScreen: initState başladı');
+    fetchUserAnalysis();
   }
 
-  Future<void> fetchAnalysis() async {
-    print('DEBUG: ContactAnalysisScreen: fetchAnalysis() başladı');
-    print('DEBUG: ContactAnalysisScreen: isLoading başlangıç: $isLoading');
+  Future<void> fetchUserAnalysis() async {
+    print('UserAnalysisScreen: fetchUserAnalysis() başladı');
 
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      print(
-        'DEBUG: ContactAnalysisScreen: currentUserId alındı: $currentUserId',
-      );
+      print('UserAnalysisScreen: currentUserId: $currentUserId');
 
       if (currentUserId == null) {
-        print('DEBUG: ContactAnalysisScreen: currentUserId null!');
+        print('UserAnalysisScreen: currentUserId null!');
         setState(() {
           isLoading = false;
         });
         return;
       }
 
-      print('DEBUG: ContactAnalysisScreen: Veri çekme başladı');
-      print('DEBUG: ContactAnalysisScreen: currentUserId: $currentUserId');
-      print('DEBUG: ContactAnalysisScreen: contactId: ${widget.contactId}');
-
-      // ContactId email ise, kullanıcı ID'sini bul
-      String? actualContactId = widget.contactId;
-      if (widget.contactId.contains('@')) {
-        // Email ile kullanıcı ID'sini bul
-        print(
-          'ContactAnalysisScreen: Email ile kullanici araniyor: ${widget.contactId}',
-        );
-        final userQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: widget.contactId)
-            .limit(1)
-            .get();
-
-        if (userQuery.docs.isNotEmpty) {
-          actualContactId = userQuery.docs.first.id;
-          print(
-            'ContactAnalysisScreen: Kullanici ID bulundu: $actualContactId',
-          );
-        } else {
-          // Kullanıcı bulunamadı, email'i ID olarak kullan (not modu için)
-          actualContactId = widget.contactId;
-          print(
-            'ContactAnalysisScreen: Kullanici bulunamadi, email ID olarak kullaniliyor: $actualContactId',
-          );
-        }
-      }
-
-      // Basit test - sadece tüm borçları çek
-      print('DEBUG: ContactAnalysisScreen: Firestore sorgusu baslıyor...');
-
-      print(
-        'DEBUG: ContactAnalysisScreen: FirebaseFirestore.instance alinıyor...',
-      );
+      // Tüm borçları çek
       final firestore = FirebaseFirestore.instance;
-      print('DEBUG: ContactAnalysisScreen: Firestore instance alındı');
-
-      print('DEBUG: ContactAnalysisScreen: debts koleksiyonu alinıyor...');
       final debtsCollection = firestore.collection('debts');
-      print('DEBUG: ContactAnalysisScreen: debts koleksiyonu alındı');
-
-      print('DEBUG: ContactAnalysisScreen: get() cagrılıyor...');
       final allDebtsSnap = await debtsCollection.get();
-      print('DEBUG: ContactAnalysisScreen: get() tamamlandı');
 
-      print(
-        'DEBUG: ContactAnalysisScreen: Tüm borçlar: ${allDebtsSnap.docs.length}',
-      );
-
-      // Tüm status'leri kontrol et
-      final allStatuses = <String>{};
-      for (final doc in allDebtsSnap.docs) {
-        final data = doc.data();
-        final status = data['status']?.toString() ?? '';
-        allStatuses.add(status);
-        print('ContactAnalysisScreen: Borç status - ${data['status']}');
-      }
-      print('ContactAnalysisScreen: Tüm status\'ler: $allStatuses');
+      print('UserAnalysisScreen: Tüm borçlar: ${allDebtsSnap.docs.length}');
 
       // Değişkenleri tanımla
       double borc = 0;
       double alacak = 0;
-      double notlar = 0;
+      double notAlacak = 0;
+      double notBorc = 0;
       List<Map<String, dynamic>> tempIslemler = [];
 
-      // Önce note status'lü borçları bul
+      // Tüm işlemleri işle
       for (final doc in allDebtsSnap.docs) {
         final data = doc.data();
-        final status = data['status']?.toString().toLowerCase() ?? '';
         final borcluId = data['borcluId'];
         final alacakliId = data['alacakliId'];
+        final status = data['status']?.toString().toLowerCase() ?? '';
 
-        if (status == 'note' || status == 'not' || status == 'notes') {
-          // Sadece mevcut kullanıcı ile seçili kişi arasındaki notları al
-          if ((borcluId == actualContactId && alacakliId == currentUserId) ||
-              (alacakliId == actualContactId && borcluId == currentUserId) ||
-              // Email ile de eşleşme kontrolü (not modu için)
-              (borcluId == widget.contactId && alacakliId == currentUserId) ||
-              (alacakliId == widget.contactId && borcluId == currentUserId)) {
-            print(
-              'ContactAnalysisScreen: Note borç bulundu - miktar: ${data['miktar']}, borcluId: $borcluId, alacakliId: $alacakliId',
-            );
+        // Sadece mevcut kullanıcının işlemleri
+        if (borcluId == currentUserId || alacakliId == currentUserId) {
+          print(
+            'UserAnalysisScreen: İşlem bulundu - miktar: ${data['miktar']}, status: ${data['status']}, borcluId: $borcluId, alacakliId: $alacakliId',
+          );
 
-            tempIslemler.add({
-              'debtId': doc.id,
-              'miktar': data['miktar'],
-              'tarih': data['islemTarihi'],
-              'status': data['status'] ?? 'note',
-              'aciklama': data['aciklama'] ?? '',
-              'borcluId': borcluId,
-              'alacakliId': alacakliId,
-            });
+          tempIslemler.add({
+            'debtId': doc.id,
+            'miktar': data['miktar'],
+            'tarih': data['islemTarihi'],
+            'status': data['status'] ?? 'pending',
+            'aciklama': data['aciklama'] ?? '',
+            'borcluId': borcluId,
+            'alacakliId': alacakliId,
+          });
 
-            // Borçlu/alacaklı ayrımı yap
+          // Not işlemleri
+          if (status == 'note' || status == 'not' || status == 'notes') {
             if (borcluId == currentUserId) {
               // Ben borçluyum
-              notBorclarim += (data['miktar'] as num).toDouble();
+              notBorc += (data['miktar'] as num).toDouble();
               print(
-                'ContactAnalysisScreen: Not borç eklendi - miktar: ${data['miktar']}, toplam not borç: $notBorclarim',
+                'UserAnalysisScreen: Not borç eklendi - miktar: ${data['miktar']}, toplam not borç: $notBorc',
               );
             } else if (alacakliId == currentUserId) {
               // Ben alacaklıyım
-              notAlacaklarim += (data['miktar'] as num).toDouble();
+              notAlacak += (data['miktar'] as num).toDouble();
               print(
-                'ContactAnalysisScreen: Not alacak eklendi - miktar: ${data['miktar']}, toplam not alacak: $notAlacaklarim',
+                'UserAnalysisScreen: Not alacak eklendi - miktar: ${data['miktar']}, toplam not alacak: $notAlacak',
               );
             }
-          }
-        }
-      }
-
-      // Sonra normal borçları işle
-      for (var doc in allDebtsSnap.docs) {
-        final data = doc.data();
-        final borcluId = data['borcluId'];
-        final alacakliId = data['alacakliId'];
-        final status = data['status']?.toString().toLowerCase() ?? '';
-
-        print(
-          'ContactAnalysisScreen: Borç kontrol ediliyor - borcluId: $borcluId, alacakliId: $alacakliId',
-        );
-
-        // Sadece iki kullanıcı arasındaki işlemler (note hariç)
-        if ((borcluId == actualContactId && alacakliId == currentUserId) ||
-            (alacakliId == actualContactId && borcluId == currentUserId) ||
-            // Email ile de eşleşme kontrolü (not modu için)
-            (borcluId == widget.contactId && alacakliId == currentUserId) ||
-            (alacakliId == widget.contactId && borcluId == currentUserId)) {
-          // Note status'ü zaten işlendi, tekrar işleme
-          if (status == 'note' || status == 'not' || status == 'notes') {
-            continue;
-          }
-
-          // Sadece onaylı işlemleri göster
-          if (status == 'approved') {
-            print(
-              'ContactAnalysisScreen: Eşleşen borç bulundu - miktar: ${data['miktar']}, status: ${data['status']}, borcluId: $borcluId, alacakliId: $alacakliId',
-            );
-
-            tempIslemler.add({
-              'debtId': doc.id,
-              'miktar': data['miktar'],
-              'tarih': data['islemTarihi'],
-              'status': data['status'] ?? 'pending',
-              'aciklama': data['aciklama'] ?? '',
-              'borcluId': borcluId,
-              'alacakliId': alacakliId,
-            });
-
+          } else {
+            // Normal işlemler
             if (borcluId == currentUserId) {
-              print(
-                'ContactAnalysisScreen: Status kontrolü - status: "${data['status']}", type: ${data['status'].runtimeType}',
-              );
               borc += (data['miktar'] as num).toDouble();
               print(
-                'ContactAnalysisScreen: Borç eklendi - miktar: ${data['miktar']}, toplam borç: $borc',
+                'UserAnalysisScreen: Borç eklendi - miktar: ${data['miktar']}, toplam borç: $borc',
               );
             } else if (alacakliId == currentUserId) {
               alacak += (data['miktar'] as num).toDouble();
               print(
-                'ContactAnalysisScreen: Alacak eklendi - miktar: ${data['miktar']}, toplam alacak: $alacak',
+                'UserAnalysisScreen: Alacak eklendi - miktar: ${data['miktar']}, toplam alacak: $alacak',
               );
             }
           }
@@ -233,168 +118,88 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
       }
 
       print(
-        'ContactAnalysisScreen: Final hesaplama - borç: $borc, alacak: $alacak, işlem sayısı: ${tempIslemler.length}',
+        'UserAnalysisScreen: Final hesaplama - borç: $borc, alacak: $alacak, not alacak: $notAlacak, not borç: $notBorc',
       );
 
       setState(() {
-        borclarim = borc;
-        alacaklarim = alacak;
-        notlarim = notAlacaklarim + notBorclarim; // Toplam notlar
-        islemler = tempIslemler;
+        toplamBorclarim = borc;
+        toplamAlacaklarim = alacak;
+        toplamNotAlacaklarim = notAlacak;
+        toplamNotBorclarim = notBorc;
+        tumIslemler = tempIslemler;
         filteredIslemler = tempIslemler;
         isLoading = false;
       });
 
-      print('ContactAnalysisScreen: setState tamamlandı');
+      print('UserAnalysisScreen: setState tamamlandı');
     } catch (e) {
-      print('ContactAnalysisScreen: HATA! $e');
+      print('UserAnalysisScreen: HATA! $e');
       setState(() {
         isLoading = false;
       });
     }
   }
 
-  void _shareAnalysis() {
-    final netBakiye = alacaklarim - borclarim;
-    final durum = netBakiye >= 0 ? 'alacaklısın' : 'borçlusun';
-    final mesaj =
-        'Merhaba ${widget.contactName}, aramızdaki hesap özeti:\n\n'
-        '💰 Net Bakiye: ${netBakiye.abs().toStringAsFixed(2)}₺\n'
-        '📊 Durum: ${durum}\n\n'
-        '📈 Detaylar:\n'
-        '• Borçlarım: ${borclarim.toStringAsFixed(2)}₺\n'
-        '• Alacaklarım: ${alacaklarim.toStringAsFixed(2)}₺\n'
-        '• Toplam İşlem: ${islemler.length} adet\n\n'
-        'Detaylı analiz için uygulamaya göz atabilirsin.';
+  void _applyFilters() {
+    setState(() {
+      filteredIslemler = tumIslemler.where((islem) {
+        final status = islem['status']?.toString().toLowerCase() ?? '';
+        final isBorc =
+            islem['borcluId'] == FirebaseAuth.instance.currentUser?.uid;
 
-    // Paylaşım seçenekleri
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Başlık
-              Row(
-                children: [
-                  const Icon(Icons.share, color: Color(0xFF667eea)),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Paylaş',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+        // Transaction Type filtresi
+        if (selectedTransactionType != 'Tümü') {
+          if (selectedTransactionType == 'Sadece Borçlar' && !isBorc) {
+            return false;
+          }
+          if (selectedTransactionType == 'Sadece Alacaklar' && isBorc) {
+            return false;
+          }
+        }
 
-              // Paylaşım seçenekleri
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildShareOption(
-                    icon: Icons.chat_bubble_outline,
-                    label: 'WhatsApp',
-                    color: const Color(0xFF25D366),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _shareToWhatsApp(mesaj);
-                    },
-                  ),
-                  _buildShareOption(
-                    icon: Icons.sms,
-                    label: 'SMS',
-                    color: const Color(0xFF667eea),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _shareToSMS(mesaj);
-                    },
-                  ),
-                  _buildShareOption(
-                    icon: Icons.copy,
-                    label: 'Kopyala',
-                    color: Colors.grey[600]!,
-                    onTap: () {
-                      Navigator.pop(context);
-                      _copyToClipboard(mesaj);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-    );
-  }
+        // Status filtresi
+        if (selectedStatus != 'Tümü') {
+          if (selectedStatus == 'Onaylananlar' && status != 'approved') {
+            return false;
+          }
+          if (selectedStatus == 'Notlar' &&
+              (status != 'note' && status != 'not' && status != 'notes')) {
+            return false;
+          }
+        }
 
-  Widget _buildShareOption({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[700],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        // Date Range filtresi
+        if (selectedDateRange != 'Tüm Zamanlar') {
+          final islemTarihi = islem['tarih'];
+          if (islemTarihi != null) {
+            DateTime? tarih;
+            try {
+              if (islemTarihi is String) {
+                tarih = DateTime.parse(islemTarihi);
+              } else if (islemTarihi is Timestamp) {
+                tarih = (islemTarihi as Timestamp).toDate();
+              }
+            } catch (e) {
+              print('UserAnalysisScreen: Tarih parse hatası: $e');
+              tarih = DateTime.now();
+            }
 
-  void _shareToWhatsApp(String message) {
-    final url = 'whatsapp://send?text=${Uri.encodeComponent(message)}';
-    // TODO: Implement WhatsApp sharing
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('WhatsApp paylaşımı yakında eklenecek')),
-    );
-  }
+            if (tarih != null) {
+              final now = DateTime.now();
+              if (selectedDateRange == 'Son 1 Hafta') {
+                final birHaftaOnce = now.subtract(const Duration(days: 7));
+                if (tarih.isBefore(birHaftaOnce)) return false;
+              } else if (selectedDateRange == 'Son 1 Ay') {
+                final birAyOnce = now.subtract(const Duration(days: 30));
+                if (tarih.isBefore(birAyOnce)) return false;
+              }
+            }
+          }
+        }
 
-  void _shareToSMS(String message) {
-    // TODO: Implement SMS sharing
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('SMS paylaşımı yakında eklenecek')),
-    );
-  }
-
-  void _copyToClipboard(String message) {
-    // TODO: Implement clipboard functionality
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Panoya kopyalandı')));
+        return true;
+      }).toList();
+    });
   }
 
   void _showFilterBottomSheet() {
@@ -432,7 +237,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                         selectedTransactionType = 'Tümü';
                         selectedStatus = 'Tümü';
                         selectedDateRange = 'Tüm Zamanlar';
-                        filteredIslemler = islemler;
+                        filteredIslemler = tumIslemler;
                       });
                       Navigator.pop(context);
                     },
@@ -514,27 +319,6 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                 }).toList(),
               ),
               const SizedBox(height: 20),
-
-              // Uygula Butonu
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF667eea),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Uygula',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
             ],
           ),
         );
@@ -542,97 +326,8 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
     );
   }
 
-  void _applyFilters() {
-    setState(() {
-      filteredIslemler = islemler.where((islem) {
-        final status = islem['status']?.toString().toLowerCase() ?? '';
-        final isBorc =
-            islem['borcluId'] == FirebaseAuth.instance.currentUser?.uid;
-
-        // Sadece onaylı işlemleri ve notları göster
-        if (status != 'approved' &&
-            status != 'note' &&
-            status != 'not' &&
-            status != 'notes') {
-          return false;
-        }
-
-        // Transaction Type filtresi
-        if (selectedTransactionType != 'Tümü') {
-          if (selectedTransactionType == 'Sadece Borçlar' && !isBorc) {
-            return false;
-          }
-          if (selectedTransactionType == 'Sadece Alacaklar' && isBorc) {
-            return false;
-          }
-        }
-
-        // Status filtresi
-        if (selectedStatus != 'Tümü') {
-          if (selectedStatus == 'Onaylananlar' && status != 'approved') {
-            return false;
-          }
-          if (selectedStatus == 'Notlar' &&
-              (status != 'note' && status != 'not' && status != 'notes')) {
-            return false;
-          }
-        }
-
-        // Date Range filtresi (basit implementasyon)
-        if (selectedDateRange != 'Tüm Zamanlar') {
-          final islemTarihi = islem['tarih'];
-          if (islemTarihi != null) {
-            DateTime? tarih;
-            try {
-              if (islemTarihi is String) {
-                tarih = DateTime.parse(islemTarihi);
-              } else if (islemTarihi is Timestamp) {
-                tarih = (islemTarihi as Timestamp).toDate();
-              }
-            } catch (e) {
-              print('ContactAnalysisScreen: Tarih parse hatası: $e');
-              tarih = DateTime.now();
-            }
-
-            if (tarih != null) {
-              final now = DateTime.now();
-              if (selectedDateRange == 'Son 1 Hafta') {
-                final birHaftaOnce = now.subtract(const Duration(days: 7));
-                if (tarih.isBefore(birHaftaOnce)) return false;
-              } else if (selectedDateRange == 'Son 1 Ay') {
-                final birAyOnce = now.subtract(const Duration(days: 30));
-                if (tarih.isBefore(birAyOnce)) return false;
-              }
-            }
-          }
-        }
-
-        return true;
-      }).toList();
-    });
-  }
-
-  void _handleAction() {
-    final netBakiye = alacaklarim - borclarim;
-    if (netBakiye > 0) {
-      // Ödeme Talep Et
-      print('ContactAnalysisScreen: Ödeme Talep Et butonuna tıklandı');
-      // TODO: Implement payment request logic
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ödeme Talep Et butonuna tıklandı (yakında)')),
-      );
-    } else if (netBakiye < 0) {
-      // Ödeme Yap
-      print('ContactAnalysisScreen: Ödeme Yap butonuna tıklandı');
-      // TODO: Implement payment logic
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ödeme Yap butonuna tıklandı (yakında)')),
-      );
-    }
-  }
-
   void _showTransactionDetail(Map<String, dynamic> islem) {
-    print('ContactAnalysisScreen: İşlem detayına tıklandı: $islem');
+    print('UserAnalysisScreen: İşlem detayına tıklandı: $islem');
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     try {
@@ -653,7 +348,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         debtData['islemTarihi'] = debtData['tarih'];
       }
 
-      print('ContactAnalysisScreen: DebtModel için hazırlanan veri: $debtData');
+      print('UserAnalysisScreen: DebtModel için hazırlanan veri: $debtData');
 
       final debt = DebtModel.fromMap(debtData);
 
@@ -665,7 +360,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         ),
       );
     } catch (e) {
-      print('ContactAnalysisScreen: İşlem detayına geçiş hatası: $e');
+      print('UserAnalysisScreen: İşlem detayı hatası: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('İşlem detayı açılamadı: $e')));
@@ -674,25 +369,20 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('ContactAnalysisScreen: build() çağrıldı - isLoading: $isLoading');
-    print(
-      'ContactAnalysisScreen: borclarim: $borclarim, alacaklarim: $alacaklarim, notlarim: $notlarim',
-    );
-    print('ContactAnalysisScreen: islemler.length: ${islemler.length}');
-
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bgColor = theme.scaffoldBackgroundColor;
-    final cardColor = isDark ? const Color(0xFF23262F) : theme.cardColor;
-    final cardInnerColor = isDark ? const Color(0xFF2D303A) : Colors.grey[50];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF181A20) : const Color(0xFFF7F8FC);
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
+    final cardInnerColor = isDark
+        ? const Color(0xFF2A2D3A)
+        : const Color(0xFFF8F9FA);
     final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
-    final textSec = isDark ? Colors.white70 : Colors.grey[600];
+    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
     final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
-    final iconShare = isDark ? Colors.white : const Color(0xFF1A202C);
-    final red = isDark ? const Color(0xFFEF5350) : const Color(0xFFF87171);
-    final green = isDark ? const Color(0xFF66BB6A) : const Color(0xFF4ADE80);
-    final blue = isDark ? const Color(0xFF42A5F5) : const Color(0xFF3B82F6);
-    final orange = isDark ? Colors.orangeAccent : Colors.orange;
+    final iconShare = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final red = const Color(0xFFF87171);
+    final green = const Color(0xFF4ADE80);
+    final blue = const Color(0xFF3B82F6);
+    final orange = const Color(0xFFFFA726);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -702,7 +392,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         elevation: 0,
         iconTheme: IconThemeData(color: iconMain),
         title: Text(
-          '${widget.contactName} - Borç Analizi',
+          'Genel Analiz',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
@@ -721,37 +411,15 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.share, color: iconShare, size: 20),
-            onPressed: () => _shareAnalysis(),
+            onPressed: () {
+              // TODO: Implement share functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Paylaşım özelliği yakında')),
+              );
+            },
           ),
         ],
       ),
-      floatingActionButton: alacaklarim - borclarim != 0
-          ? Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              child: FloatingActionButton.extended(
-                onPressed: () => _handleAction(),
-                backgroundColor: alacaklarim - borclarim > 0
-                    ? const Color(0xFF4ADE80)
-                    : const Color(0xFFF87171),
-                foregroundColor: Colors.white,
-                elevation: 4,
-                icon: Icon(
-                  alacaklarim - borclarim > 0
-                      ? Icons.payment_rounded
-                      : Icons.account_balance_wallet_rounded,
-                  size: 20,
-                ),
-                label: Text(
-                  alacaklarim - borclarim > 0 ? 'Ödeme Talep Et' : 'Ödeme Yap',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: isLoading
           ? const Center(
               child: Column(
@@ -785,7 +453,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                 children: [
                   // Pasta Grafik
                   Container(
-                    height: 420, // Yüksekliği artırdım
+                    height: 380,
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -801,64 +469,63 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        Text(
+                          'Genel Durum',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: textMain,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
                         // Grafik
                         SizedBox(
-                          height: 200,
+                          height: 180,
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
-                              // Debug logları
-                              Builder(
-                                builder: (context) {
-                                  print(
-                                    'ContactAnalysisScreen: Pie chart debug - borclarim: $borclarim, alacaklarim: $alacaklarim, notlarim: $notlarim',
-                                  );
-                                  return const SizedBox.shrink();
-                                },
-                              ),
                               PieChart(
                                 PieChartData(
                                   sectionsSpace: 3,
                                   centerSpaceRadius: 45,
                                   sections: [
-                                    if (borclarim > 0)
+                                    if (toplamBorclarim > 0)
                                       PieChartSectionData(
                                         color: red,
-                                        value: borclarim,
+                                        value: toplamBorclarim,
                                         title: '',
                                         radius: 60,
                                         showTitle: false,
                                       ),
-                                    if (alacaklarim > 0)
+                                    if (toplamAlacaklarim > 0)
                                       PieChartSectionData(
                                         color: green,
-                                        value: alacaklarim,
+                                        value: toplamAlacaklarim,
                                         title: '',
                                         radius: 60,
                                         showTitle: false,
                                       ),
-                                    if (notAlacaklarim > 0)
+                                    if (toplamNotAlacaklarim > 0)
                                       PieChartSectionData(
                                         color: blue,
-                                        value: notAlacaklarim,
+                                        value: toplamNotAlacaklarim,
                                         title: '',
                                         radius: 60,
                                         showTitle: false,
                                       ),
-                                    if (notBorclarim > 0)
+                                    if (toplamNotBorclarim > 0)
                                       PieChartSectionData(
                                         color: orange,
-                                        value: notBorclarim,
+                                        value: toplamNotBorclarim,
                                         title: '',
                                         radius: 60,
                                         showTitle: false,
                                       ),
-                                    if (borclarim == 0 &&
-                                        alacaklarim == 0 &&
-                                        notAlacaklarim == 0 &&
-                                        notBorclarim == 0)
+                                    if (toplamBorclarim == 0 &&
+                                        toplamAlacaklarim == 0 &&
+                                        toplamNotAlacaklarim == 0 &&
+                                        toplamNotBorclarim == 0)
                                       PieChartSectionData(
                                         color: isDark
                                             ? Colors.grey[800]!
@@ -885,7 +552,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '${(alacaklarim - borclarim).toStringAsFixed(2)}₺',
+                                      '${(toplamAlacaklarim - toplamBorclarim).toStringAsFixed(2)}₺',
                                       style: TextStyle(
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
@@ -897,7 +564,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      alacaklarim - borclarim >= 0
+                                      toplamAlacaklarim - toplamBorclarim >= 0
                                           ? 'Alacaklısın'
                                           : 'Borçlusun',
                                       style: TextStyle(
@@ -914,240 +581,237 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        // Bar Grafiği
-                        Column(
+                        const SizedBox(height: 20),
+                        // Bar Graph
+                        Row(
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        height: 10,
-                                        decoration: BoxDecoration(
-                                          color: isDark
-                                              ? Colors.grey[800]
-                                              : Colors.grey[200],
-                                          borderRadius: BorderRadius.circular(
-                                            5,
-                                          ),
-                                        ),
-                                        child: FractionallySizedBox(
-                                          alignment: Alignment.centerLeft,
-                                          widthFactor:
-                                              borclarim > 0 ||
-                                                  alacaklarim > 0 ||
-                                                  notlarim > 0
-                                              ? borclarim /
-                                                    (borclarim +
-                                                        alacaklarim +
-                                                        notlarim)
-                                              : 0,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: red,
-                                              borderRadius:
-                                                  BorderRadius.circular(5),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Borçlarım',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 11,
-                                          color: textSec,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${borclarim.toStringAsFixed(2)}₺',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: textMain,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        height: 10,
-                                        decoration: BoxDecoration(
-                                          color: isDark
-                                              ? Colors.grey[800]
-                                              : Colors.grey[200],
-                                          borderRadius: BorderRadius.circular(
-                                            5,
-                                          ),
-                                        ),
-                                        child: FractionallySizedBox(
-                                          alignment: Alignment.centerLeft,
-                                          widthFactor:
-                                              borclarim > 0 ||
-                                                  alacaklarim > 0 ||
-                                                  notlarim > 0
-                                              ? alacaklarim /
-                                                    (borclarim +
-                                                        alacaklarim +
-                                                        notlarim)
-                                              : 0,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: green,
-                                              borderRadius:
-                                                  BorderRadius.circular(5),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Alacaklarım',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 11,
-                                          color: textSec,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${alacaklarim.toStringAsFixed(2)}₺',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: textMain,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (notAlacaklarim > 0 || notBorclarim > 0) ...[
-                              const SizedBox(height: 16),
-                              Row(
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Colors.grey[800]
-                                                : Colors.grey[200],
-                                            borderRadius: BorderRadius.circular(
-                                              5,
-                                            ),
-                                          ),
-                                          child: FractionallySizedBox(
-                                            alignment: Alignment.centerLeft,
-                                            widthFactor: notAlacaklarim > 0
-                                                ? notAlacaklarim /
-                                                      (notAlacaklarim +
-                                                          notBorclarim)
-                                                : 0,
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: blue,
-                                                borderRadius:
-                                                    BorderRadius.circular(5),
-                                              ),
-                                            ),
+                                  Container(
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.grey[800]
+                                          : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor:
+                                          toplamBorclarim > 0 ||
+                                              toplamAlacaklarim > 0 ||
+                                              toplamNotAlacaklarim > 0 ||
+                                              toplamNotBorclarim > 0
+                                          ? toplamBorclarim /
+                                                (toplamBorclarim +
+                                                    toplamAlacaklarim +
+                                                    toplamNotAlacaklarim +
+                                                    toplamNotBorclarim)
+                                          : 0,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: red,
+                                          borderRadius: BorderRadius.circular(
+                                            5,
                                           ),
                                         ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Not Alacaklarım',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 11,
-                                            color: textSec,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${notAlacaklarim.toStringAsFixed(2)}₺',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: textMain,
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 20),
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Colors.grey[800]
-                                                : Colors.grey[200],
-                                            borderRadius: BorderRadius.circular(
-                                              5,
-                                            ),
-                                          ),
-                                          child: FractionallySizedBox(
-                                            alignment: Alignment.centerLeft,
-                                            widthFactor: notBorclarim > 0
-                                                ? notBorclarim /
-                                                      (notAlacaklarim +
-                                                          notBorclarim)
-                                                : 0,
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: orange,
-                                                borderRadius:
-                                                    BorderRadius.circular(5),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Not Borçlarım',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 11,
-                                            color: textSec,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${notBorclarim.toStringAsFixed(2)}₺',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: textMain,
-                                          ),
-                                        ),
-                                      ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Borçlarım',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 11,
+                                      color: textSec,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${toplamBorclarim.toStringAsFixed(2)}₺',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: textMain,
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
+                            const SizedBox(width: 20),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.grey[800]
+                                          : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor:
+                                          toplamBorclarim > 0 ||
+                                              toplamAlacaklarim > 0 ||
+                                              toplamNotAlacaklarim > 0 ||
+                                              toplamNotBorclarim > 0
+                                          ? toplamAlacaklarim /
+                                                (toplamBorclarim +
+                                                    toplamAlacaklarim +
+                                                    toplamNotAlacaklarim +
+                                                    toplamNotBorclarim)
+                                          : 0,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: green,
+                                          borderRadius: BorderRadius.circular(
+                                            5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Alacaklarım',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 11,
+                                      color: textSec,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${toplamAlacaklarim.toStringAsFixed(2)}₺',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: textMain,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
+                        if (toplamNotAlacaklarim > 0 ||
+                            toplamNotBorclarim > 0) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? Colors.grey[800]
+                                            : Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                      child: FractionallySizedBox(
+                                        alignment: Alignment.centerLeft,
+                                        widthFactor: toplamNotAlacaklarim > 0
+                                            ? toplamNotAlacaklarim /
+                                                  (toplamNotAlacaklarim +
+                                                      toplamNotBorclarim)
+                                            : 0,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: blue,
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Not Alacaklarım',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 11,
+                                        color: textSec,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${toplamNotAlacaklarim.toStringAsFixed(2)}₺',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: textMain,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? Colors.grey[800]
+                                            : Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                      child: FractionallySizedBox(
+                                        alignment: Alignment.centerLeft,
+                                        widthFactor: toplamNotBorclarim > 0
+                                            ? toplamNotBorclarim /
+                                                  (toplamNotAlacaklarim +
+                                                      toplamNotBorclarim)
+                                            : 0,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: orange,
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Not Borçlarım',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 11,
+                                        color: textSec,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${toplamNotBorclarim.toStringAsFixed(2)}₺',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: textMain,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
                   const SizedBox(height: 20),
                   // İşlemler Listesi
                   Container(
-                    height: 450, // Yüksekliği artırdım
+                    height: 400,
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -1168,7 +832,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                         Row(
                           children: [
                             Text(
-                              'İşlemler',
+                              'Tüm İşlemler',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,
@@ -1234,7 +898,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        'Bu kişi ile henüz borç/alacak işlemi yapılmamış',
+                                        'Henüz borç/alacak işlemi yapılmamış',
                                         style: TextStyle(
                                           color: Colors.grey[400],
                                           fontSize: 14,
@@ -1245,8 +909,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                   ),
                                 )
                               : ListView.builder(
-                                  padding: EdgeInsets
-                                      .zero, // Üst ve alt padding'i kaldırdım
+                                  padding: EdgeInsets.zero,
                                   itemCount: filteredIslemler.length,
                                   itemBuilder: (context, index) {
                                     final islem = filteredIslemler[index];
@@ -1268,7 +931,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                       }
                                     } catch (e) {
                                       print(
-                                        'ContactAnalysisScreen: Tarih parse hatası: $e',
+                                        'UserAnalysisScreen: Tarih parse hatası: $e',
                                       );
                                       tarih = DateTime.now();
                                     }
@@ -1283,7 +946,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                               index ==
                                                   filteredIslemler.length - 1
                                               ? 0
-                                              : 12, // Son öğe için margin yok
+                                              : 12,
                                         ),
                                         padding: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(

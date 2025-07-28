@@ -13,7 +13,8 @@ import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
-import 'package:pacta/screens/contacts/contacts_screen.dart'; // Kişiler ekranı için import
+import 'package:pacta/screens/contacts/contacts_screen.dart';
+import 'package:pacta/screens/analysis/user_analysis_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -506,16 +507,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         },
                                       ),
                                       _AnimatedActionButton(
-                                        icon:
-                                            Icons.check_circle_outline_rounded,
-                                        label: "Pacta Kapat",
-                                        color: blue,
+                                        icon: Icons.analytics_rounded,
+                                        label: "Analiz",
+                                        color: const Color(0xFF8B5CF6),
                                         onTap: () {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) =>
-                                                  const AddDebtScreen(),
+                                                  const UserAnalysisScreen(),
                                             ),
                                           );
                                         },

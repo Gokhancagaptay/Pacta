@@ -276,7 +276,8 @@ class FirestoreService {
         return uid.length >= 6 ? uid.substring(0, 6) : uid;
       }
     } catch (e) {
-      return uid.substring(0, 6);
+      // Catch bloğunda da uid uzunluğunu kontrol et
+      return uid.length >= 6 ? uid.substring(0, 6) : uid;
     }
   }
 

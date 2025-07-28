@@ -363,7 +363,7 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
                                 : 'Favorilere ekle',
                           ),
                           onTap: () {
-                            Navigator.pop(context, contact.uid);
+                            Navigator.pop(context, contact.email);
                           },
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: width * 0.03,

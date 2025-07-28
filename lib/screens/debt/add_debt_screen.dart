@@ -88,22 +88,98 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
     final now = DateTime.now();
     final isNote = _showNote;
     final currentUserId = _currentUser.uid;
-    final otherParty = _personController.text;
+    final otherParty =
+        widget.initialPersonEmail ?? _personController.text.trim();
     final amount =
         double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+
+    // Kişi seçimi kontrolü
+    if (otherParty.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lütfen bir kişi seçin!')));
+      return;
+    }
+
+    // Miktar kontrolü
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen geçerli bir miktar girin!')),
+      );
+      return;
+    }
+
+    // Not modunda karşı tarafın ID'sini bul
+    String actualOtherPartyId = otherParty;
+    print('AddDebtScreen: Seçilen kişi: $otherParty');
+
+    if (isNote) {
+      try {
+        final userQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: otherParty)
+            .limit(1)
+            .get();
+
+        if (userQuery.docs.isNotEmpty) {
+          actualOtherPartyId = userQuery.docs.first.id;
+          print(
+            'AddDebtScreen: Not için kullanıcı ID bulundu: $actualOtherPartyId',
+          );
+        } else {
+          // Kullanıcı yoksa email'i ID olarak kullan
+          actualOtherPartyId = otherParty;
+          print(
+            'AddDebtScreen: Kullanıcı bulunamadı, email ID olarak kullanılıyor: $actualOtherPartyId',
+          );
+        }
+      } catch (e) {
+        print('AddDebtScreen: Kullanıcı arama hatası: $e');
+        actualOtherPartyId = otherParty;
+      }
+    } else {
+      // Normal borç modunda da ID'yi bul
+      try {
+        final userQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: otherParty)
+            .limit(1)
+            .get();
+
+        if (userQuery.docs.isNotEmpty) {
+          actualOtherPartyId = userQuery.docs.first.id;
+          print(
+            'AddDebtScreen: Normal borç için kullanıcı ID bulundu: $actualOtherPartyId',
+          );
+        } else {
+          // Kullanıcı yoksa email'i ID olarak kullan
+          actualOtherPartyId = otherParty;
+          print(
+            'AddDebtScreen: Kullanıcı bulunamadı, email ID olarak kullanılıyor: $actualOtherPartyId',
+          );
+        }
+      } catch (e) {
+        print('AddDebtScreen: Kullanıcı arama hatası: $e');
+        actualOtherPartyId = otherParty;
+      }
+    }
+
     DebtModel newDebt;
     if (isNote) {
       newDebt = DebtModel(
         debtId: null,
         borcluId: currentUserId,
-        alacakliId: otherParty,
+        alacakliId: actualOtherPartyId, // ID kullan
         miktar: amount,
         aciklama: _descriptionController.text,
         islemTarihi: now,
         status: 'note',
         isShared: false,
         requiresApproval: false,
-        visibleTo: [currentUserId],
+        visibleTo: [
+          currentUserId,
+          actualOtherPartyId,
+        ], // Her iki kullanıcıyı da ekle
         createdBy: currentUserId,
       );
     } else if (widget.isPactaAl) {
@@ -111,21 +187,21 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
       newDebt = DebtModel(
         debtId: null,
         borcluId: currentUserId,
-        alacakliId: otherParty,
+        alacakliId: actualOtherPartyId, // ID kullan
         miktar: amount,
         aciklama: _descriptionController.text,
         islemTarihi: now,
         status: 'pending',
         isShared: true,
         requiresApproval: true,
-        visibleTo: [currentUserId, otherParty],
+        visibleTo: [currentUserId, actualOtherPartyId], // ID kullan
         createdBy: currentUserId,
       );
     } else {
       // Pacta Ver: borç veren sensin
       newDebt = DebtModel(
         debtId: null,
-        borcluId: otherParty,
+        borcluId: actualOtherPartyId, // ID kullan
         alacakliId: currentUserId,
         miktar: amount,
         aciklama: _descriptionController.text,
@@ -133,7 +209,7 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
         status: 'pending',
         isShared: true,
         requiresApproval: true,
-        visibleTo: [currentUserId, otherParty],
+        visibleTo: [currentUserId, actualOtherPartyId], // ID kullan
         createdBy: currentUserId,
       );
     }

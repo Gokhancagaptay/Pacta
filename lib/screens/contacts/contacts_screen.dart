@@ -75,30 +75,40 @@ class ContactsScreen extends StatelessWidget {
       );
     }
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final cardColor = theme.cardColor;
+    final textMain =
+        theme.textTheme.titleLarge?.color ??
+        (isDark ? Colors.white : const Color(0xFF1A202C));
+    final textSec =
+        theme.textTheme.bodyMedium?.color?.withOpacity(0.7) ??
+        (isDark ? Colors.white70 : Colors.grey[600]);
+    final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
+    final iconDelete = Colors.redAccent;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: bgColor,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Kişilerim',
           style: TextStyle(
-            color: Color(0xFF1A202C),
+            color: textMain,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF1A202C),
-          ),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: iconMain),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add, color: Color(0xFF1A202C), size: 28),
+            icon: Icon(Icons.add, color: iconMain, size: 28),
             tooltip: 'Kişi Ekle',
             onPressed: showAddContactDialog,
           ),
@@ -115,10 +125,10 @@ class ContactsScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
                 'Kayıtlı kişi bulunamadı.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(fontSize: 16, color: textSec),
               ),
             );
           }
@@ -134,30 +144,32 @@ class ContactsScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                color: Colors.white,
+                color: cardColor,
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.blueGrey[100],
+                    backgroundColor: isDark
+                        ? Colors.blueGrey[800]
+                        : Colors.blueGrey[100],
                     child: Text(
                       (contact['adSoyad'] ?? '?')[0].toUpperCase(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A202C),
+                        color: textMain,
                       ),
                     ),
                   ),
                   title: Text(
                     contact['adSoyad'] ?? '-',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
-                      color: Color(0xFF1A202C),
+                      color: textMain,
                     ),
                   ),
                   subtitle: Text(
                     contact['email'] ?? '-',
                     style: TextStyle(
-                      color: Colors.grey[600],
+                      color: textSec,
                       fontWeight: FontWeight.normal,
                     ),
                   ),
@@ -165,17 +177,21 @@ class ContactsScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.bar_chart_outlined,
-                          color: Colors.blueGrey,
+                          color: isDark ? Colors.tealAccent : Colors.blueGrey,
                         ),
                         tooltip: 'Analiz',
                         onPressed: () {
+                          final finalContactId =
+                              contact['uid'] ??
+                              contact['email'] ??
+                              contacts[index].id;
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => ContactAnalysisScreen(
-                                contactId: contacts[index].id,
+                                contactId: finalContactId,
                                 contactName: contact['adSoyad'] ?? '-',
                               ),
                             ),
@@ -183,10 +199,7 @@ class ContactsScreen extends StatelessWidget {
                         },
                       ),
                       IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.redAccent,
-                        ),
+                        icon: Icon(Icons.delete_outline, color: iconDelete),
                         tooltip: 'Sil',
                         onPressed: () async {
                           final confirm = await showDialog<bool>(
@@ -221,9 +234,7 @@ class ContactsScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  onTap: () {
-                    // TODO: Kişi detayına/analizine yönlendirme
-                  },
+                  onTap: () {},
                 ),
               );
             },

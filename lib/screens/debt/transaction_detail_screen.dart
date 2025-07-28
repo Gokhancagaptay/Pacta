@@ -95,7 +95,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
       body: StreamBuilder<DebtModel?>(
-        stream: _firestoreService.getDebtByIdStream(widget.debt.debtId!),
+        stream: widget.debt.debtId != null
+            ? _firestoreService.getDebtByIdStream(widget.debt.debtId!)
+            : Stream.value(widget.debt),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
