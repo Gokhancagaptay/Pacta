@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
+import 'package:pacta/widgets/custom_date_range_picker.dart';
 
 class ContactAnalysisScreen extends StatefulWidget {
   final String contactId;
@@ -31,6 +32,7 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
   String selectedTransactionType = 'Tümü';
   String selectedStatus = 'Tümü';
   String selectedDateRange = 'Tüm Zamanlar';
+  DateTimeRange? customDateRange;
   List<Map<String, dynamic>> filteredIslemler = [];
 
   @override
@@ -398,145 +400,271 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
   }
 
   void _showFilterBottomSheet() {
+    // Geçici seçimleri tutmak için state değişkenleri
+    String tempSelectedTransactionType = selectedTransactionType;
+    String tempSelectedStatus = selectedStatus;
+    String tempSelectedDateRange = selectedDateRange;
+    DateTimeRange? tempCustomDateRange = customDateRange;
+
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bottomSheetColor = isDark ? const Color(0xFF2D303A) : Colors.white;
+    final textColor = theme.colorScheme.onSurface;
+    final primaryColor = theme.colorScheme.primary;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: bottomSheetColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+      ),
       builder: (BuildContext context) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Başlık
-              Row(
-                children: [
-                  const Icon(Icons.filter_list, color: Color(0xFF667eea)),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Filtrele',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            // Helper function for date range picker
+            Future<void> selectDateRange() async {
+              final picked = await showDialog<DateTimeRange>(
+                context: context,
+                builder: (context) => CustomDateRangePicker(
+                  initialDateRange: tempCustomDateRange,
+                ),
+              );
+
+              if (picked != null) {
+                setModalState(() {
+                  tempCustomDateRange = picked;
+                  tempSelectedDateRange = 'Özel';
+                });
+              }
+            }
+
+            Widget buildChoiceChip(
+              String label,
+              String groupValue,
+              Function(String) onSelected,
+            ) {
+              final bool isSelected = label == groupValue;
+              return ChoiceChip(
+                label: Text(label),
+                selected: isSelected,
+                onSelected: (selected) {
+                  if (selected) {
+                    onSelected(label);
+                  }
+                },
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                selectedColor: primaryColor,
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : textColor,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isSelected ? primaryColor : Colors.transparent,
                   ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        selectedTransactionType = 'Tümü';
-                        selectedStatus = 'Tümü';
-                        selectedDateRange = 'Tüm Zamanlar';
-                        filteredIslemler = islemler;
-                      });
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Sıfırla'),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              );
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                top: 20,
+                left: 24,
+                right: 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.filter_list_rounded,
+                        color: textColor.withOpacity(0.8),
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Filtrele',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          setModalState(() {
+                            tempSelectedTransactionType = 'Tümü';
+                            tempSelectedStatus = 'Tümü';
+                            tempSelectedDateRange = 'Tüm Zamanlar';
+                            tempCustomDateRange = null;
+                          });
+                        },
+                        child: Text(
+                          'Sıfırla',
+                          style: TextStyle(color: primaryColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'İşlem Türü',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor.withOpacity(0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: ['Tümü', 'Sadece Borçlar', 'Sadece Alacaklar']
+                        .map(
+                          (type) => buildChoiceChip(
+                            type,
+                            tempSelectedTransactionType,
+                            (newValue) => setModalState(
+                              () => tempSelectedTransactionType = newValue,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Durum',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor.withOpacity(0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: ['Tümü', 'Onaylananlar', 'Notlar']
+                        .map(
+                          (status) => buildChoiceChip(
+                            status,
+                            tempSelectedStatus,
+                            (newValue) => setModalState(
+                              () => tempSelectedStatus = newValue,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Tarih Aralığı',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor.withOpacity(0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      ...['Tüm Zamanlar', 'Son 1 Hafta', 'Son 1 Ay'].map(
+                        (range) => buildChoiceChip(
+                          range,
+                          tempSelectedDateRange,
+                          (newValue) => setModalState(() {
+                            tempSelectedDateRange = newValue;
+                            tempCustomDateRange = null;
+                          }),
+                        ),
+                      ),
+                      // Custom Date Range Chip
+                      ActionChip(
+                        label: Text(
+                          tempSelectedDateRange == 'Özel' &&
+                                  tempCustomDateRange != null
+                              ? '${tempCustomDateRange!.start.day}/${tempCustomDateRange!.start.month}/${tempCustomDateRange!.start.year} - ${tempCustomDateRange!.end.day}/${tempCustomDateRange!.end.month}/${tempCustomDateRange!.end.year}'
+                              : 'Tarih Seç',
+                        ),
+                        onPressed: selectDateRange,
+                        backgroundColor: tempSelectedDateRange == 'Özel'
+                            ? primaryColor
+                            : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                        labelStyle: TextStyle(
+                          color: tempSelectedDateRange == 'Özel'
+                              ? Colors.white
+                              : textColor,
+                          fontWeight: tempSelectedDateRange == 'Özel'
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: tempSelectedDateRange == 'Özel'
+                                ? primaryColor
+                                : Colors.transparent,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        // Seçimleri uygula ve paneli kapat
+                        setState(() {
+                          selectedTransactionType = tempSelectedTransactionType;
+                          selectedStatus = tempSelectedStatus;
+                          selectedDateRange = tempSelectedDateRange;
+                          customDateRange = tempCustomDateRange;
+                          _applyFilters();
+                        });
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Filtreyi Uygula',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-
-              // İşlem Türü
-              const Text(
-                'İşlem Türü',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: ['Tümü', 'Sadece Borçlar', 'Sadece Alacaklar'].map((
-                  type,
-                ) {
-                  return ChoiceChip(
-                    label: Text(type),
-                    selected: selectedTransactionType == type,
-                    onSelected: (selected) {
-                      setState(() {
-                        selectedTransactionType = type;
-                        _applyFilters();
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              // Durum
-              const Text(
-                'Durum',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: ['Tümü', 'Onaylananlar', 'Notlar'].map((status) {
-                  return ChoiceChip(
-                    label: Text(status),
-                    selected: selectedStatus == status,
-                    onSelected: (selected) {
-                      setState(() {
-                        selectedStatus = status;
-                        _applyFilters();
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              // Tarih Aralığı
-              const Text(
-                'Tarih Aralığı',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: ['Tüm Zamanlar', 'Son 1 Hafta', 'Son 1 Ay'].map((
-                  range,
-                ) {
-                  return ChoiceChip(
-                    label: Text(range),
-                    selected: selectedDateRange == range,
-                    onSelected: (selected) {
-                      setState(() {
-                        selectedDateRange = range;
-                        _applyFilters();
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              // Uygula Butonu
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF667eea),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Uygula',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -549,12 +677,9 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         final isBorc =
             islem['borcluId'] == FirebaseAuth.instance.currentUser?.uid;
 
-        // Sadece onaylı işlemleri ve notları göster
-        if (status != 'approved' &&
-            status != 'note' &&
-            status != 'not' &&
-            status != 'notes') {
-          return false;
+        // Onaylanmamış (pending, rejected vb.) işlemleri en başta ele
+        if (selectedStatus != 'Tümü' && selectedStatus != 'Notlar') {
+          if (status != 'approved') return false;
         }
 
         // Transaction Type filtresi
@@ -578,31 +703,51 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
           }
         }
 
-        // Date Range filtresi (basit implementasyon)
+        // Date Range filtresi
         if (selectedDateRange != 'Tüm Zamanlar') {
           final islemTarihi = islem['tarih'];
-          if (islemTarihi != null) {
-            DateTime? tarih;
-            try {
-              if (islemTarihi is String) {
-                tarih = DateTime.parse(islemTarihi);
-              } else if (islemTarihi is Timestamp) {
-                tarih = (islemTarihi as Timestamp).toDate();
-              }
-            } catch (e) {
-              print('ContactAnalysisScreen: Tarih parse hatası: $e');
-              tarih = DateTime.now();
-            }
+          if (islemTarihi == null) return false; // Tarihi olmayanları ele
 
-            if (tarih != null) {
-              final now = DateTime.now();
-              if (selectedDateRange == 'Son 1 Hafta') {
-                final birHaftaOnce = now.subtract(const Duration(days: 7));
-                if (tarih.isBefore(birHaftaOnce)) return false;
-              } else if (selectedDateRange == 'Son 1 Ay') {
-                final birAyOnce = now.subtract(const Duration(days: 30));
-                if (tarih.isBefore(birAyOnce)) return false;
-              }
+          DateTime? tarih;
+          try {
+            if (islemTarihi is String) {
+              tarih = DateTime.parse(islemTarihi);
+            } else if (islemTarihi is Timestamp) {
+              tarih = islemTarihi.toDate();
+            }
+          } catch (e) {
+            print('ContactAnalysisScreen: Tarih parse hatası: $e');
+          }
+
+          if (tarih == null) return false;
+
+          final now = DateTime.now();
+          if (selectedDateRange == 'Son 1 Hafta') {
+            if (tarih.isBefore(now.subtract(const Duration(days: 7)))) {
+              return false;
+            }
+          } else if (selectedDateRange == 'Son 1 Ay') {
+            if (tarih.isBefore(now.subtract(const Duration(days: 30)))) {
+              return false;
+            }
+          } else if (selectedDateRange == 'Özel' && customDateRange != null) {
+            // customDateRange'in başlangıcını günün başlangıcı (00:00)
+            // bitişini ise günün sonu (23:59:59) olarak alıyoruz.
+            final start = DateTime(
+              customDateRange!.start.year,
+              customDateRange!.start.month,
+              customDateRange!.start.day,
+            );
+            final end = DateTime(
+              customDateRange!.end.year,
+              customDateRange!.end.month,
+              customDateRange!.end.day,
+              23,
+              59,
+              59,
+            );
+            if (tarih.isBefore(start) || tarih.isAfter(end)) {
+              return false;
             }
           }
         }
@@ -1172,16 +1317,13 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,
-                                color: Colors.grey[800],
+                                color: textMain,
                               ),
                             ),
                             const Spacer(),
                             Text(
                               '${filteredIslemler.length} işlem',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[500],
-                              ),
+                              style: TextStyle(fontSize: 12, color: textSec),
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
@@ -1189,12 +1331,12 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[100],
+                                  color: theme.primaryColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
-                                  Icons.filter_list,
-                                  color: Colors.grey[600],
+                                  Icons.filter_list_rounded,
+                                  color: theme.primaryColor,
                                   size: 20,
                                 ),
                               ),

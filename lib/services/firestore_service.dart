@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/debt_model.dart'; // Yeni DebtModel'i import ediyoruz
 import '../models/user_model.dart';
 import '../models/saved_contact_model.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // FirebaseAuth'i import et
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -79,42 +80,76 @@ class FirestoreService {
   // Bu metod, yeni DebtModel'i Firestore'a ekler.
   Future<void> addDebt(DebtModel debt) async {
     try {
-      final docRef = await _debtsRef.add(debt);
-      await docRef.update({'debtId': docRef.id});
-      // --- Her iki kullanıcı için recentDebts alt koleksiyonuna ekle ---
-      final involvedUserIds = <String>{debt.alacakliId, debt.borcluId};
-      for (final userId in involvedUserIds) {
-        if (userId.isEmpty) continue;
-        final recentRef = _db
-            .collection('users')
-            .doc(userId)
-            .collection('recentDebts');
-        await recentRef.doc(docRef.id).set(debt.toMap());
-        // Son 5'ten fazlası varsa en eskiyi sil
-        final recentDocs = await recentRef
-            .orderBy('islemTarihi', descending: true)
-            .get();
-        if (recentDocs.docs.length > 5) {
-          for (var i = 5; i < recentDocs.docs.length; i++) {
-            await recentRef.doc(recentDocs.docs[i].id).delete();
-          }
+      // 1. "debts" koleksiyonuna yeni borcu ekle ve ID'sini al
+      final docRef = await _db.collection('debts').add(debt.toMap());
+      final debtId = docRef.id;
+
+      // Eklenen dokümana kendi ID'sini de kaydet
+      await docRef.update({'debtId': debtId});
+
+      // 2. İşlemi her iki kullanıcının "recentDebts" alt koleksiyonuna ekle
+      final recentDebtData = {
+        'debtId': debtId,
+        'status': debt.status,
+        'islemTarihi': debt.islemTarihi.toIso8601String(),
+        'otherPartyId':
+            debt.alacakliId == FirebaseAuth.instance.currentUser!.uid
+            ? debt.borcluId
+            : debt.alacakliId,
+      };
+
+      await _db
+          .collection('users')
+          .doc(debt.borcluId)
+          .collection('recentDebts')
+          .doc(debtId)
+          .set(recentDebtData);
+
+      await _db
+          .collection('users')
+          .doc(debt.alacakliId)
+          .collection('recentDebts')
+          .doc(debtId)
+          .set(recentDebtData);
+
+      // 3. EĞER status 'note' DEĞİLSE bildirim gönder.
+      if (debt.status != 'note') {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) return;
+
+        final alacakliName = await getUserNameById(debt.alacakliId);
+        final borcluName = await getUserNameById(debt.borcluId);
+
+        String toUserId = '';
+        String title = '';
+        String massage = '';
+
+        if (debt.createdBy == debt.borcluId) {
+          // Borçlu oluşturduysa (Alacak talebi)
+          toUserId = debt.alacakliId;
+          title = "Yeni Alacak Talebi";
+          massage =
+              "$borcluName sizden ${debt.miktar}₺ tutarında bir alacak talebinde bulundu.";
+        } else {
+          // Alacaklı oluşturduysa (Borç bildirimi)
+          toUserId = debt.borcluId;
+          title = "Yeni Borç Bildirimi";
+          massage =
+              "$alacakliName size ${debt.miktar}₺ tutarında bir borç bildiriminde bulundu.";
         }
-      }
-      // Borç onay bekliyorsa borçluya bildirim gönder (try bloğu içinde olmalı)
-      if (debt.status == 'pending') {
-        // Borcu oluşturan kişinin ad-soyadını Firestore'dan çekiyoruz
-        final alacakliAdSoyad = await getUserNameById(debt.alacakliId);
-        // Bildirim gönderiyoruz, mesajda ad-soyadı kullanıyoruz
+
         await sendNotification(
-          toUserId: debt.borcluId,
+          toUserId: toUserId,
           type: 'approval_request',
-          relatedDebtId: docRef.id,
-          title: 'Yeni Pacta Talebi',
-          massage: '$alacakliAdSoyad senden ${debt.miktar} Borç istedi.',
+          relatedDebtId: debtId,
+          title: title,
+          massage: massage,
+          createdById: debt.createdBy,
         );
       }
     } catch (e) {
-      print("Borç eklenirken hata oluştu: $e");
+      print("Error adding debt: $e");
+      // Hata yönetimi, kullanıcıya geri bildirim vb.
     }
   }
 
@@ -321,6 +356,7 @@ class FirestoreService {
     required String relatedDebtId,
     required String title,
     required String massage,
+    String? createdById, // Yeni parametre
   }) async {
     await _db.collection('notifications').add({
       'toUserId': toUserId,
@@ -330,6 +366,7 @@ class FirestoreService {
       'massage': massage,
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
+      'createdById': createdById, // Yeni alan
     });
   }
 }

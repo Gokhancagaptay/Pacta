@@ -5,6 +5,7 @@ import 'package:pacta/auth_wrapper.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:pacta/services/push_notification_service.dart';
 
 // Uygulamayı çalıştırmadan önce Firebase'i başlatmak için main fonksiyonunu async yapıyoruz
 Future<void> main() async {
@@ -17,6 +18,7 @@ Future<void> main() async {
   // Firebase'i başlat
   // Bu satır, firebase_options.dart dosyasındaki platforma özel ayarları kullanır
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PushNotificationService().initialize();
 
   runApp(const ProviderScope(child: MyApp()));
 }

@@ -61,22 +61,25 @@ class NotificationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: theme.colorScheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: theme.colorScheme.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF1A202C),
+            color: theme.colorScheme.onBackground,
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Bildirimler',
           style: TextStyle(
-            color: Color(0xFF1A202C),
+            color: theme.colorScheme.onBackground,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
@@ -84,9 +87,9 @@ class NotificationScreen extends StatelessWidget {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.settings_outlined,
-              color: Color(0xFF1A202C),
+              color: theme.colorScheme.onBackground,
               size: 26,
             ),
             onPressed: () {},
@@ -107,10 +110,13 @@ class NotificationScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
                 'Bildirim bulunamadı.',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 18,
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                ),
               ),
             );
           }
@@ -164,9 +170,11 @@ class _NotificationTitleState extends State<NotificationTitle> {
       FirestoreService()
           .getUserNameById(widget.item.massage?.split(' ')[0] ?? '')
           .then((name) {
-            setState(() {
-              alacakliName = name;
-            });
+            if (mounted) {
+              setState(() {
+                alacakliName = name;
+              });
+            }
           });
     }
   }
@@ -185,30 +193,31 @@ class _NotificationTitleState extends State<NotificationTitle> {
   @override
   Widget build(BuildContext context) {
     final _firestoreService = FirestoreService();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final formattedDate =
         "${widget.item.date.day} ${_monthName(widget.item.date.month)} ${widget.item.date.year}, "
         "${widget.item.date.hour.toString().padLeft(2, '0')}:${widget.item.date.minute.toString().padLeft(2, '0')}";
 
     Widget buildLeading(String status, String type) {
       // Bildirim türüne göre ikon ve renk seçimi
-      Color bgColor = Colors.grey[400]!;
-      IconData icon = Icons.notifications;
+      Color bgColor;
+      IconData icon;
+
       if (type == 'approval_request' && status == 'pending') {
-        bgColor = const Color(0xFFCBD5E1);
+        bgColor = isDark ? Colors.blueGrey[700]! : Colors.blueGrey[200]!;
         icon = Icons.add_circle_outline;
-      } else if (type == 'approval_result' && status == 'approved') {
-        bgColor = Colors.green;
-        icon = Icons.check_circle_outline;
-      } else if (type == 'approval_result' && status == 'rejected') {
-        bgColor = Colors.red;
-        icon = Icons.highlight_off;
       } else if (status == 'approved') {
-        bgColor = Colors.green;
+        bgColor = isDark ? Colors.green.shade800 : Colors.green.shade400;
         icon = Icons.check_circle_outline;
       } else if (status == 'rejected') {
-        bgColor = Colors.red;
+        bgColor = isDark ? Colors.red.shade800 : Colors.red.shade400;
         icon = Icons.highlight_off;
+      } else {
+        bgColor = theme.colorScheme.secondaryContainer;
+        icon = Icons.notifications;
       }
+
       return CircleAvatar(
         backgroundColor: bgColor,
         child: Icon(icon, color: Colors.white, size: 24),
@@ -231,23 +240,25 @@ class _NotificationTitleState extends State<NotificationTitle> {
       final miktar =
           widget.item.massage?.replaceAll(RegExp(r'[^0-9,.]'), '') ?? '';
       final isim = alacakliName ?? 'Kullanıcı';
+      final defaultStyle = TextStyle(
+        fontSize: 15,
+        color: theme.colorScheme.onSurface,
+      );
+      final boldStyle = TextStyle(
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
       if (type == 'approval_request' && status == 'pending') {
         final parts = widget.item.massage?.split(' ') ?? [];
         final user = parts.isNotEmpty ? parts[0] : '';
         final amount = parts.length > 2 ? parts[2] : '';
         return RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 15, color: Color(0xFF1A202C)),
+            style: defaultStyle,
             children: [
-              TextSpan(
-                text: user,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: user, style: boldStyle),
               const TextSpan(text: ' senden '),
-              TextSpan(
-                text: '$amount₺',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: '$amount₺', style: boldStyle),
               const TextSpan(text: ' borç istedi.'),
             ],
           ),
@@ -256,17 +267,11 @@ class _NotificationTitleState extends State<NotificationTitle> {
         final user = isim;
         return RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 15, color: Color(0xFF1A202C)),
+            style: defaultStyle,
             children: [
-              TextSpan(
-                text: user,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: user, style: boldStyle),
               const TextSpan(text: ' kullanıcısına gönderdiğin '),
-              TextSpan(
-                text: '$miktar₺',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: '$miktar₺', style: boldStyle),
               const TextSpan(text: ' tutarındaki pacta isteği onaylandı.'),
             ],
           ),
@@ -275,17 +280,11 @@ class _NotificationTitleState extends State<NotificationTitle> {
         final user = isim;
         return RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 15, color: Color(0xFF1A202C)),
+            style: defaultStyle,
             children: [
-              TextSpan(
-                text: user,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: user, style: boldStyle),
               const TextSpan(text: ' kullanıcısına gönderdiğin '),
-              TextSpan(
-                text: '$miktar₺',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              TextSpan(text: '$miktar₺', style: boldStyle),
               const TextSpan(text: ' tutarındaki pacta isteği reddedildi.'),
             ],
           ),
@@ -293,33 +292,32 @@ class _NotificationTitleState extends State<NotificationTitle> {
       } else if (status == 'approved') {
         return Text(
           'Sizin tarafınızdan $isim kullanıcısının $miktar₺ miktarındaki pactası onaylandı.',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: Colors.green,
+            color: isDark ? Colors.green.shade300 : Colors.green.shade700,
             fontSize: 15,
           ),
         );
       } else if (status == 'rejected') {
         return Text(
           'Sizin tarafınızdan $isim kullanıcısının $miktar₺ miktarındaki pactası reddedildi.',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: Colors.red,
+            color: isDark ? Colors.red.shade300 : Colors.red.shade700,
             fontSize: 15,
           ),
         );
       }
-      return Text(
-        widget.item.massage ?? '',
-        style: const TextStyle(fontSize: 15),
-      );
+      return Text(widget.item.massage ?? '', style: defaultStyle);
     }
 
     Color getCardColor(bool isRead, String status) {
       if (!isRead && status == 'pending') {
-        return Colors.white;
+        return isDark
+            ? theme.colorScheme.primary.withOpacity(0.1)
+            : Color(0xFFE3F2FD);
       }
-      return Colors.white;
+      return theme.cardColor;
     }
 
     Widget buildUnreadBar(bool isRead, String status) {
@@ -328,7 +326,7 @@ class _NotificationTitleState extends State<NotificationTitle> {
               width: 4,
               height: 56,
               decoration: BoxDecoration(
-                color: Colors.green,
+                color: theme.colorScheme.primary,
                 borderRadius: BorderRadius.circular(4),
               ),
             )
@@ -368,7 +366,7 @@ class _NotificationTitleState extends State<NotificationTitle> {
                           ? FontWeight.bold
                           : FontWeight.normal,
                       fontSize: 16,
-                      color: const Color(0xFF1A202C),
+                      color: theme.colorScheme.onSurface,
                     ),
                     child: buildRichTitle(status, widget.item.type),
                   ),
@@ -378,7 +376,7 @@ class _NotificationTitleState extends State<NotificationTitle> {
                       formattedDate,
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.grey.shade600,
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
                       ),
                     ),
                   ),
@@ -436,7 +434,9 @@ class _NotificationTitleState extends State<NotificationTitle> {
                                         .doc(widget.item.relatedDebtId)
                                         .update({'status': 'rejected'});
                                   }
-                                  setState(() {});
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
                                 },
                               ),
                             ),
@@ -490,7 +490,9 @@ class _NotificationTitleState extends State<NotificationTitle> {
                                         .doc(widget.item.relatedDebtId)
                                         .update({'status': 'approved'});
                                   }
-                                  setState(() {});
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
                                 },
                               ),
                             ),

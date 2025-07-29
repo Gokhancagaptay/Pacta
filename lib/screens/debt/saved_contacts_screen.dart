@@ -32,8 +32,10 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
   }
 
   void _loadContacts() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     final contacts = await _firestoreService.getSavedContacts(_currentUser.uid);
+    if (!mounted) return;
     setState(() {
       _contacts = contacts;
       _loading = false;
@@ -41,6 +43,7 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
   }
 
   void _toggleFavorite(String uid) {
+    if (!mounted) return;
     setState(() {
       if (_favorites.contains(uid)) {
         _favorites.remove(uid);
@@ -112,6 +115,7 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
                       contactInput = v;
                       foundUserId = null;
                       if (noteMode) return;
+                      if (!mounted) return;
                       setModalState(() {
                         loading = true;
                         checked = false;
@@ -120,6 +124,7 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
                       final user = await _firestoreService.searchUserByAny(
                         contactInput,
                       );
+                      if (!mounted) return;
                       setModalState(() {
                         userExists = user != null;
                         foundUserId = user?.uid;
@@ -185,12 +190,9 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
                                     adSoyad: adSoyad,
                                     email: contactInput,
                                   );
-                                  await _firestoreService.addSavedContact(
-                                    _currentUser.uid,
-                                    contact,
-                                  );
-                                  _loadContacts();
-                                  Navigator.pop(context, contact.uid);
+                                  // Önce pop yapıp sonra _loadContacts çağırıyoruz.
+                                  // Bu, önceki ekranda state değişikliği yapmaya çalışmayı önler.
+                                  Navigator.pop(context, contact);
                                 }
                               : null,
                           child: const Text('Ekle'),
@@ -204,9 +206,18 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
           ),
         );
       },
-    ).then((selectedContact) {
-      if (selectedContact != null && selectedContact is String) {
-        Navigator.pop(context, selectedContact);
+    ).then((selectedContact) async {
+      if (selectedContact != null && selectedContact is SavedContactModel) {
+        // Modal'dan yeni bir kişi eklendiğinde bu blok çalışır.
+        await _firestoreService.addSavedContact(
+          _currentUser.uid,
+          selectedContact,
+        );
+        _loadContacts(); // Listeyi yenile
+      } else if (selectedContact != null && selectedContact is String) {
+        // Bu eski mantık, bir kişi seçildiğinde doğrudan pop yapıyordu.
+        // Bu artık _addContactModal tarafından yönetilmiyor.
+        // Liste elemanının onTap'ı doğrudan pop yapar.
       }
     });
   }
@@ -278,13 +289,19 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
                   ),
                 ),
                 style: TextStyle(fontSize: width * 0.045, color: textMain),
-                onChanged: (v) => setState(() => _search = v),
+                onChanged: (v) {
+                  if (!mounted) return;
+                  setState(() => _search = v);
+                },
               ),
             ),
             SizedBox(height: height * 0.01),
             TabBar(
               controller: _tabController,
-              onTap: (i) => setState(() => _tabIndex = i),
+              onTap: (i) {
+                if (!mounted) return;
+                setState(() => _tabIndex = i);
+              },
               indicatorColor: green,
               labelColor: green,
               unselectedLabelColor: textMain.withOpacity(0.5),
