@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/models/saved_contact_model.dart';
+import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
-import 'amount_input_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SavedContactsScreen extends StatefulWidget {
   final String title;
-  const SavedContactsScreen({Key? key, this.title = 'Kime Verdiniz?'})
+  const SavedContactsScreen({Key? key, this.title = 'Kime Vereceksiniz?'})
     : super(key: key);
 
   @override
@@ -16,389 +17,374 @@ class SavedContactsScreen extends StatefulWidget {
 class _SavedContactsScreenState extends State<SavedContactsScreen>
     with SingleTickerProviderStateMixin {
   final _firestoreService = FirestoreService();
-  final _currentUser = FirebaseAuth.instance.currentUser!;
-  List<SavedContactModel> _contacts = [];
-  List<String> _favorites = [];
-  bool _loading = true;
-  String _search = '';
-  int _tabIndex = 0;
+  final _searchController = TextEditingController();
   late TabController _tabController;
+  Timer? _debounce;
+  String _searchTerm = '';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadContacts();
+    _searchController.addListener(_onSearchChanged);
   }
 
-  void _loadContacts() async {
-    if (!mounted) return;
-    setState(() => _loading = true);
-    final contacts = await _firestoreService.getSavedContacts(_currentUser.uid);
-    if (!mounted) return;
-    setState(() {
-      _contacts = contacts;
-      _loading = false;
-    });
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _debounce?.cancel();
+    super.dispose();
   }
 
-  void _toggleFavorite(String uid) {
-    if (!mounted) return;
-    setState(() {
-      if (_favorites.contains(uid)) {
-        _favorites.remove(uid);
-      } else {
-        _favorites.add(uid);
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() => _searchTerm = _searchController.text.trim());
       }
     });
   }
 
-  void _addContactModal() async {
-    String adSoyad = '';
-    String contactInput = '';
-    String? foundUserId;
-    bool userExists = false;
-    bool checked = false;
-    bool loading = false;
-    String? errorMsg;
-    bool noteMode = false;
-    await showModalBottomSheet(
+  void _showAddContactSheet() {
+    showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: const _AddContactSheet(),
       ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Yeni Kişi Ekle',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    decoration: const InputDecoration(labelText: 'Ad Soyad'),
-                    onChanged: (v) => adSoyad = v,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    decoration: InputDecoration(
-                      labelText: 'E-posta, Telefon veya Etiket',
-                      suffixIcon: loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : checked
-                          ? (userExists
-                                ? const Icon(
-                                    Icons.check_circle,
-                                    color: Colors.green,
-                                  )
-                                : const Icon(Icons.error, color: Colors.red))
-                          : null,
-                    ),
-                    keyboardType: TextInputType.text,
-                    onChanged: (v) async {
-                      contactInput = v;
-                      foundUserId = null;
-                      if (noteMode) return;
-                      if (!mounted) return;
-                      setModalState(() {
-                        loading = true;
-                        checked = false;
-                        errorMsg = null;
-                      });
-                      final user = await _firestoreService.searchUserByAny(
-                        contactInput,
-                      );
-                      if (!mounted) return;
-                      setModalState(() {
-                        userExists = user != null;
-                        foundUserId = user?.uid;
-                        checked = true;
-                        loading = false;
-                        errorMsg = userExists
-                            ? null
-                            : 'Kayıtlı bir kullanıcı bulunamadı.';
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Switch(
-                        value: noteMode,
-                        onChanged: (val) => setModalState(() {
-                          noteMode = val;
-                          if (noteMode) {
-                            errorMsg = null;
-                            checked = false;
-                            userExists = false;
-                            foundUserId = null;
-                          }
-                        }),
-                        activeColor: Theme.of(context).colorScheme.primary,
-                      ),
-                      const Text('Not Modu (Kendine özel kişi ekle)'),
-                    ],
-                  ),
-                  if (errorMsg != null && !noteMode)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        errorMsg!,
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('İptal'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed:
-                              (noteMode &&
-                                      adSoyad.isNotEmpty &&
-                                      contactInput.isNotEmpty) ||
-                                  (!noteMode &&
-                                      userExists &&
-                                      adSoyad.isNotEmpty)
-                              ? () async {
-                                  final contact = SavedContactModel(
-                                    uid: noteMode
-                                        ? contactInput
-                                        : (foundUserId ?? contactInput),
-                                    adSoyad: adSoyad,
-                                    email: contactInput,
-                                  );
-                                  // Önce pop yapıp sonra _loadContacts çağırıyoruz.
-                                  // Bu, önceki ekranda state değişikliği yapmaya çalışmayı önler.
-                                  Navigator.pop(context, contact);
-                                }
-                              : null,
-                          child: const Text('Ekle'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    ).then((selectedContact) async {
-      if (selectedContact != null && selectedContact is SavedContactModel) {
-        // Modal'dan yeni bir kişi eklendiğinde bu blok çalışır.
-        await _firestoreService.addSavedContact(
-          _currentUser.uid,
-          selectedContact,
-        );
-        _loadContacts(); // Listeyi yenile
-      } else if (selectedContact != null && selectedContact is String) {
-        // Bu eski mantık, bir kişi seçildiğinde doğrudan pop yapıyordu.
-        // Bu artık _addContactModal tarafından yönetilmiyor.
-        // Liste elemanının onTap'ı doğrudan pop yapar.
-      }
-    });
-  }
-
-  List<SavedContactModel> get _filteredContacts {
-    final list = _tabIndex == 0
-        ? _contacts
-        : _contacts.where((c) => _favorites.contains(c.uid)).toList();
-    if (_search.isEmpty) return list;
-    return list
-        .where(
-          (c) =>
-              c.adSoyad.toLowerCase().contains(_search.toLowerCase()) ||
-              c.email.toLowerCase().contains(_search.toLowerCase()),
-        )
-        .toList();
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final Size size = MediaQuery.of(context).size;
-    final double width = size.width;
-    final double height = size.height;
-    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-    final textMain = isDark ? Colors.white : const Color(0xFF111827);
-    final green = const Color(0xFF4ADE80);
+    const Color green = Color(0xFF4ADE80);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textMain = isDark ? Colors.white : Colors.black87;
+    final textSec = isDark ? Colors.white70 : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF2D3748) : Colors.white;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: width * 0.05,
-            color: textMain,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: cardColor,
+        title: Text(widget.title, style: TextStyle(color: textMain)),
         elevation: 0,
-        iconTheme: IconThemeData(color: textMain, size: width * 0.07),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                width * 0.04,
-                height * 0.02,
-                width * 0.04,
-                0,
-              ),
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: 'Kişi ara',
-                  hintStyle: TextStyle(
-                    fontSize: width * 0.042,
-                    color: textMain.withOpacity(0.5),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search,
-                    size: width * 0.06,
-                    color: textMain.withOpacity(0.7),
-                  ),
-                  filled: true,
-                  fillColor: cardColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                style: TextStyle(fontSize: width * 0.045, color: textMain),
-                onChanged: (v) {
-                  if (!mounted) return;
-                  setState(() => _search = v);
-                },
-              ),
-            ),
-            SizedBox(height: height * 0.01),
-            TabBar(
-              controller: _tabController,
-              onTap: (i) {
-                if (!mounted) return;
-                setState(() => _tabIndex = i);
-              },
-              indicatorColor: green,
-              labelColor: green,
-              unselectedLabelColor: textMain.withOpacity(0.5),
-              labelStyle: TextStyle(
-                fontSize: width * 0.045,
-                fontWeight: FontWeight.bold,
-              ),
-              tabs: const [
-                Tab(text: 'Tüm Kişiler'),
-                Tab(text: 'Favoriler'),
-              ],
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredContacts.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Kişi bulunamadı.',
-                        style: TextStyle(
-                          fontSize: width * 0.045,
-                          color: textMain.withOpacity(0.7),
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: EdgeInsets.symmetric(vertical: height * 0.01),
-                      itemCount: _filteredContacts.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(height: height * 0.01),
-                      itemBuilder: (context, index) {
-                        final contact = _filteredContacts[index];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            radius: width * 0.06,
-                            backgroundColor: green.withOpacity(0.15),
-                            child: Text(
-                              contact.adSoyad.isNotEmpty
-                                  ? contact.adSoyad[0]
-                                  : '?',
-                              style: TextStyle(
-                                fontSize: width * 0.06,
-                                color: green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            contact.adSoyad,
-                            style: TextStyle(
-                              color: textMain,
-                              fontSize: width * 0.045,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          subtitle: Text(
-                            contact.email,
-                            style: TextStyle(
-                              fontSize: width * 0.035,
-                              color: textMain.withOpacity(0.7),
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              _favorites.contains(contact.uid)
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: _favorites.contains(contact.uid)
-                                  ? Colors.red
-                                  : textMain.withOpacity(0.5),
-                              size: width * 0.065,
-                            ),
-                            onPressed: () => _toggleFavorite(contact.uid),
-                            tooltip: _favorites.contains(contact.uid)
-                                ? 'Favorilerden çıkar'
-                                : 'Favorilere ekle',
-                          ),
-                          onTap: () {
-                            Navigator.pop(context, contact.email);
-                          },
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: width * 0.03,
-                            vertical: height * 0.006,
-                          ),
-                          minVerticalPadding: height * 0.006,
-                        );
-                      },
-                    ),
-            ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: green,
+          labelColor: green,
+          unselectedLabelColor: textSec,
+          tabs: const [
+            Tab(text: 'Tüm Kişiler'),
+            Tab(text: 'Favoriler'),
           ],
         ),
       ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Kişi ara...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<UserModel?>(
+              stream: _firestoreService.getUserStream(
+                FirebaseAuth.instance.currentUser!.uid,
+              ),
+              builder: (context, userSnapshot) {
+                final favoriteIds = userSnapshot.data?.favoriteContacts ?? [];
+                return StreamBuilder<List<SavedContactModel>>(
+                  stream: _firestoreService.getSavedContactsStream(_searchTerm),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'Kişi bulunamadı.',
+                          style: TextStyle(color: textSec),
+                        ),
+                      );
+                    }
+
+                    final allContacts = snapshot.data!;
+                    final favoriteContacts = allContacts
+                        .where((c) => favoriteIds.contains(c.id))
+                        .toList();
+
+                    return TabBarView(
+                      controller: _tabController,
+                      children: [
+                        // Tüm Kişiler
+                        _ContactList(
+                          contacts: allContacts,
+                          favoriteIds: favoriteIds,
+                        ),
+                        // Favoriler
+                        _ContactList(
+                          contacts: favoriteContacts,
+                          favoriteIds: favoriteIds,
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addContactModal,
+        onPressed: _showAddContactSheet,
         backgroundColor: green,
-        child: Icon(Icons.add, color: Colors.white, size: width * 0.08),
-        tooltip: 'Yeni kişi ekle',
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _ContactList extends StatelessWidget {
+  const _ContactList({
+    Key? key,
+    required this.contacts,
+    required this.favoriteIds,
+  }) : super(key: key);
+
+  final List<SavedContactModel> contacts;
+  final List<String> favoriteIds;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textMain = isDark ? Colors.white : Colors.black87;
+    final textSec = isDark ? Colors.white70 : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF2D3748) : Colors.white;
+    const Color green = Color(0xFF4ADE80);
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      itemCount: contacts.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final contact = contacts[index];
+        final isFavorite = favoriteIds.contains(contact.id);
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: green.withOpacity(0.2),
+            child: Text(
+              contact.adSoyad.isNotEmpty
+                  ? contact.adSoyad[0].toUpperCase()
+                  : '?',
+              style: const TextStyle(color: green, fontWeight: FontWeight.bold),
+            ),
+          ),
+          title: Text(
+            contact.adSoyad,
+            style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(contact.email, style: TextStyle(color: textSec)),
+          trailing: IconButton(
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? Colors.redAccent : textSec,
+            ),
+            onPressed: () {
+              FirestoreService().toggleFavoriteContact(contact.id!);
+            },
+          ),
+          onTap: () {
+            Navigator.pop(context, contact.email);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AddContactSheet extends StatefulWidget {
+  const _AddContactSheet({Key? key}) : super(key: key);
+
+  @override
+  State<_AddContactSheet> createState() => __AddContactSheetState();
+}
+
+class __AddContactSheetState extends State<_AddContactSheet> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  bool _isNoteMode = false;
+  bool _isChecking = false;
+  bool _userExists = false;
+  Timer? _debounce;
+  final _firestoreService = FirestoreService();
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.addListener(_onEmailChanged);
+  }
+
+  @override
+  void dispose() {
+    _emailController.removeListener(_onEmailChanged);
+    _nameController.dispose();
+    _emailController.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onEmailChanged() {
+    if (_isNoteMode) {
+      setState(() => _isChecking = false);
+      return;
+    }
+    if (_debounce?.isActive ?? false) _debounce?.cancel();
+    setState(() {
+      _isChecking = true;
+      _userExists = false;
+    });
+    _debounce = Timer(const Duration(milliseconds: 700), () async {
+      final email = _emailController.text.trim();
+      if (email.isEmpty) {
+        if (mounted) setState(() => _isChecking = false);
+        return;
+      }
+      final user = await _firestoreService.getUserByEmail(email);
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
+          _userExists = user != null;
+        });
+      }
+    });
+  }
+
+  Future<void> _addContact() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    if (name.isEmpty || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen tüm alanları doldurun.')),
+      );
+      return;
+    }
+
+    if (!_isNoteMode && !_userExists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Devam etmek için kayıtlı bir kullanıcı girmelisiniz.'),
+        ),
+      );
+      return;
+    }
+
+    final user = _isNoteMode
+        ? null
+        : await _firestoreService.getUserByEmail(email);
+    await _firestoreService.addSavedContact(
+      SavedContactModel(adSoyad: name, email: email, uid: user?.uid),
+    );
+
+    Navigator.pop(context);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$name kişilere eklendi.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canAdd =
+        _nameController.text.isNotEmpty &&
+        _emailController.text.isNotEmpty &&
+        (_isNoteMode || (_userExists && !_isChecking));
+
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Yeni Kişi Ekle',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              labelText: 'Ad Soyad',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _emailController,
+            decoration: InputDecoration(
+              labelText: 'E-posta',
+              border: const OutlineInputBorder(),
+              suffixIcon: _isChecking
+                  ? const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _emailController.text.isNotEmpty && !_isNoteMode
+                  ? Icon(
+                      _userExists ? Icons.check_circle : Icons.error,
+                      color: _userExists ? Colors.green : Colors.red,
+                    )
+                  : null,
+            ),
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            title: const Text('Not Modu'),
+            subtitle: const Text('Kişiyi sadece kendi takibiniz için ekleyin.'),
+            value: _isNoteMode,
+            onChanged: (value) {
+              setState(() {
+                _isNoteMode = value;
+                _onEmailChanged();
+              });
+            },
+            secondary: const Icon(Icons.note_alt_outlined),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('İptal'),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: canAdd ? _addContact : null,
+                child: const Text('Ekle'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

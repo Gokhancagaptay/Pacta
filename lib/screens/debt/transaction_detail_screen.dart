@@ -36,12 +36,18 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _updateStatus(String newStatus) async {
-    setState(() => _isProcessing = true);
-    await _firestoreService.updateDebtStatus(widget.debt.debtId!, newStatus);
-    setState(() {
-      _isProcessing = false;
-      _localStatus = newStatus;
-    });
+    // Sadece 'pending' durumundaki işlemler için statü değişikliğine izin ver
+    if (widget.debt.status == 'pending') {
+      await _firestoreService.updateDebtStatus(widget.debt.debtId!, newStatus);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sadece beklemedeki işlemlerin durumu değiştirilebilir.',
+          ),
+        ),
+      );
+    }
   }
 
   void _copyToClipboard(String value) {
@@ -95,9 +101,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
       body: StreamBuilder<DebtModel?>(
-        stream: widget.debt.debtId != null
-            ? _firestoreService.getDebtByIdStream(widget.debt.debtId!)
-            : Stream.value(widget.debt),
+        stream: _firestoreService.getDebtByIdStream(widget.debt.debtId!),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

@@ -7,6 +7,7 @@ class UserModel {
   final String? telefon; // YENİ: Telefon numarası alanı
   final String? etiket; // YENİ: 3 haneli etiket
   final List<String> aramaAnahtarlari; // YENİ: Arama için anahtar kelimeler
+  final List<String>? favoriteContacts; // YENİ: Favori kişi ID'leri
 
   UserModel({
     required this.uid,
@@ -15,6 +16,7 @@ class UserModel {
     this.telefon,
     this.etiket,
     required this.aramaAnahtarlari,
+    this.favoriteContacts,
   });
 
   // Firestore'a yazmak için
@@ -26,6 +28,7 @@ class UserModel {
       'telefon': telefon,
       'etiket': etiket,
       'aramaAnahtarlari': aramaAnahtarlari,
+      'favoriteContacts': favoriteContacts,
     };
   }
 
@@ -39,6 +42,7 @@ class UserModel {
       etiket: map['etiket'],
       // Gelen liste dynamic olabileceğinden List<String>'e çeviriyoruz
       aramaAnahtarlari: List<String>.from(map['aramaAnahtarlari'] ?? []),
+      favoriteContacts: List<String>.from(map['favoriteContacts'] ?? []),
     );
   }
 }

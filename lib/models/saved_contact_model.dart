@@ -1,23 +1,29 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class SavedContactModel {
-  final String uid; // Kayıtlı kişinin userId'si
+  final String? id;
   final String adSoyad;
   final String email;
+  final String? uid; // Gerçek kullanıcı ise UID'si
 
   SavedContactModel({
-    required this.uid,
+    this.id,
     required this.adSoyad,
     required this.email,
+    this.uid,
   });
 
   Map<String, dynamic> toMap() {
-    return {'uid': uid, 'adSoyad': adSoyad, 'email': email};
+    return {'adSoyad': adSoyad, 'email': email, 'uid': uid};
   }
 
-  factory SavedContactModel.fromMap(Map<String, dynamic> map) {
+  factory SavedContactModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
     return SavedContactModel(
-      uid: map['uid'] ?? '',
-      adSoyad: map['adSoyad'] ?? '',
-      email: map['email'] ?? '',
+      id: doc.id,
+      adSoyad: data['adSoyad'] ?? '',
+      email: data['email'] ?? '',
+      uid: data['uid'],
     );
   }
 }

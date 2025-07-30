@@ -6,7 +6,7 @@ import 'package:pacta/screens/debt/add_debt_screen.dart';
 import 'package:pacta/screens/debt/saved_contacts_screen.dart';
 import '../debt/amount_input_screen.dart';
 import '../auth/giris_ekrani.dart';
-import 'package:pacta/screens/settings_screen.dart';
+import 'package:pacta/screens/settings/settings_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/models/debt_model.dart';
@@ -15,6 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:pacta/screens/contacts/contacts_screen.dart';
 import 'package:pacta/screens/analysis/user_analysis_screen.dart';
+import 'package:pacta/screens/debt/all_transactions_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -66,197 +67,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     return alacak - verecek;
   }
 
-  String getStatusLabel(String status) {
-    switch (status) {
-      case 'approved':
-        return 'Onaylandı';
-      case 'pending':
-        return 'Bekleniyor';
-      case 'rejected':
-        return 'Reddedildi';
-      case 'note':
-        return 'Not';
-      default:
-        return '-';
-    }
-  }
-
-  Color getStatusColor(String status) {
-    switch (status) {
-      case 'approved':
-        return const Color(0xFF4ADE80); // yeşil
-      case 'pending':
-        return const Color(0xFFFFA726); // turuncu
-      case 'rejected':
-        return const Color(0xFFF87171); // kırmızı
-      case 'note':
-        return const Color(0xFF6B7280); // gri
-      default:
-        return Colors.grey;
-    }
-  }
-
   @override
   void dispose() {
     _controller.dispose();
     _bakiyeController.dispose();
     super.dispose();
-  }
-
-  // Onaylı Hareketler ve Kendi Takipler için kart widget'ı
-  Widget _transactionCard(
-    DebtModel d,
-    String userId,
-    double width,
-    Color green,
-    Color red,
-    Color textMain,
-    Color textSec,
-  ) {
-    final bool isAlacak = d.alacakliId == userId;
-    final bool isVerecek = d.borcluId == userId;
-    final bool isNote = d.status == 'note';
-    final Color amountColor = isNote ? green : (isAlacak ? green : red);
-    final String amountPrefix = isNote ? '+' : (isAlacak ? '+' : '-');
-    final String otherPartyId = isAlacak ? d.borcluId : d.alacakliId;
-    final String statusLabel = getStatusLabel(d.status);
-    final Color statusColor = getStatusColor(d.status);
-    final firestoreService = FirestoreService();
-    return FutureBuilder<String>(
-      future: firestoreService.getUserNameById(otherPartyId),
-      builder: (context, snapshot) {
-        final otherPartyName = snapshot.connectionState == ConnectionState.done
-            ? (snapshot.data ?? otherPartyId.substring(0, 6))
-            : '...';
-        final bool isDark = Theme.of(context).brightness == Brightness.dark;
-        final Color cardBg = isDark ? const Color(0xFF23262F) : Colors.white;
-        final Color borderColor = isDark ? Colors.white10 : Colors.grey[200]!;
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    TransactionDetailScreen(debt: d, userId: userId),
-              ),
-            );
-          },
-          child: Container(
-            margin: EdgeInsets.symmetric(vertical: width * 0.015),
-            padding: EdgeInsets.symmetric(
-              vertical: width * 0.025,
-              horizontal: width * 0.03,
-            ),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: amountColor.withOpacity(isDark ? 0.10 : 0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: width * 0.07,
-                  backgroundColor: amountColor.withOpacity(0.13),
-                  child: Text(
-                    (otherPartyName.isNotEmpty
-                        ? otherPartyName[0].toUpperCase()
-                        : '?'),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: width * 0.07,
-                      color: amountColor,
-                    ),
-                  ),
-                ),
-                SizedBox(width: width * 0.04),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        otherPartyName,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: width * 0.045,
-                          color: textMain,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: width * 0.01),
-                      Text(
-                        d.aciklama?.isNotEmpty == true
-                            ? d.aciklama!
-                            : 'Açıklama bulunamadı 🤔',
-                        style: TextStyle(
-                          fontSize: width * 0.038,
-                          color: textSec,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: width * 0.01),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: width * 0.02,
-                        children: [
-                          Text(
-                            d.islemTarihi != null
-                                ? DateFormat(
-                                    'd MMMM y',
-                                    'tr_TR',
-                                  ).format(d.islemTarihi)
-                                : '-',
-                            style: TextStyle(
-                              fontSize: width * 0.032,
-                              color: textSec,
-                            ),
-                          ),
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.13),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              statusLabel,
-                              style: TextStyle(
-                                fontSize: width * 0.032,
-                                color: statusColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: width * 0.02),
-                Text(
-                  amountPrefix + d.miktar.toStringAsFixed(2) + '₺',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: width * 0.05,
-                    color: amountColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -266,15 +81,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     final double width = size.width;
     final double height = size.height;
     final Color bg = isDark ? const Color(0xFF181A20) : const Color(0xFFF9FAFB);
-    final Color card = isDark ? const Color(0xFF23262F) : Colors.white;
     final Color textMain = isDark ? Colors.white : const Color(0xFF111827);
     final Color textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
     const Color green = Color(0xFF4ADE80);
     const Color red = Color(0xFFF87171);
     const Color yellow = Color(0xFFFACC15);
-    const Color blue = Color(0xFF60A5FA);
-    const Color purple = Color(0xFFC4B5FD);
-    const Color navGlow = Color(0xFF86EFAC);
     final userId = _auth.currentUser?.uid ?? "";
 
     return Scaffold(
@@ -282,9 +93,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       body: StreamBuilder<DocumentSnapshot>(
         stream: _firestoreService.usersRef.doc(userId).snapshots(),
         builder: (context, userSnap) {
-          final userModel = userSnap.data?.data() as UserModel?;
+          if (userSnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!userSnap.hasData || userSnap.data?.data() == null) {
+            return Center(
+              child: Text(
+                'Kullanıcı verisi bulunamadı.',
+                style: TextStyle(color: textSec),
+              ),
+            );
+          }
+
+          final userModel = userSnap.data!.data() as UserModel;
           final userName =
-              userModel?.adSoyad ?? userModel?.email?.split('@').first ?? "-";
+              userModel.adSoyad ?? userModel.email?.split('@').first ?? "-";
           return StreamBuilder<List<DebtModel>>(
             stream: _firestoreService.getRecentDebtsStream(userId),
             builder: (context, recentSnapshot) {
@@ -292,6 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 return const Center(child: CircularProgressIndicator());
               }
               if (recentSnapshot.hasError) {
+                print('DASHBOARD HATASI: ${recentSnapshot.error}');
                 return Center(
                   child: Text(
                     'Veriler alınırken hata oluştu.',
@@ -401,7 +225,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                 color: Colors.red,
                                                 shape: BoxShape.circle,
                                                 border: Border.all(
-                                                  color: card,
+                                                  color: isDark
+                                                      ? const Color(0xFF23262F)
+                                                      : Colors.white,
                                                   width: 1.5,
                                                 ),
                                               ),
@@ -497,13 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         label: "Not Ekle",
                                         color: yellow,
                                         onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const AddDebtScreen(),
-                                            ),
-                                          );
+                                          _showAddNoteDialog(context);
                                         },
                                       ),
                                       _AnimatedActionButton(
@@ -531,57 +351,38 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     0,
                                     0,
                                   ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "Onaylı Hareketler",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: width * 0.042,
-                                          color: textMain,
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {},
-                                        child: Text(
-                                          "Tümünü Gör",
-                                          style: TextStyle(
-                                            color: textMain,
-                                            fontSize: width * 0.038,
+                                  child: _TransactionListSection(
+                                    title: "Onaylı Hareketler",
+                                    transactionList: onayliList,
+                                    userId: userId,
+                                    width: width,
+                                    height: height,
+                                    green: green,
+                                    red: red,
+                                    textMain: textMain,
+                                    textSec: textSec,
+                                    emptyIcon:
+                                        Icons.check_circle_outline_rounded,
+                                    emptyMessage: 'Onaylı hareket bulunamadı.',
+                                    onSeeAll: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => AllTransactionsScreen(
+                                            title: 'Onaylı Hareketler',
+                                            userId: userId,
+                                            statuses: const [
+                                              'approved',
+                                              'pending',
+                                              'rejected',
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
                                 ),
-                                // Onaylı Hareketler Listesi
-                                if (onayliList.isNotEmpty)
-                                  ...onayliList.map(
-                                    (d) => _transactionCard(
-                                      d,
-                                      userId,
-                                      width,
-                                      green,
-                                      red,
-                                      textMain,
-                                      textSec,
-                                    ),
-                                  ),
-                                if (onayliList.isEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top: height * 0.01,
-                                    ),
-                                    child: Text(
-                                      'Onaylı hareket bulunamadı.',
-                                      style: TextStyle(
-                                        fontSize: width * 0.04,
-                                        color: textSec,
-                                      ),
-                                    ),
-                                  ),
+                                // Kendi Takiplerim başlığı ve listesi
                                 Padding(
                                   padding: EdgeInsets.fromLTRB(
                                     0,
@@ -589,48 +390,39 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     0,
                                     0,
                                   ),
-                                  child: Text(
-                                    "Kendi Takiplerin",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: width * 0.042,
-                                      color: textMain,
-                                    ),
+                                  child: _TransactionListSection(
+                                    title: "Kendi Takiplerin",
+                                    transactionList: takipList,
+                                    userId: userId,
+                                    width: width,
+                                    height: height,
+                                    green: green,
+                                    red: red,
+                                    textMain: textMain,
+                                    textSec: textSec,
+                                    emptyIcon: Icons.notes_rounded,
+                                    emptyMessage:
+                                        'Son zamanlarda not almadınız.',
+                                    onSeeAll: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => AllTransactionsScreen(
+                                            title: 'Kendi Takiplerin',
+                                            userId: userId,
+                                            statuses: const ['note'],
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
-                                // Kendi Takiplerim Listesi
-                                if (takipList.isNotEmpty)
-                                  ...takipList.map(
-                                    (d) => _transactionCard(
-                                      d,
-                                      userId,
-                                      width,
-                                      green,
-                                      red,
-                                      textMain,
-                                      textSec,
-                                    ),
-                                  ),
-                                if (takipList.isEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top: height * 0.01,
-                                    ),
-                                    child: Text(
-                                      'Takip ettiğiniz not bulunamadı.',
-                                      style: TextStyle(
-                                        fontSize: width * 0.04,
-                                        color: textSec,
-                                      ),
-                                    ),
-                                  ),
-                                SizedBox(height: height * 0.04),
+                                SizedBox(height: height * 0.1), // Alt boşluk
                               ],
                             ),
                           ),
                         ),
                       ),
-                      // Sağ altta dark mode butonu ve beta etiketi kaldırıldı
                     ],
                   );
                 },
@@ -642,20 +434,409 @@ class _DashboardScreenState extends State<DashboardScreen>
       bottomNavigationBar: _ModernBottomBar(
         selectedTab: _selectedTab,
         onTabChanged: (i) {
-          setState(() => _selectedTab = i);
-          if (i == 1) {
-            // Kişiler sekmesine basınca kişileri yöneteceğimiz ekrana yönlendir
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ContactsScreen()),
-            );
-          } else if (i == 3) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
+          if (_selectedTab == i && i == 0) return;
+
+          if (i == 0) {
+            setState(() => _selectedTab = i);
+          } else {
+            // Diğer sayfalara gitmeden önce state'i sıfırla ki geri dönüldüğünde Ana Sayfa seçili olsun.
+            setState(() => _selectedTab = 0);
+            if (i == 1) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ContactsScreen()),
+              );
+            } else if (i == 2) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UserAnalysisScreen()),
+              );
+            } else if (i == 3) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            }
           }
         },
+      ),
+    );
+  }
+
+  void _showAddNoteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Not Ekle'),
+          content: const Text('Ne tür bir not eklemek istersiniz?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Alacak Notu'),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop(); // Diyaloğu kapat
+                final selectedEmail = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const SavedContactsScreen(title: 'Kimden Alacak Notu?'),
+                  ),
+                );
+                if (selectedEmail != null && selectedEmail is String) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AmountInputScreen(
+                        selectedPersonEmail: selectedEmail,
+                        isPactaAl: true, // Alacak
+                        isNote: true, // Not
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            TextButton(
+              child: const Text('Borç Notu'),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop(); // Diyaloğu kapat
+                final selectedEmail = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const SavedContactsScreen(title: 'Kime Borç Notu?'),
+                  ),
+                );
+                if (selectedEmail != null && selectedEmail is String) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AmountInputScreen(
+                        selectedPersonEmail: selectedEmail,
+                        isPactaAl: false, // Borç
+                        isNote: true, // Not
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TransactionListSection extends StatelessWidget {
+  final String title;
+  final List<DebtModel> transactionList;
+  final String userId;
+  final double width;
+  final double height;
+  final Color green;
+  final Color red;
+  final Color textMain;
+  final Color textSec;
+  final IconData emptyIcon;
+  final String emptyMessage;
+  final VoidCallback onSeeAll;
+
+  const _TransactionListSection({
+    required this.title,
+    required this.transactionList,
+    required this.userId,
+    required this.width,
+    required this.height,
+    required this.green,
+    required this.red,
+    required this.textMain,
+    required this.textSec,
+    required this.emptyIcon,
+    required this.emptyMessage,
+    required this.onSeeAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: width * 0.042,
+                color: textMain,
+              ),
+            ),
+            TextButton(
+              onPressed: onSeeAll,
+              child: Text(
+                "Tümünü Gör",
+                style: TextStyle(color: textMain, fontSize: width * 0.038),
+              ),
+            ),
+          ],
+        ),
+        if (transactionList.isNotEmpty)
+          ...transactionList.map(
+            (d) => _transactionCard(
+              d,
+              userId,
+              width,
+              green,
+              red,
+              textMain,
+              textSec,
+              context,
+            ),
+          )
+        else
+          _EmptyState(
+            width: width,
+            height: height,
+            icon: emptyIcon,
+            message: emptyMessage,
+          ),
+      ],
+    );
+  }
+
+  String getStatusLabel(String status) {
+    switch (status) {
+      case 'approved':
+        return 'Onaylandı';
+      case 'pending':
+        return 'Bekleniyor';
+      case 'rejected':
+        return 'Reddedildi';
+      case 'note':
+        return 'Not';
+      default:
+        return '-';
+    }
+  }
+
+  Color getStatusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return const Color(0xFF4ADE80); // yeşil
+      case 'pending':
+        return const Color(0xFFFFA726); // turuncu
+      case 'rejected':
+        return const Color(0xFFF87171); // kırmızı
+      case 'note':
+        return const Color(0xFF6B7280); // gri
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _transactionCard(
+    DebtModel d,
+    String userId,
+    double width,
+    Color green,
+    Color red,
+    Color textMain,
+    Color textSec,
+    BuildContext context,
+  ) {
+    final bool isAlacak = d.alacakliId == userId;
+    final bool isNote = d.status == 'note';
+    final Color amountColor = isNote ? green : (isAlacak ? green : red);
+    final String amountPrefix = isNote ? '+' : (isAlacak ? '+' : '-');
+    final String otherPartyId = isAlacak ? d.borcluId : d.alacakliId;
+    final String statusLabel = getStatusLabel(d.status);
+    final Color statusColor = getStatusColor(d.status);
+    final firestoreService = FirestoreService();
+    return FutureBuilder<String>(
+      future: firestoreService.getUserNameById(otherPartyId),
+      builder: (context, snapshot) {
+        final otherPartyName = snapshot.connectionState == ConnectionState.done
+            ? (snapshot.data ?? otherPartyId.substring(0, 6))
+            : '...';
+        final bool isDark = Theme.of(context).brightness == Brightness.dark;
+        final Color cardBg = isDark ? const Color(0xFF23262F) : Colors.white;
+        final Color borderColor = isDark ? Colors.white10 : Colors.grey[200]!;
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    TransactionDetailScreen(debt: d, userId: userId),
+              ),
+            );
+          },
+          child: Container(
+            margin: EdgeInsets.symmetric(vertical: width * 0.015),
+            padding: EdgeInsets.symmetric(
+              vertical: width * 0.025,
+              horizontal: width * 0.03,
+            ),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: amountColor.withOpacity(isDark ? 0.10 : 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: width * 0.07,
+                  backgroundColor: amountColor.withOpacity(0.13),
+                  child: Text(
+                    (otherPartyName.isNotEmpty
+                        ? otherPartyName[0].toUpperCase()
+                        : '?'),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: width * 0.07,
+                      color: amountColor,
+                    ),
+                  ),
+                ),
+                SizedBox(width: width * 0.04),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        otherPartyName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: width * 0.045,
+                          color: textMain,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: width * 0.01),
+                      Text(
+                        d.aciklama?.isNotEmpty == true
+                            ? d.aciklama!
+                            : 'Açıklama bulunamadı 🤔',
+                        style: TextStyle(
+                          fontSize: width * 0.038,
+                          color: textSec,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: width * 0.01),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: width * 0.02,
+                        children: [
+                          Text(
+                            d.islemTarihi != null
+                                ? DateFormat(
+                                    'd MMMM y',
+                                    'tr_TR',
+                                  ).format(d.islemTarihi)
+                                : '-',
+                            style: TextStyle(
+                              fontSize: width * 0.032,
+                              color: textSec,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.13),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              statusLabel,
+                              style: TextStyle(
+                                fontSize: width * 0.032,
+                                color: statusColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: width * 0.02),
+                Text(
+                  amountPrefix + d.miktar.toStringAsFixed(2) + '₺',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: width * 0.05,
+                    color: amountColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final double width;
+  final double height;
+  final IconData icon;
+  final String message;
+
+  const _EmptyState({
+    required this.width,
+    required this.height,
+    required this.icon,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final Color containerBg = isDark
+        ? const Color(0xFF23262F)
+        : Colors.grey[50]!;
+    final Color borderColor = isDark ? Colors.white10 : Colors.grey[200]!;
+
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.symmetric(vertical: height * 0.01),
+      padding: EdgeInsets.symmetric(
+        vertical: height * 0.03,
+        horizontal: width * 0.04,
+      ),
+      decoration: BoxDecoration(
+        color: containerBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: width * 0.1, color: textSec.withOpacity(0.7)),
+          SizedBox(height: height * 0.015),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: width * 0.04, color: textSec),
+          ),
+        ],
       ),
     );
   }
@@ -921,6 +1102,12 @@ class _BakiyeCardSectionState extends State<_BakiyeCardSection> {
     const Color purple = Color(0xFFC4B5FD);
     final double width = widget.width;
     final double height = widget.height;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color arrowColor = isDark ? Colors.white70 : Colors.black54;
+    final Color disabledArrowColor = isDark
+        ? Colors.white24
+        : Colors.grey[400]!;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(0, height * 0.022, 0, 0),
       child: FadeTransition(
@@ -973,7 +1160,7 @@ class _BakiyeCardSectionState extends State<_BakiyeCardSection> {
               child: IconButton(
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: _bakiyePage == 0 ? Colors.grey[300] : Colors.black,
+                  color: _bakiyePage == 0 ? disabledArrowColor : arrowColor,
                   size: width * 0.055,
                 ),
                 onPressed: _bakiyePage == 0
@@ -992,7 +1179,7 @@ class _BakiyeCardSectionState extends State<_BakiyeCardSection> {
               child: IconButton(
                 icon: Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: _bakiyePage == 2 ? Colors.grey[300] : Colors.black,
+                  color: _bakiyePage == 2 ? disabledArrowColor : arrowColor,
                   size: width * 0.055,
                 ),
                 onPressed: _bakiyePage == 2
@@ -1018,7 +1205,9 @@ class _BakiyeCardSectionState extends State<_BakiyeCardSection> {
                     width: _bakiyePage == i ? width * 0.045 : width * 0.018,
                     height: width * 0.018,
                     decoration: BoxDecoration(
-                      color: _bakiyePage == i ? green : Colors.grey[300],
+                      color: _bakiyePage == i
+                          ? green
+                          : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -1063,6 +1252,9 @@ class _BakiyeCard extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
         color: isDark ? cardBg : null,
+        border: isDark
+            ? Border.all(color: color.withOpacity(0.2), width: 1)
+            : null,
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(isDark ? 0.08 : 0.13),

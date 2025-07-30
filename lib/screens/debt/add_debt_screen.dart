@@ -3,392 +3,373 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:pacta/models/debt_model.dart';
-import 'package:pacta/models/user_model.dart'; // UserModel'i import et
-import 'package:pacta/models/saved_contact_model.dart';
-import 'package:pacta/services/firestore_service.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'saved_contacts_screen.dart';
-import 'package:pacta/screens/dashboard/dashboard_screen.dart';
+import 'package:pacta/models/debt_model.dart';
+import 'package:pacta/services/firestore_service.dart';
 
-class AddDebtScreen extends StatefulWidget {
-  final String? initialPersonEmail;
-  final String? initialAmount;
+class AddDebtScreen extends ConsumerStatefulWidget {
+  final String? amount;
+  final String? selectedPersonEmail;
   final bool isPactaAl;
+  final bool isNote;
+
   const AddDebtScreen({
-    super.key,
-    this.initialPersonEmail,
-    this.initialAmount,
+    Key? key,
+    this.amount,
+    this.selectedPersonEmail,
     this.isPactaAl = false,
-  });
+    this.isNote = false,
+  }) : super(key: key);
 
   @override
-  State<AddDebtScreen> createState() => _AddDebtScreenState();
+  ConsumerState<AddDebtScreen> createState() => _AddDebtScreenState();
 }
 
-class _AddDebtScreenState extends State<AddDebtScreen> {
+class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
   final _personController = TextEditingController();
-
-  final _firestoreService = FirestoreService();
-  final _currentUser = FirebaseAuth.instance.currentUser!;
-
-  DateTime? _selectedDueDate;
-  bool _showNote = false;
+  final _descriptionController = TextEditingController();
+  DateTime _selectedDate = DateTime.now();
+  bool _isPacta = true;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialPersonEmail != null) {
-      _personController.text = widget.initialPersonEmail!;
+    if (widget.amount != null) {
+      _amountController.text = widget.amount!;
     }
-    if (widget.initialAmount != null) {
-      _amountController.text = widget.initialAmount!;
+    if (widget.selectedPersonEmail != null) {
+      _personController.text = widget.selectedPersonEmail!;
     }
+    _isPacta = !widget.isNote;
   }
 
   @override
   void dispose() {
-    _descriptionController.dispose();
     _amountController.dispose();
     _personController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDueDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: DateTime(now.year + 5),
-      locale: const Locale('tr', 'TR'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Theme.of(context).brightness,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
     );
-    if (picked != null) {
+    if (picked != null && picked != _selectedDate) {
       setState(() {
-        _selectedDueDate = picked;
+        _selectedDate = picked;
       });
     }
   }
 
-  void _saveDebt() async {
-    final now = DateTime.now();
-    final isNote = _showNote;
-    final currentUserId = _currentUser.uid;
-    final otherParty =
-        widget.initialPersonEmail ?? _personController.text.trim();
-    final amount =
-        double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+  Future<void> _saveDebt() async {
+    if (_isSaving) return;
 
-    // Kişi seçimi kontrolü
-    if (otherParty.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Lütfen bir kişi seçin!')));
-      return;
-    }
+    if (_formKey.currentState!.validate()) {
+      setState(() => _isSaving = true);
 
-    // Miktar kontrolü
-    if (amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen geçerli bir miktar girin!')),
-      );
-      return;
-    }
-
-    // Not modunda karşı tarafın ID'sini bul
-    String actualOtherPartyId = otherParty;
-    print('AddDebtScreen: Seçilen kişi: $otherParty');
-
-    if (isNote) {
       try {
-        final userQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: otherParty)
-            .limit(1)
-            .get();
-
-        if (userQuery.docs.isNotEmpty) {
-          actualOtherPartyId = userQuery.docs.first.id;
-          print(
-            'AddDebtScreen: Not için kullanıcı ID bulundu: $actualOtherPartyId',
+        final miktar = double.tryParse(_amountController.text);
+        if (miktar == null || miktar <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lütfen geçerli bir tutar girin.')),
           );
-        } else {
-          // Kullanıcı yoksa email'i ID olarak kullan
-          actualOtherPartyId = otherParty;
-          print(
-            'AddDebtScreen: Kullanıcı bulunamadı, email ID olarak kullanılıyor: $actualOtherPartyId',
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) {
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+
+        final firestoreService = FirestoreService();
+        final otherUser = await firestoreService.getUserByEmail(
+          _personController.text,
+        );
+
+        if (otherUser == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bu e-posta adresine sahip bir kullanıcı yok.'),
+            ),
+          );
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+
+        final borcluId = widget.isPactaAl ? currentUser.uid : otherUser.uid;
+        final alacakliId = widget.isPactaAl ? otherUser.uid : currentUser.uid;
+
+        final newDebt = DebtModel(
+          borcluId: borcluId,
+          alacakliId: alacakliId,
+          miktar: miktar,
+          aciklama: _descriptionController.text,
+          islemTarihi: _selectedDate,
+          status: _isPacta ? 'pending' : 'note',
+          isShared: _isPacta,
+          requiresApproval: _isPacta,
+          visibleto: [currentUser.uid, otherUser.uid],
+          createdBy: currentUser.uid,
+        );
+
+        final newDebtId = await firestoreService.addDebt(newDebt);
+
+        if (_isPacta) {
+          await firestoreService.sendNotification(
+            toUserId: otherUser.uid,
+            createdById: currentUser.uid,
+            type: 'approval_request',
+            relatedDebtId: newDebtId,
+            title: widget.isPactaAl ? 'Alacak Talebi' : 'Borç Talebi',
+            message:
+                '${currentUser.displayName ?? currentUser.email} sizden ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir talepte bulundu.',
+            debtorId: newDebt.borcluId,
+            creditorId: newDebt.alacakliId,
+            amount: newDebt.miktar,
           );
         }
-      } catch (e) {
-        print('AddDebtScreen: Kullanıcı arama hatası: $e');
-        actualOtherPartyId = otherParty;
-      }
-    } else {
-      // Normal borç modunda da ID'yi bul
-      try {
-        final userQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: otherParty)
-            .limit(1)
-            .get();
 
-        if (userQuery.docs.isNotEmpty) {
-          actualOtherPartyId = userQuery.docs.first.id;
-          print(
-            'AddDebtScreen: Normal borç için kullanıcı ID bulundu: $actualOtherPartyId',
-          );
-        } else {
-          // Kullanıcı yoksa email'i ID olarak kullan
-          actualOtherPartyId = otherParty;
-          print(
-            'AddDebtScreen: Kullanıcı bulunamadı, email ID olarak kullanılıyor: $actualOtherPartyId',
-          );
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
-        print('AddDebtScreen: Kullanıcı arama hatası: $e');
-        actualOtherPartyId = otherParty;
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
       }
     }
-
-    DebtModel newDebt;
-    if (isNote) {
-      newDebt = DebtModel(
-        debtId: null,
-        borcluId: currentUserId,
-        alacakliId: actualOtherPartyId, // ID kullan
-        miktar: amount,
-        aciklama: _descriptionController.text,
-        islemTarihi: now,
-        status: 'note',
-        isShared: false,
-        requiresApproval: false,
-        visibleTo: [
-          currentUserId,
-          actualOtherPartyId,
-        ], // Her iki kullanıcıyı da ekle
-        createdBy: currentUserId,
-      );
-    } else if (widget.isPactaAl) {
-      // Pacta Al: borç alan sensin
-      newDebt = DebtModel(
-        debtId: null,
-        borcluId: currentUserId,
-        alacakliId: actualOtherPartyId, // ID kullan
-        miktar: amount,
-        aciklama: _descriptionController.text,
-        islemTarihi: now,
-        status: 'pending',
-        isShared: true,
-        requiresApproval: true,
-        visibleTo: [currentUserId, actualOtherPartyId], // ID kullan
-        createdBy: currentUserId,
-      );
-    } else {
-      // Pacta Ver: borç veren sensin
-      newDebt = DebtModel(
-        debtId: null,
-        borcluId: actualOtherPartyId, // ID kullan
-        alacakliId: currentUserId,
-        miktar: amount,
-        aciklama: _descriptionController.text,
-        islemTarihi: now,
-        status: 'pending',
-        isShared: true,
-        requiresApproval: true,
-        visibleTo: [currentUserId, actualOtherPartyId], // ID kullan
-        createdBy: currentUserId,
-      );
-    }
-    await _firestoreService.addDebt(newDebt);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Alacak kaydı oluşturuldu!')));
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const DashboardScreen()),
-      (route) => false,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final Size size = MediaQuery.of(context).size;
-    final double width = size.width;
-    final double height = size.height;
-    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-    final textMain = isDark ? Colors.white : const Color(0xFF111827);
-    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-    final green = const Color(0xFF4ADE80);
-    final bg = isDark ? const Color(0xFF181A20) : const Color(0xFFF9FAFB);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: textMain,
-            size: width * 0.07,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
         title: Text(
-          'Neredeyse Bitti',
+          widget.isNote ? 'Not Ekle' : 'Pacta Oluştur',
           style: TextStyle(
-            color: textMain,
             fontWeight: FontWeight.bold,
-            fontSize: width * 0.055,
+            color: theme.colorScheme.onBackground,
           ),
         ),
         centerTitle: true,
+        elevation: 0,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        iconTheme: IconThemeData(color: theme.colorScheme.onBackground),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(width * 0.06),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Açıklama',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: width * 0.045,
-                    color: textMain,
-                  ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _buildAmountCard(theme),
+            const SizedBox(height: 16),
+            _buildInputCard(
+              icon: Icons.person_outline,
+              child: TextFormField(
+                controller: _personController,
+                decoration: const InputDecoration(
+                  hintText: 'Kişi (E-posta)',
+                  border: InputBorder.none,
                 ),
-                SizedBox(height: height * 0.01),
-                TextFormField(
-                  controller: _descriptionController,
-                  minLines: 2,
-                  maxLines: 4,
-                  enabled: true,
-                  style: TextStyle(fontSize: width * 0.045, color: textMain),
-                  decoration: InputDecoration(
-                    hintText: 'Açıklama ekle',
-                    filled: true,
-                    fillColor: cardColor,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: isDark ? Colors.white24 : Colors.grey.shade300,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: isDark ? Colors.white24 : Colors.grey.shade300,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: green, width: 2),
-                    ),
-                    hintStyle: TextStyle(
-                      color: isDark ? Colors.white38 : textSec,
-                      fontSize: width * 0.04,
-                    ),
-                  ),
-                  // validator: (val) => null, // validasyon yok, opsiyonel
-                ),
-                SizedBox(height: height * 0.025),
-                Text(
-                  'Tahmini Ödeme Tarihi',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: width * 0.045,
-                    color: textMain,
-                  ),
-                ),
-                SizedBox(height: height * 0.01),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _selectedDueDate == null
-                            ? 'Tarih seçilmedi'
-                            : DateFormat(
-                                'd MMMM y',
-                                'tr_TR',
-                              ).format(_selectedDueDate!),
-                        style: TextStyle(
-                          fontSize: width * 0.04,
-                          color: textSec,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.calendar_month_rounded,
-                        color: green,
-                        size: width * 0.07,
-                      ),
-                      onPressed: _pickDueDate,
-                    ),
-                  ],
-                ),
-                SizedBox(height: height * 0.018),
-                Row(
-                  children: [
-                    Switch(
-                      value: _showNote,
-                      onChanged: (val) => setState(() => _showNote = val),
-                      activeColor: green,
-                      inactiveTrackColor: isDark ? Colors.white24 : null,
-                    ),
-                    Text(
-                      'Not Modu',
-                      style: TextStyle(
-                        color: textMain,
-                        fontWeight: FontWeight.w500,
-                        fontSize: width * 0.042,
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saveDebt,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: green,
-                      foregroundColor: Colors.white,
-                      minimumSize: Size(double.infinity, height * 0.07),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(32),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'Oluştur',
-                      style: TextStyle(
-                        fontSize: width * 0.05,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.isEmpty)
+                    return 'Lütfen bir kişi girin';
+                  if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value))
+                    return 'Lütfen geçerli bir e-posta adresi girin.';
+                  return null;
+                },
+              ),
             ),
-          ),
+            const SizedBox(height: 16),
+            _buildInputCard(
+              icon: Icons.edit_outlined,
+              child: TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  hintText: 'Açıklama (Örn: Öğle yemeği)',
+                  border: InputBorder.none,
+                ),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildInputCard(
+              icon: Icons.calendar_today_outlined,
+              isTappable: true,
+              onTap: () => _selectDate(context),
+              child: Text(
+                DateFormat('d MMMM y, EEEE', 'tr_TR').format(_selectedDate),
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (!widget.isNote) _buildPactaSwitchCard(theme),
+            const SizedBox(height: 32),
+          ],
         ),
+      ),
+      bottomNavigationBar: _buildBottomButton(theme),
+    );
+  }
+
+  Widget _buildAmountCard(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final color = widget.isPactaAl ? Colors.green : Colors.red;
+
+    return Card(
+      elevation: 4.0,
+      shadowColor: color.withOpacity(isDark ? 0.3 : 0.1),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+      color: isDark ? color.withOpacity(0.2) : color.shade50,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _amountController,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 48.0,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? color.shade200 : color.shade800,
+                ),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '0',
+                  hintStyle: TextStyle(
+                    fontSize: 48.0,
+                    fontWeight: FontWeight.bold,
+                    color: theme.hintColor.withOpacity(0.5),
+                  ),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                ],
+                validator: (value) {
+                  if (value == null ||
+                      value.isEmpty ||
+                      double.tryParse(value)! <= 0)
+                    return 'Tutar girmelisiniz';
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '₺',
+              style: TextStyle(
+                fontSize: 28.0,
+                fontWeight: FontWeight.normal,
+                color: isDark ? color.shade200 : color.shade800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputCard({
+    required IconData icon,
+    required Widget child,
+    bool isTappable = false,
+    VoidCallback? onTap,
+  }) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 2.0,
+      shadowColor: theme.shadowColor.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      color: theme.cardColor,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: isTappable ? onTap : null,
+        borderRadius: BorderRadius.circular(12.0),
+        child: ListTile(
+          leading: Icon(icon, color: theme.colorScheme.primary),
+          title: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPactaSwitchCard(ThemeData theme) {
+    return Card(
+      elevation: 2.0,
+      shadowColor: theme.shadowColor.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      color: theme.cardColor,
+      margin: EdgeInsets.zero,
+      child: SwitchListTile(
+        title: const Text(
+          'Onay Gereksin (Pacta)',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          'Bu işlem karşı tarafın onayına sunulacaktır.',
+          style: theme.textTheme.bodySmall,
+        ),
+        value: _isPacta,
+        onChanged: (bool value) => setState(() => _isPacta = value),
+        activeColor: theme.colorScheme.primary,
+        secondary: Icon(
+          Icons.shield_outlined,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomButton(ThemeData theme) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
+      child: ElevatedButton(
+        onPressed: _isSaving ? null : _saveDebt,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          minimumSize: const Size(double.infinity, 56),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        child: _isSaving
+            ? CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.onPrimary,
+                ),
+              )
+            : const Text('Pacta Gönder'),
       ),
     );
   }

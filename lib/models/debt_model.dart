@@ -12,7 +12,7 @@ class DebtModel {
   final String status; // 'note', 'pending', 'approved', 'rejected'
   final bool isShared;
   final bool requiresApproval;
-  final List<String> visibleTo;
+  final List<String> visibleto;
   final String? createdBy;
 
   DebtModel({
@@ -25,7 +25,7 @@ class DebtModel {
     required this.status,
     required this.isShared,
     required this.requiresApproval,
-    required this.visibleTo,
+    required this.visibleto,
     this.createdBy,
   });
 
@@ -36,11 +36,11 @@ class DebtModel {
       'alacakliId': alacakliId,
       'miktar': miktar,
       'aciklama': aciklama,
-      'islemTarihi': islemTarihi.toIso8601String(),
+      'islemTarihi': Timestamp.fromDate(islemTarihi),
       'status': status,
       'isShared': isShared,
       'requiresApproval': requiresApproval,
-      'visibleTo': visibleTo,
+      'visibleto': visibleto,
       'createdBy': createdBy,
     };
   }
@@ -52,11 +52,11 @@ class DebtModel {
       alacakliId: map['alacakliId'] ?? '',
       miktar: (map['miktar'] ?? 0).toDouble(),
       aciklama: map['aciklama'],
-      islemTarihi: DateTime.parse(map['islemTarihi']),
+      islemTarihi: (map['islemTarihi'] as Timestamp).toDate(),
       status: map['status'] ?? 'note',
       isShared: map['isShared'] ?? false,
       requiresApproval: map['requiresApproval'] ?? false,
-      visibleTo: List<String>.from(map['visibleTo'] ?? []),
+      visibleto: List<String>.from(map['visibleto'] ?? []),
       createdBy: map['createdBy'],
     );
   }

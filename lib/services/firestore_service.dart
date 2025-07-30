@@ -1,372 +1,220 @@
 // lib/services/firestore_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/debt_model.dart'; // Yeni DebtModel'i import ediyoruz
-import '../models/user_model.dart';
-import '../models/saved_contact_model.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // FirebaseAuth'i import et
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pacta/models/debt_model.dart';
+import 'package:pacta/models/saved_contact_model.dart';
+import 'package:pacta/models/user_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late final CollectionReference<UserModel> usersRef;
-  late final CollectionReference<DebtModel> _debtsRef; // Borçlar için referans
-  CollectionReference<DebtModel> get debtsRef => _debtsRef;
+  late final CollectionReference<DebtModel> debtsRef;
 
   FirestoreService() {
     usersRef = _db
         .collection('users')
         .withConverter<UserModel>(
-          fromFirestore: (snapshots, _) => UserModel.fromMap(snapshots.data()!),
+          fromFirestore: (snapshot, _) => UserModel.fromMap(snapshot.data()!),
           toFirestore: (user, _) => user.toMap(),
         );
 
-    // YENİ: Borçlar koleksiyonu için withConverter
-    _debtsRef = _db
+    debtsRef = _db
         .collection('debts')
         .withConverter<DebtModel>(
-          fromFirestore: (snapshots, options) =>
-              DebtModel.fromMap(snapshots.data()!, snapshots.id),
-          toFirestore: (debt, options) => debt.toMap(),
+          fromFirestore: (snapshot, options) =>
+              DebtModel.fromMap(snapshot.data()!, snapshot.id),
+          toFirestore: (debt, _) => debt.toMap(),
         );
   }
 
-  Future<void> kullaniciOlustur(UserModel user) async {
+  // USER METHODS
+  Future<void> createUser(UserModel user) async {
+    await usersRef.doc(user.uid).set(user);
+  }
+
+  Stream<UserModel?> getUserStream(String uid) {
+    return usersRef.doc(uid).snapshots().map((snapshot) => snapshot.data());
+  }
+
+  Future<String> getUserNameById(String userId) async {
+    if (userId.isEmpty) return 'Bilinmeyen Kullanıcı';
     try {
-      await usersRef.doc(user.uid).set(user);
+      final doc = await usersRef.doc(userId).get();
+      if (doc.exists) {
+        final user = doc.data();
+        if (user != null) return user.adSoyad ?? user.email;
+      }
+      return 'Bilinmeyen Kullanıcı';
     } catch (e) {
-      print("Firestore'a kullanıcı kaydedilirken hata oluştu: $e");
+      print('Error getting user name: $e');
+      return 'Hata';
     }
   }
 
-  Future<UserModel?> searchUserByEmail(String email) async {
+  Future<UserModel?> getUserByEmail(String email) async {
     try {
       final querySnapshot = await usersRef
           .where('email', isEqualTo: email)
           .limit(1)
           .get();
-
-      if (querySnapshot.docs.isNotEmpty) {
-        return querySnapshot.docs.first.data();
-      }
+      if (querySnapshot.docs.isNotEmpty) return querySnapshot.docs.first.data();
       return null;
     } catch (e) {
-      print("Kullanıcı aranırken hata oluştu: $e");
+      print('Error getting user by email: $e');
       return null;
     }
   }
 
-  Future<UserModel?> searchUserByAny(String input) async {
+  // DEBT METHODS
+  Future<String> addDebt(DebtModel debt) async {
     try {
-      // E-posta ile arama
-      var query = await usersRef
-          .where('email', isEqualTo: input)
-          .limit(1)
-          .get();
-      if (query.docs.isNotEmpty) return query.docs.first.data();
-      // Telefon ile arama
-      query = await usersRef.where('telefon', isEqualTo: input).limit(1).get();
-      if (query.docs.isNotEmpty) return query.docs.first.data();
-      // Etiket ile arama
-      query = await usersRef.where('etiket', isEqualTo: input).limit(1).get();
-      if (query.docs.isNotEmpty) return query.docs.first.data();
-      return null;
-    } catch (e) {
-      print('Kullanıcı ararken hata: $e');
-      return null;
-    }
-  }
+      // 1. Borcu 'debts' koleksiyonuna ekle ve referansını al
+      final docRef = await debtsRef.add(debt);
 
-  // GÜNCELLENMİŞ VE DOĞRU METOD
-  // Bu metod, yeni DebtModel'i Firestore'a ekler.
-  Future<void> addDebt(DebtModel debt) async {
-    try {
-      // 1. "debts" koleksiyonuna yeni borcu ekle ve ID'sini al
-      final docRef = await _db.collection('debts').add(debt.toMap());
-      final debtId = docRef.id;
-
-      // Eklenen dokümana kendi ID'sini de kaydet
-      await docRef.update({'debtId': debtId});
-
-      // 2. İşlemi her iki kullanıcının "recentDebts" alt koleksiyonuna ekle
-      final recentDebtData = {
-        'debtId': debtId,
-        'status': debt.status,
-        'islemTarihi': debt.islemTarihi.toIso8601String(),
-        'otherPartyId':
-            debt.alacakliId == FirebaseAuth.instance.currentUser!.uid
-            ? debt.borcluId
-            : debt.alacakliId,
-      };
-
-      await _db
-          .collection('users')
-          .doc(debt.borcluId)
-          .collection('recentDebts')
-          .doc(debtId)
-          .set(recentDebtData);
-
-      await _db
-          .collection('users')
-          .doc(debt.alacakliId)
-          .collection('recentDebts')
-          .doc(debtId)
-          .set(recentDebtData);
-
-      // 3. EĞER status 'note' DEĞİLSE bildirim gönder.
+      // 2. Eğer bu bir 'note' değilse, bildirim gönder
       if (debt.status != 'note') {
         final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser == null) return;
+        if (currentUser == null) return ''; // Return empty string on error
 
-        final alacakliName = await getUserNameById(debt.alacakliId);
+        // Bildirimi alacak olan diğer tarafı belirle
+        final toUserId = debt.alacakliId == currentUser.uid
+            ? debt.borcluId
+            : debt.alacakliId;
+
         final borcluName = await getUserNameById(debt.borcluId);
+        final alacakliName = await getUserNameById(debt.alacakliId);
 
-        String toUserId = '';
-        String title = '';
-        String massage = '';
+        final title = debt.alacakliId == currentUser.uid
+            ? "Yeni Borç Bildirimi"
+            : "Yeni Alacak Talebi";
 
-        if (debt.createdBy == debt.borcluId) {
-          // Borçlu oluşturduysa (Alacak talebi)
-          toUserId = debt.alacakliId;
-          title = "Yeni Alacak Talebi";
-          massage =
-              "$borcluName sizden ${debt.miktar}₺ tutarında bir alacak talebinde bulundu.";
-        } else {
-          // Alacaklı oluşturduysa (Borç bildirimi)
-          toUserId = debt.borcluId;
-          title = "Yeni Borç Bildirimi";
-          massage =
-              "$alacakliName size ${debt.miktar}₺ tutarında bir borç bildiriminde bulundu.";
-        }
+        final message = debt.alacakliId == currentUser.uid
+            ? "$alacakliName size ${debt.miktar}₺ tutarında bir borç bildiriminde bulundu."
+            : "$borcluName sizden ${debt.miktar}₺ tutarında bir alacak talebinde bulundu.";
 
         await sendNotification(
           toUserId: toUserId,
+          createdById: currentUser.uid,
           type: 'approval_request',
-          relatedDebtId: debtId,
+          relatedDebtId: docRef.id,
           title: title,
-          massage: massage,
-          createdById: debt.createdBy,
+          message: message,
+          debtorId: debt.alacakliId,
+          creditorId: debt.borcluId,
+          amount: debt.miktar,
         );
       }
+      return docRef.id; // Return the document ID
     } catch (e) {
-      print("Error adding debt: $e");
-      // Hata yönetimi, kullanıcıya geri bildirim vb.
+      print('Error adding debt: $e');
+      return ''; // Return empty string on error
     }
   }
 
-  // Kullanıcının borçlu veya alacaklı olduğu tüm borçlar
-  Future<List<DebtModel>> getUserDebts(String userId) async {
-    try {
-      final query = await _debtsRef.where('borcluId', isEqualTo: userId).get();
-      final query2 = await _debtsRef
-          .where('alacakliId', isEqualTo: userId)
-          .get();
-      final debts = <DebtModel>[];
-      debts.addAll(query.docs.map((doc) => doc.data()));
-      debts.addAll(query2.docs.map((doc) => doc.data()));
-      debts.sort((a, b) => b.islemTarihi.compareTo(a.islemTarihi));
-      return debts;
-    } catch (e) {
-      print('Kullanıcı borçları çekilirken hata oluştu: $e');
-      return [];
-    }
-  }
-
-  // Kullanıcının borçlu veya alacaklı olduğu tüm borçlar (Stream)
   Stream<List<DebtModel>> getUserDebtsStream(String userId) {
-    final borcluStream = _debtsRef
-        .where('borcluId', isEqualTo: userId)
-        .snapshots();
-    final alacakliStream = _debtsRef
-        .where('alacakliId', isEqualTo: userId)
-        .snapshots();
-    return borcluStream.asyncMap((borcluSnap) async {
-      final alacakliSnap = await alacakliStream.first;
-      final debts = <DebtModel>[];
-      debts.addAll(borcluSnap.docs.map((doc) => doc.data()));
-      debts.addAll(alacakliSnap.docs.map((doc) => doc.data()));
-      debts.sort((a, b) => b.islemTarihi.compareTo(a.islemTarihi));
-      return debts;
-    });
+    return debtsRef
+        .where('visibleto', arrayContains: userId)
+        .orderBy('islemTarihi', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 
-  // Kullanıcının belirli status'e sahip borçları
-  Future<List<DebtModel>> getUserDebtsByStatus(
-    String userId,
-    String status,
-  ) async {
-    try {
-      final query = await _debtsRef
-          .where('borcluId', isEqualTo: userId)
-          .where('status', isEqualTo: status)
-          .get();
-      final query2 = await _debtsRef
-          .where('alacakliId', isEqualTo: userId)
-          .where('status', isEqualTo: status)
-          .get();
-      final debts = <DebtModel>[];
-      debts.addAll(query.docs.map((doc) => doc.data()));
-      debts.addAll(query2.docs.map((doc) => doc.data()));
-      debts.sort((a, b) => b.islemTarihi.compareTo(a.islemTarihi));
-      return debts;
-    } catch (e) {
-      print('Kullanıcı borçları (status) çekilirken hata oluştu: $e');
-      return [];
-    }
-  }
-
-  // Kullanıcının recentDebts alt koleksiyonundaki son 5 işlem
-  Future<List<DebtModel>> getRecentDebts(String userId) async {
-    try {
-      final query = await _db
-          .collection('users')
-          .doc(userId)
-          .collection('recentDebts')
-          .orderBy('islemTarihi', descending: true)
-          .limit(5)
-          .get();
-      return query.docs
-          .map((doc) => DebtModel.fromMap(doc.data(), doc.id))
-          .toList();
-    } catch (e) {
-      print('RecentDebts çekilirken hata oluştu: $e');
-      return [];
-    }
-  }
-
-  // Kullanıcının recentDebts alt koleksiyonundaki son 5 işlem (Stream)
   Stream<List<DebtModel>> getRecentDebtsStream(String userId) {
-    return _db
-        .collection('users')
-        .doc(userId)
-        .collection('recentDebts')
+    return debtsRef
+        .where('visibleto', arrayContains: userId)
         .orderBy('islemTarihi', descending: true)
         .limit(5)
         .snapshots()
-        .map(
-          (query) => query.docs
-              .map((doc) => DebtModel.fromMap(doc.data(), doc.id))
-              .toList(),
-        );
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 
-  // Kayıtlı kişi ekle
-  Future<void> addSavedContact(
-    String ownerUserId,
-    SavedContactModel contact,
-  ) async {
-    try {
-      await _db
-          .collection('users')
-          .doc(ownerUserId)
-          .collection('savedContacts')
-          .doc(contact.uid)
-          .set(contact.toMap());
-    } catch (e) {
-      print('Kayıtlı kişi eklenirken hata oluştu: $e');
-    }
-  }
-
-  // Kayıtlı kişi sil
-  Future<void> deleteSavedContact(String ownerUserId, String contactUid) async {
-    try {
-      await _db
-          .collection('users')
-          .doc(ownerUserId)
-          .collection('savedContacts')
-          .doc(contactUid)
-          .delete();
-    } catch (e) {
-      print('Kayıtlı kişi silinirken hata oluştu: $e');
-    }
-  }
-
-  // Kayıtlı kişileri listele
-  Future<List<SavedContactModel>> getSavedContacts(String ownerUserId) async {
-    try {
-      final query = await _db
-          .collection('users')
-          .doc(ownerUserId)
-          .collection('savedContacts')
-          .get();
-      return query.docs
-          .map((doc) => SavedContactModel.fromMap(doc.data()))
-          .toList();
-    } catch (e) {
-      print('Kayıtlı kişiler çekilirken hata oluştu: $e');
-      return [];
-    }
-  }
-
-  // Kullanıcı id'sinden adSoyad bilgisini getirir
-  Future<String> getUserNameById(String uid) async {
-    try {
-      final doc = await usersRef.doc(uid).get();
-      final user = doc.data();
-      if (user != null && user.adSoyad != null && user.adSoyad!.isNotEmpty) {
-        return user.adSoyad!;
-      } else if (user != null && user.email.isNotEmpty) {
-        return user.email;
-      } else {
-        // UID 6 karakterden kısaysa tamamını döndür, uzun ise ilk 6 karakterini döndür
-        return uid.length >= 6 ? uid.substring(0, 6) : uid;
-      }
-    } catch (e) {
-      // Catch bloğunda da uid uzunluğunu kontrol et
-      return uid.length >= 6 ? uid.substring(0, 6) : uid;
-    }
-  }
-
-  // Borç status güncelleme fonksiyonu
-  Future<void> updateDebtStatus(String debtId, String status) async {
-    try {
-      await _debtsRef.doc(debtId).update({'status': status});
-      // Ana koleksiyon güncellendi, şimdi recentDebts alt koleksiyonlarını da güncelle
-      final doc = await _debtsRef.doc(debtId).get();
-      final debt = doc.data();
-      if (debt != null) {
-        final userIds = <String>{debt.alacakliId, debt.borcluId};
-        for (final userId in userIds) {
-          if (userId.isEmpty) continue;
-          final recentRef = _db
-              .collection('users')
-              .doc(userId)
-              .collection('recentDebts')
-              .doc(debtId);
-          try {
-            await recentRef.update({'status': status});
-          } catch (e) {
-            // Eğer update başarısızsa (kayıt yoksa), tüm alanlarla set et
-            await recentRef.set(debt.toMap()..['status'] = status);
-          }
-        }
-      }
-    } catch (e) {
-      print('Borç durumu güncellenirken hata oluştu: $e');
-    }
-  }
-
-  // Tekil borcu stream ile getirir
   Stream<DebtModel?> getDebtByIdStream(String debtId) {
-    return _debtsRef.doc(debtId).snapshots().map((doc) => doc.data());
+    return debtsRef.doc(debtId).snapshots().map((snapshot) => snapshot.data());
   }
 
+  Future<void> updateDebtStatus(String debtId, String newStatus) async {
+    await debtsRef.doc(debtId).update({'status': newStatus});
+  }
+
+  // SAVED CONTACTS METHODS
+  Stream<List<SavedContactModel>> getSavedContactsStream(String searchTerm) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream.value([]);
+    var query = _db.collection('users').doc(uid).collection('savedContacts');
+    return query.snapshots().map((snapshot) {
+      var contacts = snapshot.docs
+          .map((doc) => SavedContactModel.fromFirestore(doc))
+          .toList();
+      if (searchTerm.isNotEmpty) {
+        contacts = contacts
+            .where(
+              (c) =>
+                  c.adSoyad.toLowerCase().contains(searchTerm.toLowerCase()) ||
+                  c.email.toLowerCase().contains(searchTerm.toLowerCase()),
+            )
+            .toList();
+      }
+      contacts.sort((a, b) => a.adSoyad.compareTo(b.adSoyad));
+      return contacts;
+    });
+  }
+
+  Future<void> addSavedContact(SavedContactModel contact) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('savedContacts')
+        .add(contact.toMap());
+  }
+
+  // Favori Ekle/Çıkar
+  Future<void> toggleFavoriteContact(String contactId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final userDocRef = usersRef.doc(uid);
+
+    final doc = await userDocRef.get();
+    final user = doc.data();
+    if (user != null) {
+      final favorites = List<String>.from(user.favoriteContacts ?? []);
+      if (favorites.contains(contactId)) {
+        favorites.remove(contactId);
+      } else {
+        favorites.add(contactId);
+      }
+      await userDocRef.update({'favoriteContacts': favorites});
+    }
+  }
+
+  // NOTIFICATION METHODS
   Future<void> sendNotification({
     required String toUserId,
     required String type,
-    required String relatedDebtId,
+    String? relatedDebtId,
     required String title,
-    required String massage,
-    String? createdById, // Yeni parametre
+    required String message,
+    String? createdById,
+    // Yeni parametreler
+    required String debtorId,
+    required String creditorId,
+    required double amount,
   }) async {
     await _db.collection('notifications').add({
       'toUserId': toUserId,
       'type': type,
       'relatedDebtId': relatedDebtId,
       'title': title,
-      'massage': massage,
+      'message': message,
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
-      'createdById': createdById, // Yeni alan
+      'createdById': createdById,
+      // Yeni alanların Firestore'a yazılması
+      'debtorId': debtorId,
+      'creditorId': creditorId,
+      'amount': amount,
     });
   }
 }

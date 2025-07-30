@@ -22,54 +22,50 @@ class AuthService {
     String telefon,
   ) async {
     try {
-      // Önce email kontrolü
-      final existingUserByEmail = await _firestoreService.searchUserByEmail(
-        email,
-      );
-      if (existingUserByEmail != null) {
-        return 'Bu e-posta adresi zaten kullanılmıştır.';
-      }
-      // Telefon kontrolü (boş değilse)
-      if (telefon.isNotEmpty) {
-        final existingUserByPhone = await _firestoreService.searchUserByAny(
-          telefon,
+      // E-posta ile kayıt
+      try {
+        // Önce bu e-posta ile kayıtlı kullanıcı var mı diye kontrol et
+        final existingUserByEmail = await _firestoreService.getUserByEmail(
+          email,
         );
-        if (existingUserByPhone != null) {
-          return 'Bu telefon numarası zaten kullanılmıştır.';
+        if (existingUserByEmail != null) {
+          return 'Bu e-posta adresi zaten kullanımda.';
         }
-      }
-      UserCredential userCredential = await _auth
-          .createUserWithEmailAndPassword(email: email, password: password);
-      User? user = userCredential.user;
+        // // Telefon ile kullanıcı kontrolü (opsiyonel, FirestoreService'e eklenmeli)
+        // if (telefon.isNotEmpty) {
+        //   final existingUserByPhone = await _firestoreService.searchUserByAny(
+        //     telefon,
+        //   );
+        //   if (existingUserByPhone != null) {
+        //     return 'Bu telefon numarası zaten kullanımda.';
+        //   }
+        // }
 
-      if (user != null) {
-        // Arama anahtarları oluşturma mantığı
-        List<String> adSoyadParcalari = adSoyad.toLowerCase().split(' ');
-        List<String> emailParcalari = email.toLowerCase().split('@');
-
-        List<String> aramaListesi = [
-          adSoyad.toLowerCase(),
-          email.toLowerCase(),
-          ...adSoyadParcalari,
-          ...emailParcalari,
-        ];
-        if (telefon.isNotEmpty) {
-          aramaListesi.add(telefon);
-        }
-        // Tekrarlananları silmek için Set kullanıp tekrar List'e çeviriyoruz
-        aramaListesi = aramaListesi.toSet().toList();
-
-        UserModel userModel = UserModel(
-          uid: user.uid,
-          email: user.email!,
-          adSoyad: adSoyad,
-          telefon: telefon,
-          etiket: null, // Etiket şimdilik boş bırakılıyor
-          aramaAnahtarlari: aramaListesi,
+        final userCredential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
         );
-        await _firestoreService.kullaniciOlustur(userModel);
+        User? user = userCredential.user;
+
+        // Yeni kullanıcı için Firestore'da bir belge oluştur
+        if (userCredential.user != null) {
+          final userModel = UserModel(
+            uid: userCredential.user!.uid,
+            email: email,
+            adSoyad: adSoyad,
+            telefon: telefon,
+            etiket: null, // Etiket şimdilik boş bırakılıyor
+            aramaAnahtarlari: [adSoyad.toLowerCase(), email.toLowerCase()],
+          );
+          await _firestoreService.createUser(userModel);
+        }
+
+        return null;
+      } on FirebaseAuthException catch (e) {
+        return e.message; // Firebase'den gelen spesifik hata mesajını döndür
+      } catch (e) {
+        return e.toString(); // Diğer genel hatalar için
       }
-      return null; // Başarılı
     } on FirebaseAuthException catch (e) {
       return e.message; // Firebase'den gelen spesifik hata mesajını döndür
     } catch (e) {
@@ -125,7 +121,7 @@ class AuthService {
               user.email?.toLowerCase() ?? '',
             ],
           );
-          await _firestoreService.kullaniciOlustur(userModel);
+          await _firestoreService.createUser(userModel);
         }
       }
       return null; // Başarılı
