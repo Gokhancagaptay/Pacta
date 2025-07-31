@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:pacta/screens/analysis/generate_document_screen.dart';
 import 'package:pacta/services/firestore_service.dart';
 
 class UserAnalysisScreen extends StatefulWidget {
@@ -232,11 +233,13 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.share, color: iconShare, size: 20),
+            icon: Icon(Icons.description_outlined, color: iconShare, size: 22),
             onPressed: () {
-              // TODO: Implement share functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Paylaşım özelliği yakında')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GenerateDocumentScreen(),
+                ),
               );
             },
           ),

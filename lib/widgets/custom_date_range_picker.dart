@@ -12,21 +12,25 @@ class CustomDateRangePicker extends StatefulWidget {
 }
 
 class _CustomDateRangePickerState extends State<CustomDateRangePicker> {
-  DateTimeRange? _selectedDateRange;
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
   DateTime _focusedDay = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _selectedDateRange = widget.initialDateRange;
+    _rangeStart = widget.initialDateRange?.start;
+    _rangeEnd = widget.initialDateRange?.end;
+    if (widget.initialDateRange != null) {
+      _focusedDay = widget.initialDateRange!.start;
+    }
   }
 
   void _onRangeSelected(DateTime? start, DateTime? end, DateTime focusedDay) {
     setState(() {
       _focusedDay = focusedDay;
-      if (start != null && end != null) {
-        _selectedDateRange = DateTimeRange(start: start, end: end);
-      }
+      _rangeStart = start;
+      _rangeEnd = end;
     });
   }
 
@@ -58,8 +62,8 @@ class _CustomDateRangePickerState extends State<CustomDateRangePicker> {
               focusedDay: _focusedDay,
               firstDay: DateTime(2020),
               lastDay: DateTime.now(),
-              rangeStartDay: _selectedDateRange?.start,
-              rangeEndDay: _selectedDateRange?.end,
+              rangeStartDay: _rangeStart,
+              rangeEndDay: _rangeEnd,
               onRangeSelected: _onRangeSelected,
               rangeSelectionMode: RangeSelectionMode.toggledOn,
               headerStyle: HeaderStyle(
@@ -92,9 +96,7 @@ class _CustomDateRangePickerState extends State<CustomDateRangePicker> {
                 weekendTextStyle: TextStyle(color: textColor.withOpacity(0.7)),
                 outsideTextStyle: TextStyle(color: textColor.withOpacity(0.4)),
               ),
-              calendarBuilders: CalendarBuilders(
-                // You can further customize builders if needed
-              ),
+              calendarBuilders: CalendarBuilders(),
             ),
             const SizedBox(height: 20),
             Row(
@@ -107,8 +109,10 @@ class _CustomDateRangePickerState extends State<CustomDateRangePicker> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () {
-                    if (_selectedDateRange != null) {
-                      Navigator.of(context).pop(_selectedDateRange);
+                    if (_rangeStart != null && _rangeEnd != null) {
+                      Navigator.of(context).pop(
+                        DateTimeRange(start: _rangeStart!, end: _rangeEnd!),
+                      );
                     }
                   },
                   style: ElevatedButton.styleFrom(

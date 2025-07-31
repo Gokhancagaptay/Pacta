@@ -1,24 +1,27 @@
 // lib/screens/debt/add_debt_screen.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pacta/models/debt_model.dart';
+import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
+
+import 'package:pacta/models/saved_contact_model.dart';
+// ... (existing imports)
 
 class AddDebtScreen extends ConsumerStatefulWidget {
   final String? amount;
-  final String? selectedPersonEmail;
+  final SavedContactModel selectedContact;
   final bool isPactaAl;
   final bool isNote;
 
   const AddDebtScreen({
     Key? key,
     this.amount,
-    this.selectedPersonEmail,
+    required this.selectedContact,
     this.isPactaAl = false,
     this.isNote = false,
   }) : super(key: key);
@@ -33,8 +36,8 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   final _personController = TextEditingController();
   final _descriptionController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
-  bool _isPacta = true;
   bool _isSaving = false;
+  bool _isPacta = true; // Default to true
 
   @override
   void initState() {
@@ -42,11 +45,17 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
     if (widget.amount != null) {
       _amountController.text = widget.amount!;
     }
-    if (widget.selectedPersonEmail != null) {
-      _personController.text = widget.selectedPersonEmail!;
+    _personController.text = widget.selectedContact.email;
+
+    // If it's a note-only contact, force _isPacta to false.
+    // Otherwise, respect the isNote flag from the dashboard.
+    if (widget.selectedContact.uid == null) {
+      _isPacta = false;
+    } else {
+      _isPacta = !widget.isNote;
     }
-    _isPacta = !widget.isNote;
   }
+  // ... (rest of the file)
 
   @override
   void dispose() {
@@ -93,9 +102,22 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
         }
 
         final firestoreService = FirestoreService();
-        final otherUser = await firestoreService.getUserByEmail(
-          _personController.text,
-        );
+        UserModel? otherUser;
+
+        if (widget.selectedContact.uid != null) {
+          otherUser = await firestoreService.getUserByEmail(
+            _personController.text,
+          );
+        } else {
+          // This is a note-only contact, create a temporary UserModel
+          otherUser = UserModel(
+            uid:
+                widget.selectedContact.id ??
+                'note_user_${DateTime.now().millisecondsSinceEpoch}',
+            email: widget.selectedContact.email,
+            adSoyad: widget.selectedContact.adSoyad,
+          );
+        }
 
         if (otherUser == null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -160,7 +182,6 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -320,6 +341,9 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   }
 
   Widget _buildPactaSwitchCard(ThemeData theme) {
+    // A note-only contact cannot be part of a Pacta (approval-based debt)
+    final bool isNoteOnlyContact = widget.selectedContact.uid == null;
+
     return Card(
       elevation: 2.0,
       shadowColor: theme.shadowColor.withOpacity(0.05),
@@ -332,11 +356,15 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          'Bu işlem karşı tarafın onayına sunulacaktır.',
+          isNoteOnlyContact
+              ? 'Bu kişiyle sadece not oluşturabilirsiniz.'
+              : 'Bu işlem karşı tarafın onayına sunulacaktır.',
           style: theme.textTheme.bodySmall,
         ),
         value: _isPacta,
-        onChanged: (bool value) => setState(() => _isPacta = value),
+        onChanged: isNoteOnlyContact
+            ? null // Disable the switch if it's a note-only contact
+            : (bool value) => setState(() => _isPacta = value),
         activeColor: theme.colorScheme.primary,
         secondary: Icon(
           Icons.shield_outlined,

@@ -134,4 +134,23 @@ class AuthService {
   Future<void> signOut() async {
     await _auth.signOut();
   }
+
+  // E-posta güncelleme metodu
+  Future<void> updateEmail(String newEmail) async {
+    await _auth.currentUser?.verifyBeforeUpdateEmail(newEmail);
+  }
+
+  // Şifre değiştirme metodu
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final user = _auth.currentUser;
+    final cred = EmailAuthProvider.credential(
+      email: user!.email!,
+      password: currentPassword,
+    );
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(newPassword);
+  }
 }

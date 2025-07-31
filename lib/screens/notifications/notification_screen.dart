@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/models/notification_model.dart';
+import 'package:pacta/screens/settings/notification_settings_screen.dart';
 import 'package:intl/intl.dart';
 
 class NotificationScreen extends StatefulWidget {
@@ -59,7 +60,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
               Icons.settings_outlined,
               color: theme.colorScheme.onBackground,
             ),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationSettingsScreen(),
+                ),
+              );
+            },
           ),
         ],
       ),

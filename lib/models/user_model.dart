@@ -6,7 +6,7 @@ class UserModel {
   final String? adSoyad;
   final String? telefon; // YENİ: Telefon numarası alanı
   final String? etiket; // YENİ: 3 haneli etiket
-  final List<String> aramaAnahtarlari; // YENİ: Arama için anahtar kelimeler
+  final List<String>? aramaAnahtarlari; // YENİ: Arama için anahtar kelimeler
   final List<String>? favoriteContacts; // YENİ: Favori kişi ID'leri
 
   UserModel({
@@ -15,7 +15,7 @@ class UserModel {
     this.adSoyad,
     this.telefon,
     this.etiket,
-    required this.aramaAnahtarlari,
+    this.aramaAnahtarlari,
     this.favoriteContacts,
   });
 
@@ -27,7 +27,7 @@ class UserModel {
       'adSoyad': adSoyad,
       'telefon': telefon,
       'etiket': etiket,
-      'aramaAnahtarlari': aramaAnahtarlari,
+      'aramaAnahtarlari': aramaAnahtarlari ?? [],
       'favoriteContacts': favoriteContacts,
     };
   }
@@ -41,7 +41,9 @@ class UserModel {
       telefon: map['telefon'],
       etiket: map['etiket'],
       // Gelen liste dynamic olabileceğinden List<String>'e çeviriyoruz
-      aramaAnahtarlari: List<String>.from(map['aramaAnahtarlari'] ?? []),
+      aramaAnahtarlari: map['aramaAnahtarlari'] == null
+          ? null
+          : List<String>.from(map['aramaAnahtarlari']),
       favoriteContacts: List<String>.from(map['favoriteContacts'] ?? []),
     );
   }

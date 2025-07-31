@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pacta/screens/notifications/notification_screen.dart';
-import 'package:pacta/services/auth_service.dart';
-import 'package:pacta/screens/debt/add_debt_screen.dart';
 import 'package:pacta/screens/debt/saved_contacts_screen.dart';
 import '../debt/amount_input_screen.dart';
-import '../auth/giris_ekrani.dart';
 import 'package:pacta/screens/settings/settings_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/models/user_model.dart';
@@ -15,6 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:pacta/screens/contacts/contacts_screen.dart';
 import 'package:pacta/screens/analysis/user_analysis_screen.dart';
+import 'package:pacta/models/saved_contact_model.dart';
 import 'package:pacta/screens/debt/all_transactions_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -28,11 +26,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   // Animasyon için controller
   late AnimationController _controller;
-  late Animation<double> _fadeInAnim;
+
   int _selectedTab = 0;
-  bool _hasNotification = true; // örnek
-  bool _darkModeBeta = false;
-  int _bakiyePage = 0;
+
   final PageController _bakiyeController = PageController();
   final _firestoreService = FirestoreService();
   final _auth = FirebaseAuth.instance;
@@ -49,7 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _fadeInAnim = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+
     _controller.forward();
     // _fetchData(); // kaldırıldı
   }
@@ -90,7 +86,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return Scaffold(
       backgroundColor: bg,
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<DocumentSnapshot<UserModel>>(
         stream: _firestoreService.usersRef.doc(userId).snapshots(),
         builder: (context, userSnap) {
           if (userSnap.connectionState == ConnectionState.waiting) {
@@ -105,9 +101,17 @@ class _DashboardScreenState extends State<DashboardScreen>
             );
           }
 
-          final userModel = userSnap.data!.data() as UserModel;
+          final userModel = userSnap.data?.data();
+          if (userModel == null) {
+            return Center(
+              child: Text(
+                'Kullanıcı verisi alınamadı.',
+                style: TextStyle(color: textSec),
+              ),
+            );
+          }
           final userName =
-              userModel.adSoyad ?? userModel.email?.split('@').first ?? "-";
+              userModel.adSoyad ?? userModel.email.split('@').first;
           return StreamBuilder<List<DebtModel>>(
             stream: _firestoreService.getRecentDebtsStream(userId),
             builder: (context, recentSnapshot) {
@@ -195,45 +199,61 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         ),
                                       ],
                                     ),
-                                    Stack(
-                                      children: [
-                                        IconButton(
-                                          icon: Icon(
-                                            Icons.notifications_none_rounded,
-                                            color: textMain,
-                                            size: width * 0.07,
-                                          ),
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const NotificationScreen(),
+                                    StreamBuilder<bool>(
+                                      stream: _firestoreService
+                                          .getUnreadNotificationsStream(userId),
+                                      builder: (context, snapshot) {
+                                        final hasNotification =
+                                            snapshot.data ?? false;
+                                        return Stack(
+                                          children: [
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons
+                                                    .notifications_none_rounded,
+                                                color: textMain,
+                                                size: width * 0.07,
                                               ),
-                                            );
-                                          },
-                                          tooltip: 'Pacta Bildirimleri',
-                                        ),
-                                        if (_hasNotification)
-                                          Positioned(
-                                            right: width * 0.025,
-                                            top: width * 0.025,
-                                            child: Container(
-                                              width: width * 0.025,
-                                              height: width * 0.025,
-                                              decoration: BoxDecoration(
-                                                color: Colors.red,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: isDark
-                                                      ? const Color(0xFF23262F)
-                                                      : Colors.white,
-                                                  width: 1.5,
+                                              onPressed: () {
+                                                // Mark notifications as read when the user navigates to the screen
+                                                _firestoreService
+                                                    .markAllNotificationsAsRead(
+                                                      userId,
+                                                    );
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        const NotificationScreen(),
+                                                  ),
+                                                );
+                                              },
+                                              tooltip: 'Pacta Bildirimleri',
+                                            ),
+                                            if (hasNotification)
+                                              Positioned(
+                                                right: width * 0.025,
+                                                top: width * 0.025,
+                                                child: Container(
+                                                  width: width * 0.025,
+                                                  height: width * 0.025,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: isDark
+                                                          ? const Color(
+                                                              0xFF23262F,
+                                                            )
+                                                          : Colors.white,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          ),
-                                      ],
+                                          ],
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
@@ -262,23 +282,24 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         label: "Pacta Ver",
                                         color: red,
                                         onTap: () async {
-                                          final selectedEmail =
-                                              await Navigator.push(
+                                          final selectedContact =
+                                              await Navigator.push<
+                                                SavedContactModel
+                                              >(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) =>
                                                       const SavedContactsScreen(),
                                                 ),
                                               );
-                                          if (selectedEmail != null &&
-                                              selectedEmail is String) {
+                                          if (selectedContact != null) {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     AmountInputScreen(
-                                                      selectedPersonEmail:
-                                                          selectedEmail,
+                                                      selectedContact:
+                                                          selectedContact,
                                                       isPactaAl: false,
                                                     ),
                                               ),
@@ -291,8 +312,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         label: "Pacta Al",
                                         color: green,
                                         onTap: () async {
-                                          final selectedEmail =
-                                              await Navigator.push(
+                                          final selectedContact =
+                                              await Navigator.push<
+                                                SavedContactModel
+                                              >(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) =>
@@ -302,15 +325,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                       ),
                                                 ),
                                               );
-                                          if (selectedEmail != null &&
-                                              selectedEmail is String) {
+                                          if (selectedContact != null) {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     AmountInputScreen(
-                                                      selectedPersonEmail:
-                                                          selectedEmail,
+                                                      selectedContact:
+                                                          selectedContact,
                                                       isPactaAl: true,
                                                     ),
                                               ),
@@ -475,19 +497,19 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: const Text('Alacak Notu'),
               onPressed: () async {
                 Navigator.of(dialogContext).pop(); // Diyaloğu kapat
-                final selectedEmail = await Navigator.push(
+                final selectedContact = await Navigator.push<SavedContactModel>(
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
                         const SavedContactsScreen(title: 'Kimden Alacak Notu?'),
                   ),
                 );
-                if (selectedEmail != null && selectedEmail is String) {
+                if (selectedContact != null) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => AmountInputScreen(
-                        selectedPersonEmail: selectedEmail,
+                        selectedContact: selectedContact,
                         isPactaAl: true, // Alacak
                         isNote: true, // Not
                       ),
@@ -500,19 +522,19 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: const Text('Borç Notu'),
               onPressed: () async {
                 Navigator.of(dialogContext).pop(); // Diyaloğu kapat
-                final selectedEmail = await Navigator.push(
+                final selectedContact = await Navigator.push<SavedContactModel>(
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
                         const SavedContactsScreen(title: 'Kime Borç Notu?'),
                   ),
                 );
-                if (selectedEmail != null && selectedEmail is String) {
+                if (selectedContact != null) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => AmountInputScreen(
-                        selectedPersonEmail: selectedEmail,
+                        selectedContact: selectedContact,
                         isPactaAl: false, // Borç
                         isNote: true, // Not
                       ),
@@ -724,7 +746,7 @@ class _TransactionListSection extends StatelessWidget {
                       ),
                       SizedBox(height: width * 0.01),
                       Text(
-                        d.aciklama?.isNotEmpty == true
+                        (d.aciklama ?? '').isNotEmpty
                             ? d.aciklama!
                             : 'Açıklama bulunamadı 🤔',
                         style: TextStyle(
@@ -740,12 +762,10 @@ class _TransactionListSection extends StatelessWidget {
                         spacing: width * 0.02,
                         children: [
                           Text(
-                            d.islemTarihi != null
-                                ? DateFormat(
-                                    'd MMMM y',
-                                    'tr_TR',
-                                  ).format(d.islemTarihi)
-                                : '-',
+                            DateFormat(
+                              'd MMMM y',
+                              'tr_TR',
+                            ).format(d.islemTarihi),
                             style: TextStyle(
                               fontSize: width * 0.032,
                               color: textSec,
@@ -952,9 +972,7 @@ class _ModernBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    const Color navGlow = Color(0xFF86EFAC);
     final Color barBg = isDark ? const Color(0xFF181A20) : Colors.white;
-    final Color textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
     return Container(
       decoration: BoxDecoration(
         color: barBg,
@@ -1004,7 +1022,6 @@ class _ModernNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const Color navGlow = Color(0xFF86EFAC);
-    const Color textMain = Color(0xFF111827);
     const Color textSec = Color(0xFF6B7280);
     return GestureDetector(
       onTap: onTap,
@@ -1110,112 +1127,109 @@ class _BakiyeCardSectionState extends State<_BakiyeCardSection> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(0, height * 0.022, 0, 0),
-      child: FadeTransition(
-        opacity: AlwaysStoppedAnimation(1.0),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              height: height * 0.19,
-              child: PageView(
-                controller: _bakiyeController,
-                onPageChanged: (i) => setState(() => _bakiyePage = i),
-                children: [
-                  _BakiyeCard(
-                    title: "Onaylanmış Pacta Bakiyem",
-                    amount:
-                        (widget.approvedBakiye >= 0 ? "+" : "") +
-                        widget.approvedBakiye.toStringAsFixed(2) +
-                        "₺",
-                    color: green,
-                    subtitle: "Çift taraflı onaylanmış işlemler",
-                    width: width,
-                  ),
-                  _BakiyeCard(
-                    title: "Pacta Bakiyem",
-                    amount:
-                        (widget.noteBakiye >= 0 ? "+" : "") +
-                        widget.noteBakiye.toStringAsFixed(2) +
-                        "₺",
-                    color: blue,
-                    subtitle: "Kendi notların ve takiplerin",
-                    width: width,
-                  ),
-                  _BakiyeCard(
-                    title: "Pacta Ortak",
-                    amount:
-                        (widget.ortakBakiye >= 0 ? "+" : "") +
-                        widget.ortakBakiye.toStringAsFixed(2) +
-                        "₺",
-                    color: purple,
-                    subtitle: "Tüm işlemlerin toplamı",
-                    width: width,
-                  ),
-                ],
-              ),
-            ),
-            // Sol ok
-            Positioned(
-              left: 0,
-              child: IconButton(
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: _bakiyePage == 0 ? disabledArrowColor : arrowColor,
-                  size: width * 0.055,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            height: height * 0.19,
+            child: PageView(
+              controller: _bakiyeController,
+              onPageChanged: (i) => setState(() => _bakiyePage = i),
+              children: [
+                _BakiyeCard(
+                  title: "Onaylanmış Pacta Bakiyem",
+                  amount:
+                      (widget.approvedBakiye >= 0 ? "+" : "") +
+                      widget.approvedBakiye.toStringAsFixed(2) +
+                      "₺",
+                  color: green,
+                  subtitle: "Çift taraflı onaylanmış işlemler",
+                  width: width,
                 ),
-                onPressed: _bakiyePage == 0
-                    ? null
-                    : () {
-                        _bakiyeController.previousPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      },
-              ),
-            ),
-            // Sağ ok
-            Positioned(
-              right: 0,
-              child: IconButton(
-                icon: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: _bakiyePage == 2 ? disabledArrowColor : arrowColor,
-                  size: width * 0.055,
+                _BakiyeCard(
+                  title: "Pacta Bakiyem",
+                  amount:
+                      (widget.noteBakiye >= 0 ? "+" : "") +
+                      widget.noteBakiye.toStringAsFixed(2) +
+                      "₺",
+                  color: blue,
+                  subtitle: "Kendi notların ve takiplerin",
+                  width: width,
                 ),
-                onPressed: _bakiyePage == 2
-                    ? null
-                    : () {
-                        _bakiyeController.nextPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      },
-              ),
+                _BakiyeCard(
+                  title: "Pacta Ortak",
+                  amount:
+                      (widget.ortakBakiye >= 0 ? "+" : "") +
+                      widget.ortakBakiye.toStringAsFixed(2) +
+                      "₺",
+                  color: purple,
+                  subtitle: "Tüm işlemlerin toplamı",
+                  width: width,
+                ),
+              ],
             ),
-            // Dot göstergesi
-            Positioned(
-              bottom: 8,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  3,
-                  (i) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: _bakiyePage == i ? width * 0.045 : width * 0.018,
-                    height: width * 0.018,
-                    decoration: BoxDecoration(
-                      color: _bakiyePage == i
-                          ? green
-                          : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+          ),
+          // Sol ok
+          Positioned(
+            left: 0,
+            child: IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: _bakiyePage == 0 ? disabledArrowColor : arrowColor,
+                size: width * 0.055,
+              ),
+              onPressed: _bakiyePage == 0
+                  ? null
+                  : () {
+                      _bakiyeController.previousPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    },
+            ),
+          ),
+          // Sağ ok
+          Positioned(
+            right: 0,
+            child: IconButton(
+              icon: Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: _bakiyePage == 2 ? disabledArrowColor : arrowColor,
+                size: width * 0.055,
+              ),
+              onPressed: _bakiyePage == 2
+                  ? null
+                  : () {
+                      _bakiyeController.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    },
+            ),
+          ),
+          // Dot göstergesi
+          Positioned(
+            bottom: 8,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                3,
+                (i) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: _bakiyePage == i ? width * 0.045 : width * 0.018,
+                  height: width * 0.018,
+                  decoration: BoxDecoration(
+                    color: _bakiyePage == i
+                        ? green
+                        : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

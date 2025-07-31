@@ -66,6 +66,40 @@ class FirestoreService {
     }
   }
 
+  Future<void> updateUser(String uid, Map<String, dynamic> data) async {
+    await usersRef.doc(uid).update(data);
+  }
+
+  Future<List<UserModel>> getSavedContacts(String uid) async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('savedContacts')
+          .where('uid', isNotEqualTo: null) // Sadece gerçek kullanıcıları al
+          .get();
+
+      if (snapshot.docs.isEmpty) return [];
+
+      // Kayıtlı kişilerin UID'lerini bir liste yap
+      final contactUids = snapshot.docs
+          .map((doc) => doc.data()['uid'] as String)
+          .toList();
+
+      if (contactUids.isEmpty) return [];
+
+      // Bu UID'lere sahip kullanıcıları getir
+      final usersSnapshot = await usersRef
+          .where(FieldPath.documentId, whereIn: contactUids)
+          .get();
+
+      return usersSnapshot.docs.map((doc) => doc.data()).toList();
+    } catch (e) {
+      print('Error getting saved contacts: $e');
+      return [];
+    }
+  }
+
   // DEBT METHODS
   Future<String> addDebt(DebtModel debt) async {
     try {
@@ -160,16 +194,6 @@ class FirestoreService {
     });
   }
 
-  Future<void> addSavedContact(SavedContactModel contact) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    await _db
-        .collection('users')
-        .doc(uid)
-        .collection('savedContacts')
-        .add(contact.toMap());
-  }
-
   // Favori Ekle/Çıkar
   Future<void> toggleFavoriteContact(String contactId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -189,7 +213,40 @@ class FirestoreService {
     }
   }
 
+  Future<void> addSavedContact(SavedContactModel contact) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('savedContacts')
+        .add(contact.toMap());
+  }
+
   // NOTIFICATION METHODS
+  Stream<bool> getUnreadNotificationsStream(String userId) {
+    return _db
+        .collection('notifications')
+        .where('toUserId', isEqualTo: userId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.isNotEmpty);
+  }
+
+  Future<void> markAllNotificationsAsRead(String userId) async {
+    final querySnapshot = await _db
+        .collection('notifications')
+        .where('toUserId', isEqualTo: userId)
+        .where('isRead', isEqualTo: false)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in querySnapshot.docs) {
+      batch.update(doc.reference, {'isRead': true});
+    }
+    await batch.commit();
+  }
+
   Future<void> sendNotification({
     required String toUserId,
     required String type,

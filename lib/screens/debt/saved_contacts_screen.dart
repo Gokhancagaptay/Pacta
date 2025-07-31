@@ -4,6 +4,8 @@ import 'package:pacta/models/saved_contact_model.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:rxdart/rxdart.dart';
 
 class SavedContactsScreen extends StatefulWidget {
   final String title;
@@ -14,24 +16,22 @@ class SavedContactsScreen extends StatefulWidget {
   State<SavedContactsScreen> createState() => _SavedContactsScreenState();
 }
 
-class _SavedContactsScreenState extends State<SavedContactsScreen>
-    with SingleTickerProviderStateMixin {
+class _SavedContactsScreenState extends State<SavedContactsScreen> {
   final _firestoreService = FirestoreService();
   final _searchController = TextEditingController();
-  late TabController _tabController;
   Timer? _debounce;
   String _searchTerm = '';
+  final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  bool _showOnlyFavorites = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _debounce?.cancel();
@@ -44,6 +44,44 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
       if (mounted) {
         setState(() => _searchTerm = _searchController.text.trim());
       }
+    });
+  }
+
+  Stream<Map<String, List<SavedContactModel>>> _getContactsStream() {
+    if (currentUserId == null)
+      return Stream.value({'favorites': [], 'others': []});
+
+    final savedContactsStream = _firestoreService.getSavedContactsStream(
+      _searchTerm,
+    );
+
+    final userFavoritesStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .snapshots()
+        .map(
+          (doc) =>
+              UserModel.fromMap(
+                doc.data() as Map<String, dynamic>,
+              ).favoriteContacts ??
+              [],
+        );
+
+    return Rx.combineLatest2(savedContactsStream, userFavoritesStream, (
+      List<SavedContactModel> contacts,
+      List<String> favoriteIds,
+    ) {
+      final favoriteContacts = contacts
+          .where((c) => favoriteIds.contains(c.id))
+          .toList();
+      final otherContacts = contacts
+          .where((c) => !favoriteIds.contains(c.id))
+          .toList();
+
+      favoriteContacts.sort((a, b) => a.adSoyad.compareTo(b.adSoyad));
+      otherContacts.sort((a, b) => a.adSoyad.compareTo(b.adSoyad));
+
+      return {'favorites': favoriteContacts, 'others': otherContacts};
     });
   }
 
@@ -69,23 +107,26 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final textMain = isDark ? Colors.white : Colors.black87;
-    final textSec = isDark ? Colors.white70 : Colors.black54;
-    final cardColor = isDark ? const Color(0xFF2D3748) : Colors.white;
+    final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, style: TextStyle(color: textMain)),
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: green,
-          labelColor: green,
-          unselectedLabelColor: textSec,
-          tabs: const [
-            Tab(text: 'Tüm Kişiler'),
-            Tab(text: 'Favoriler'),
-          ],
-        ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _showOnlyFavorites ? Icons.favorite : Icons.favorite_border,
+              color: _showOnlyFavorites ? Colors.redAccent : iconMain,
+            ),
+            tooltip: 'Sadece Favorileri Göster',
+            onPressed: () {
+              setState(() {
+                _showOnlyFavorites = !_showOnlyFavorites;
+              });
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -105,48 +146,61 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
             ),
           ),
           Expanded(
-            child: StreamBuilder<UserModel?>(
-              stream: _firestoreService.getUserStream(
-                FirebaseAuth.instance.currentUser!.uid,
-              ),
-              builder: (context, userSnapshot) {
-                final favoriteIds = userSnapshot.data?.favoriteContacts ?? [];
-                return StreamBuilder<List<SavedContactModel>>(
-                  stream: _firestoreService.getSavedContactsStream(_searchTerm),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'Kişi bulunamadı.',
-                          style: TextStyle(color: textSec),
-                        ),
-                      );
-                    }
+            child: StreamBuilder<Map<String, List<SavedContactModel>>>(
+              stream: _getContactsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData ||
+                    (snapshot.data!['favorites']!.isEmpty &&
+                        snapshot.data!['others']!.isEmpty)) {
+                  return Center(
+                    child: Text(
+                      'Kayıtlı kişi bulunamadı.',
+                      style: TextStyle(color: Theme.of(context).disabledColor),
+                    ),
+                  );
+                }
 
-                    final allContacts = snapshot.data!;
-                    final favoriteContacts = allContacts
-                        .where((c) => favoriteIds.contains(c.id))
-                        .toList();
+                final favorites = snapshot.data!['favorites']!;
+                final others = snapshot.data!['others']!;
 
-                    return TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // Tüm Kişiler
-                        _ContactList(
-                          contacts: allContacts,
-                          favoriteIds: favoriteIds,
-                        ),
-                        // Favoriler
-                        _ContactList(
-                          contacts: favoriteContacts,
-                          favoriteIds: favoriteIds,
+                if (_showOnlyFavorites && favorites.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'Favori kişi bulunamadı.',
+                      style: TextStyle(color: Theme.of(context).disabledColor),
+                    ),
+                  );
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  children: [
+                    if (_showOnlyFavorites)
+                      ...favorites.map(
+                        (contact) => _buildContactCard(contact, true),
+                      )
+                    else ...[
+                      if (favorites.isNotEmpty) ...[
+                        _buildSectionHeader('Favoriler'),
+                        ...favorites.map(
+                          (contact) => _buildContactCard(contact, true),
                         ),
                       ],
-                    );
-                  },
+                      if (others.isNotEmpty) ...[
+                        if (favorites.isNotEmpty) const SizedBox(height: 20),
+                        _buildSectionHeader('Tüm Kişiler'),
+                        ...others.map(
+                          (contact) => _buildContactCard(contact, false),
+                        ),
+                      ],
+                    ],
+                  ],
                 );
               },
             ),
@@ -160,63 +214,60 @@ class _SavedContactsScreenState extends State<SavedContactsScreen>
       ),
     );
   }
-}
 
-class _ContactList extends StatelessWidget {
-  const _ContactList({
-    Key? key,
-    required this.contacts,
-    required this.favoriteIds,
-  }) : super(key: key);
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+        ),
+      ),
+    );
+  }
 
-  final List<SavedContactModel> contacts;
-  final List<String> favoriteIds;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildContactCard(SavedContactModel contact, bool isFavorite) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final textMain = isDark ? Colors.white : Colors.black87;
     final textSec = isDark ? Colors.white70 : Colors.black54;
-    final cardColor = isDark ? const Color(0xFF2D3748) : Colors.white;
     const Color green = Color(0xFF4ADE80);
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      itemCount: contacts.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final contact = contacts[index];
-        final isFavorite = favoriteIds.contains(contact.id);
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: green.withOpacity(0.2),
-            child: Text(
-              contact.adSoyad.isNotEmpty
-                  ? contact.adSoyad[0].toUpperCase()
-                  : '?',
-              style: const TextStyle(color: green, fontWeight: FontWeight.bold),
-            ),
+    return Card(
+      elevation: 0,
+      color: Colors.transparent,
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        tileColor: theme.cardColor,
+        leading: CircleAvatar(
+          backgroundColor: green.withOpacity(0.2),
+          child: Text(
+            contact.adSoyad.isNotEmpty ? contact.adSoyad[0].toUpperCase() : '?',
+            style: const TextStyle(color: green, fontWeight: FontWeight.bold),
           ),
-          title: Text(
-            contact.adSoyad,
-            style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+        ),
+        title: Text(
+          contact.adSoyad,
+          style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(contact.email, style: TextStyle(color: textSec)),
+        trailing: IconButton(
+          icon: Icon(
+            isFavorite ? Icons.favorite : Icons.favorite_border,
+            color: isFavorite ? Colors.redAccent : textSec,
           ),
-          subtitle: Text(contact.email, style: TextStyle(color: textSec)),
-          trailing: IconButton(
-            icon: Icon(
-              isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: isFavorite ? Colors.redAccent : textSec,
-            ),
-            onPressed: () {
-              FirestoreService().toggleFavoriteContact(contact.id!);
-            },
-          ),
-          onTap: () {
-            Navigator.pop(context, contact.email);
+          onPressed: () {
+            _firestoreService.toggleFavoriteContact(contact.id!);
           },
-        );
-      },
+        ),
+        onTap: () {
+          Navigator.pop(context, contact);
+        },
+      ),
     );
   }
 }

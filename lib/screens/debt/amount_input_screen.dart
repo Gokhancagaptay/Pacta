@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'add_debt_screen.dart';
 
+import 'package:pacta/models/saved_contact_model.dart';
+
 final amountProvider = StateProvider.autoDispose<String>((ref) => '');
 
 class AmountInputScreen extends ConsumerWidget {
-  final String? selectedPersonEmail;
+  final SavedContactModel selectedContact;
   final bool isPactaAl;
   final bool isNote;
 
   const AmountInputScreen({
     Key? key,
-    this.selectedPersonEmail,
+    required this.selectedContact,
     this.isPactaAl = false,
     this.isNote = false,
   }) : super(key: key);
@@ -146,7 +148,7 @@ class AmountInputScreen extends ConsumerWidget {
                     MaterialPageRoute(
                       builder: (context) => AddDebtScreen(
                         amount: amount.replaceAll(',', '.'),
-                        selectedPersonEmail: selectedPersonEmail,
+                        selectedContact: selectedContact,
                         isPactaAl: isPactaAl,
                         isNote: isNote,
                       ),
