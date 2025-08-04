@@ -103,46 +103,17 @@ class FirestoreService {
   // DEBT METHODS
   Future<String> addDebt(DebtModel debt) async {
     try {
-      // 1. Borcu 'debts' koleksiyonuna ekle ve referansını al
+      print('DEBUG: Adding debt to Firestore...');
+      print('DEBUG: Debt data: ${debt.toMap()}');
+
       final docRef = await debtsRef.add(debt);
 
-      // 2. Eğer bu bir 'note' değilse, bildirim gönder
-      if (debt.status != 'note') {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser == null) return ''; // Return empty string on error
-
-        // Bildirimi alacak olan diğer tarafı belirle
-        final toUserId = debt.alacakliId == currentUser.uid
-            ? debt.borcluId
-            : debt.alacakliId;
-
-        final borcluName = await getUserNameById(debt.borcluId);
-        final alacakliName = await getUserNameById(debt.alacakliId);
-
-        final title = debt.alacakliId == currentUser.uid
-            ? "Yeni Borç Bildirimi"
-            : "Yeni Alacak Talebi";
-
-        final message = debt.alacakliId == currentUser.uid
-            ? "$alacakliName size ${debt.miktar}₺ tutarında bir borç bildiriminde bulundu."
-            : "$borcluName sizden ${debt.miktar}₺ tutarında bir alacak talebinde bulundu.";
-
-        await sendNotification(
-          toUserId: toUserId,
-          createdById: currentUser.uid,
-          type: 'approval_request',
-          relatedDebtId: docRef.id,
-          title: title,
-          message: message,
-          debtorId: debt.alacakliId,
-          creditorId: debt.borcluId,
-          amount: debt.miktar,
-        );
-      }
-      return docRef.id; // Return the document ID
+      print('DEBUG: Debt successfully added with ID: ${docRef.id}');
+      return docRef.id;
     } catch (e) {
-      print('Error adding debt: $e');
-      return ''; // Return empty string on error
+      print('ERROR adding debt: $e');
+      print('ERROR stackTrace: ${StackTrace.current}');
+      return '';
     }
   }
 
@@ -168,7 +139,62 @@ class FirestoreService {
   }
 
   Future<void> updateDebtStatus(String debtId, String newStatus) async {
-    await debtsRef.doc(debtId).update({'status': newStatus});
+    final debtRef = debtsRef.doc(debtId);
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    // Önce borç bilgisini al
+    final debtSnapshot = await debtRef.get();
+    final debt = debtSnapshot.data();
+    if (debt == null) return;
+
+    await debtRef.update({
+      'status': newStatus,
+      'updatedById':
+          currentUser.uid, // The ID of the user who updated the status
+    });
+
+    // GEÇİCİ ÇÖZÜM: Cloud Function çalışmadığı için istemci tarafında bildirim gönder
+    if (newStatus == 'approved' || newStatus == 'rejected') {
+      final updatedByName = await getUserNameById(currentUser.uid);
+
+      // İşlemi başlatan kişiyi bul (createdBy)
+      final createdBy = debt.createdBy;
+      if (createdBy != null && createdBy != currentUser.uid) {
+        String title;
+        String message;
+
+        if (newStatus == 'approved') {
+          title = 'Talep Onaylandı';
+          message =
+              '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından onaylandı.';
+        } else {
+          title = 'Talep Reddedildi';
+          message =
+              '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından reddedildi.';
+        }
+
+        await sendNotification(
+          toUserId: createdBy,
+          createdById: currentUser.uid,
+          type: newStatus == 'approved'
+              ? 'request_approved'
+              : 'request_rejected',
+          relatedDebtId: debtId,
+          title: title,
+          message: message,
+          debtorId: debt.borcluId,
+          creditorId: debt.alacakliId,
+          amount: debt.miktar,
+        );
+
+        print('DEBUG: Status update notification sent to: $createdBy');
+      }
+    }
+  }
+
+  Future<void> deleteDebt(String debtId) async {
+    await debtsRef.doc(debtId).delete();
   }
 
   // SAVED CONTACTS METHODS

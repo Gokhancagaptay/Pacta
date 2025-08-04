@@ -292,7 +292,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                       const SavedContactsScreen(),
                                                 ),
                                               );
-                                          if (selectedContact != null) {
+                                          if (selectedContact != null &&
+                                              selectedContact
+                                                  .adSoyad
+                                                  .isNotEmpty &&
+                                              selectedContact
+                                                  .email
+                                                  .isNotEmpty) {
+                                            print(
+                                              'DEBUG: PACTA VER - Contact validated: ${selectedContact.adSoyad}',
+                                            );
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -303,6 +312,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                       isPactaAl: false,
                                                     ),
                                               ),
+                                            );
+                                          } else if (selectedContact != null) {
+                                            // Contact seçildi ama veri eksik
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Seçilen kişi bilgisi eksik! Lütfen tekrar deneyin.',
+                                                ),
+                                              ),
+                                            );
+                                            print(
+                                              'ERROR: PACTA VER - Invalid contact data: Name=${selectedContact.adSoyad}, Email=${selectedContact.email}',
                                             );
                                           }
                                         },
@@ -325,7 +348,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                       ),
                                                 ),
                                               );
-                                          if (selectedContact != null) {
+                                          if (selectedContact != null &&
+                                              selectedContact
+                                                  .adSoyad
+                                                  .isNotEmpty &&
+                                              selectedContact
+                                                  .email
+                                                  .isNotEmpty) {
+                                            print(
+                                              'DEBUG: PACTA AL - Contact validated: ${selectedContact.adSoyad}',
+                                            );
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -336,6 +368,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                       isPactaAl: true,
                                                     ),
                                               ),
+                                            );
+                                          } else if (selectedContact != null) {
+                                            // Contact seçildi ama veri eksik
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Seçilen kişi bilgisi eksik! Lütfen tekrar deneyin.',
+                                                ),
+                                              ),
+                                            );
+                                            print(
+                                              'ERROR: PACTA AL - Invalid contact data: Name=${selectedContact.adSoyad}, Email=${selectedContact.email}',
                                             );
                                           }
                                         },
@@ -500,8 +546,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 final selectedContact = await Navigator.push<SavedContactModel>(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const SavedContactsScreen(title: 'Kimden Alacak Notu?'),
+                    builder: (_) => const SavedContactsScreen(
+                      title: 'Kimden Alacak Notu?',
+                      isNoteModeFlow: true,
+                    ),
                   ),
                 );
                 if (selectedContact != null) {
@@ -525,8 +573,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 final selectedContact = await Navigator.push<SavedContactModel>(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const SavedContactsScreen(title: 'Kime Borç Notu?'),
+                    builder: (_) => const SavedContactsScreen(
+                      title: 'Kime Borç Notu?',
+                      isNoteModeFlow: true,
+                    ),
                   ),
                 );
                 if (selectedContact != null) {
@@ -670,8 +720,8 @@ class _TransactionListSection extends StatelessWidget {
   ) {
     final bool isAlacak = d.alacakliId == userId;
     final bool isNote = d.status == 'note';
-    final Color amountColor = isNote ? green : (isAlacak ? green : red);
-    final String amountPrefix = isNote ? '+' : (isAlacak ? '+' : '-');
+    final Color amountColor = isAlacak ? green : red;
+    final String amountPrefix = isAlacak ? '+' : '-';
     final String otherPartyId = isAlacak ? d.borcluId : d.alacakliId;
     final String statusLabel = getStatusLabel(d.status);
     final Color statusColor = getStatusColor(d.status);

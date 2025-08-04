@@ -147,22 +147,65 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
 
         final newDebtId = await firestoreService.addDebt(newDebt);
 
-        if (_isPacta) {
+        if (newDebtId.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('İşlem kaydedilemedi. Lütfen tekrar deneyin.'),
+            ),
+          );
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+
+        print('DEBUG: Debt created with ID: $newDebtId');
+        print(
+          'DEBUG: Debt details - borcluId: ${newDebt.borcluId}, alacakliId: ${newDebt.alacakliId}, createdBy: ${newDebt.createdBy}',
+        );
+
+        // GEÇİCİ ÇÖZÜM: Cloud Function çalışmadığı için istemci tarafında bildirim gönder
+        if (_isPacta && newDebt.status == 'pending') {
+          final currentUserName =
+              currentUser.displayName ?? currentUser.email ?? 'Bilinmeyen';
+
+          // Bildirimi alacak kişiyi belirle (karşı taraf)
+          final toUserId = newDebt.createdBy == newDebt.alacakliId
+              ? newDebt.borcluId
+              : newDebt.alacakliId;
+
+          String title;
+          String message;
+
+          if (widget.isPactaAl) {
+            // PACTA AL: A, B'den borç istiyor → B'ye bildirim gönder
+            title = 'Yeni Alacak Talebi';
+            message =
+                '$currentUserName sizden ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir talepte bulundu.';
+          } else {
+            // PACTA VER: A, B'ye borç veriyor → B'ye bildirim gönder
+            title = 'Yeni Borç Bildirimi';
+            message =
+                '$currentUserName size ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir borç bildiriminde bulundu.';
+          }
+
           await firestoreService.sendNotification(
-            toUserId: otherUser.uid,
+            toUserId: toUserId,
             createdById: currentUser.uid,
             type: 'approval_request',
             relatedDebtId: newDebtId,
-            title: widget.isPactaAl ? 'Alacak Talebi' : 'Borç Talebi',
-            message:
-                '${currentUser.displayName ?? currentUser.email} sizden ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir talepte bulundu.',
+            title: title,
+            message: message,
             debtorId: newDebt.borcluId,
             creditorId: newDebt.alacakliId,
             amount: newDebt.miktar,
           );
+
+          print('DEBUG: Manual notification sent to: $toUserId');
         }
 
         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('İşlem başarıyla kaydedildi!')),
+          );
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
@@ -397,7 +440,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                   theme.colorScheme.onPrimary,
                 ),
               )
-            : const Text('Pacta Gönder'),
+            : Text(_isPacta ? 'Pacta Gönder' : 'Not Ekle'),
       ),
     );
   }

@@ -7,6 +7,7 @@ import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
 import 'package:pacta/services/firestore_service.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 
 class UserAnalysisScreen extends StatefulWidget {
   const UserAnalysisScreen({Key? key}) : super(key: key);
@@ -32,6 +33,245 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
   int _currentPage = 0;
 
   final FirestoreService _firestoreService = FirestoreService();
+
+  // Sayı formatı yardımcı fonksiyonu
+  String formatNumber(double number) {
+    if (number.abs() >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M₺';
+    }
+    if (number.abs() >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}K₺';
+    }
+    return '${number.toStringAsFixed(2)}₺';
+  }
+
+  // Basit ve çalışır tooltip - SnackBar yaklaşımı
+  void _showCustomTooltip(
+    BuildContext context,
+    String fullAmount, {
+    String? title,
+  }) {
+    try {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+
+      print('Tooltip tetiklendi: $fullAmount');
+
+      // SnackBar ile güvenilir gösterim
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (title != null) ...[
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isDark
+                          ? const Color(0xFF666666)
+                          : const Color(0xFFCCCCCC),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 2),
+                ],
+                Text(
+                  fullAmount,
+                  style: TextStyle(
+                    color: isDark ? const Color(0xFF2D3748) : Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          backgroundColor: isDark ? Colors.white : const Color(0xFF2D3748),
+          duration: const Duration(milliseconds: 2500),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 8,
+          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        ),
+      );
+
+      print('Tooltip gösterildi: $fullAmount');
+    } catch (e) {
+      print('Tooltip gösterme hatası: $e');
+
+      // En basit fallback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${title ?? "Tam Tutar"}: $fullAmount'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // Modern Pie Chart Tooltip
+  void _showPieTooltip(
+    BuildContext context,
+    PieTouchResponse? pieTouchResponse,
+    List<Map<String, dynamic>> sections,
+  ) {
+    if (pieTouchResponse?.touchedSection?.touchedSectionIndex == null) return;
+
+    final touchedIndex = pieTouchResponse!.touchedSection!.touchedSectionIndex;
+
+    // Sadece değeri 0'dan büyük olan bölümleri filtrele
+    final validSections = sections
+        .where((section) => section['value'] > 0)
+        .toList();
+
+    if (touchedIndex >= validSections.length) return;
+
+    final touchedSection = validSections[touchedIndex];
+    final name = touchedSection['name'] as String;
+    final value = touchedSection['value'] as double;
+    final color = touchedSection['color'] as Color;
+
+    // Toplam değeri hesapla
+    final total = sections.fold<double>(
+      0,
+      (sum, section) => sum + (section['value'] as double),
+    );
+    final percentage = total > 0 ? (value / total * 100) : 0;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    try {
+      print(
+        'Pie Chart tooltip tetiklendi: $name - ${value.toStringAsFixed(2)}₺',
+      );
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Renk göstergesi
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Metin bilgileri
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Başlık
+                      Text(
+                        name,
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFF999999)
+                              : const Color(0xFFCCCCCC),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+
+                      // Ana tutar
+                      Row(
+                        children: [
+                          Text(
+                            '${value.toStringAsFixed(2)}₺',
+                            style: TextStyle(
+                              color: isDark
+                                  ? const Color(0xFF2D3748)
+                                  : Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Yüzde bilgisi
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: color.withOpacity(0.3),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              '${percentage.toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                color: isDark
+                                    ? color.withOpacity(0.8)
+                                    : Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          backgroundColor: isDark ? Colors.white : const Color(0xFF2D3748),
+          duration: const Duration(milliseconds: 3000),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 12,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        ),
+      );
+
+      print('Modern pie tooltip gösterildi: $name');
+    } catch (e) {
+      print('Pie tooltip hatası: $e');
+
+      // Fallback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$name: ${value.toStringAsFixed(2)}₺ (${percentage.toStringAsFixed(1)}%)',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -273,7 +513,9 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                     const SizedBox(height: 100),
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: MediaQuery.of(context).size.width * 0.05,
+                        ),
                         child: Column(
                           children: [
                             SizedBox(
@@ -416,10 +658,13 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                             // İşlemler Listesi
                             Expanded(
                               child: Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 4,
+                                margin: EdgeInsets.symmetric(
+                                  horizontal:
+                                      MediaQuery.of(context).size.width * 0.01,
                                 ),
-                                padding: const EdgeInsets.all(20),
+                                padding: EdgeInsets.all(
+                                  MediaQuery.of(context).size.width * 0.05,
+                                ),
                                 decoration: BoxDecoration(
                                   color: cardColor,
                                   borderRadius: BorderRadius.circular(16),
@@ -636,12 +881,47 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Text(
-                      '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: isAlacak ? green : red,
+                    GestureDetector(
+                      onTap: () {
+                        _showCustomTooltip(
+                          context,
+                          '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
+                          title: isAlacak ? 'Alacağınız' : 'Borcunuz',
+                        );
+                      },
+                      onLongPress: () {
+                        _showCustomTooltip(
+                          context,
+                          '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
+                          title: isAlacak ? 'Alacağınız' : 'Borcunuz',
+                        );
+                      },
+                      child: MouseRegion(
+                        onEnter: (_) {
+                          if (Theme.of(context).platform ==
+                                  TargetPlatform.windows ||
+                              Theme.of(context).platform ==
+                                  TargetPlatform.macOS ||
+                              Theme.of(context).platform ==
+                                  TargetPlatform.linux) {
+                            _showCustomTooltip(
+                              context,
+                              '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
+                              title: isAlacak ? 'Alacağınız' : 'Borcunuz',
+                            );
+                          }
+                        },
+                        child: AutoSizeText(
+                          '${isAlacak ? '+' : '-'}${formatNumber(miktar).replaceAll('₺', '')}₺',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: isAlacak ? green : red,
+                          ),
+                          maxLines: 1,
+                          minFontSize: 10,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],
@@ -739,6 +1019,35 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   PieChartData(
                     sectionsSpace: 3,
                     centerSpaceRadius: 40,
+                    pieTouchData: PieTouchData(
+                      enabled: true,
+                      touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                        if (event is FlTapUpEvent || event is FlLongPressEnd) {
+                          _showPieTooltip(context, pieTouchResponse, [
+                            {
+                              'name': 'Alacaklarım',
+                              'value': toplamAlacaklarim,
+                              'color': green,
+                            },
+                            {
+                              'name': 'Not Alacaklarım',
+                              'value': toplamNotAlacaklarim,
+                              'color': blue,
+                            },
+                            {
+                              'name': 'Borçlarım',
+                              'value': toplamBorclarim,
+                              'color': red,
+                            },
+                            {
+                              'name': 'Not Borçlarım',
+                              'value': toplamNotBorclarim,
+                              'color': orange,
+                            },
+                          ]);
+                        }
+                      },
+                    ),
                     sections: [
                       if (toplamAlacaklarim > 0)
                         PieChartSectionData(
@@ -782,29 +1091,82 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   ),
                 ),
                 // Ortadaki toplam bakiye
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${((toplamAlacaklarim + toplamNotAlacaklarim) - (toplamBorclarim + toplamNotBorclarim)).toStringAsFixed(2)}₺',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: textMain,
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          final fullAmount =
+                              (toplamAlacaklarim + toplamNotAlacaklarim) -
+                              (toplamBorclarim + toplamNotBorclarim);
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Net Bakiye',
+                          );
+                        },
+                        onLongPress: () {
+                          final fullAmount =
+                              (toplamAlacaklarim + toplamNotAlacaklarim) -
+                              (toplamBorclarim + toplamNotBorclarim);
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Net Bakiye',
+                          );
+                        },
+                        child: MouseRegion(
+                          onEnter: (_) {
+                            if (Theme.of(context).platform ==
+                                    TargetPlatform.windows ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.macOS ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.linux) {
+                              final fullAmount =
+                                  (toplamAlacaklarim + toplamNotAlacaklarim) -
+                                  (toplamBorclarim + toplamNotBorclarim);
+                              _showCustomTooltip(
+                                context,
+                                '${fullAmount.toStringAsFixed(2)}₺',
+                                title: 'Net Bakiye',
+                              );
+                            }
+                          },
+                          child: AutoSizeText(
+                            formatNumber(
+                              (toplamAlacaklarim + toplamNotAlacaklarim) -
+                                  (toplamBorclarim + toplamNotBorclarim),
+                            ),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: textMain,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            minFontSize: 10,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      (toplamAlacaklarim + toplamNotAlacaklarim) -
-                                  (toplamBorclarim + toplamNotBorclarim) >=
-                              0
-                          ? 'Alacaklısın'
-                          : 'Borçlusun',
-                      style: TextStyle(fontSize: 9, color: textSec),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      AutoSizeText(
+                        (toplamAlacaklarim + toplamNotAlacaklarim) -
+                                    (toplamBorclarim + toplamNotBorclarim) >=
+                                0
+                            ? 'Alacaklısın'
+                            : 'Borçlusun',
+                        style: TextStyle(fontSize: 9, color: textSec),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        minFontSize: 8,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -919,20 +1281,55 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
+        AutoSizeText(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 11,
             color: textSec,
           ),
+          maxLines: 1,
+          minFontSize: 8,
+          overflow: TextOverflow.ellipsis,
         ),
-        Text(
-          '${amount.toStringAsFixed(2)}₺',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: textMain,
+        GestureDetector(
+          onTap: () {
+            _showCustomTooltip(
+              context,
+              '${amount.toStringAsFixed(2)}₺',
+              title: title,
+            );
+          },
+          onLongPress: () {
+            _showCustomTooltip(
+              context,
+              '${amount.toStringAsFixed(2)}₺',
+              title: title,
+            );
+          },
+          child: MouseRegion(
+            onEnter: (_) {
+              if (Theme.of(context).platform == TargetPlatform.windows ||
+                  Theme.of(context).platform == TargetPlatform.macOS ||
+                  Theme.of(context).platform == TargetPlatform.linux) {
+                _showCustomTooltip(
+                  context,
+                  '${amount.toStringAsFixed(2)}₺',
+                  title: title,
+                );
+              }
+            },
+            child: AutoSizeText(
+              formatNumber(amount),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: textMain,
+              ),
+              maxLines: 1,
+              minFontSize: 9,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
       ],
@@ -982,6 +1379,25 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   PieChartData(
                     sectionsSpace: 3,
                     centerSpaceRadius: 40,
+                    pieTouchData: PieTouchData(
+                      enabled: true,
+                      touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                        if (event is FlTapUpEvent || event is FlLongPressEnd) {
+                          _showPieTooltip(context, pieTouchResponse, [
+                            {
+                              'name': 'Onaylı Borçlarım',
+                              'value': onayliToplamBorclarim,
+                              'color': red,
+                            },
+                            {
+                              'name': 'Onaylı Alacaklarım',
+                              'value': onayliToplamAlacaklarim,
+                              'color': green,
+                            },
+                          ]);
+                        }
+                      },
+                    ),
                     sections: [
                       if (onayliToplamBorclarim > 0)
                         PieChartSectionData(
@@ -1012,25 +1428,75 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   ),
                 ),
                 // Ortadaki toplam bakiye
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${(onayliToplamAlacaklarim - onayliToplamBorclarim).toStringAsFixed(2)}₺',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: textMain,
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          final fullAmount =
+                              onayliToplamAlacaklarim - onayliToplamBorclarim;
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Onaylı Net Durum',
+                          );
+                        },
+                        onLongPress: () {
+                          final fullAmount =
+                              onayliToplamAlacaklarim - onayliToplamBorclarim;
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Onaylı Net Durum',
+                          );
+                        },
+                        child: MouseRegion(
+                          onEnter: (_) {
+                            if (Theme.of(context).platform ==
+                                    TargetPlatform.windows ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.macOS ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.linux) {
+                              final fullAmount =
+                                  onayliToplamAlacaklarim -
+                                  onayliToplamBorclarim;
+                              _showCustomTooltip(
+                                context,
+                                '${fullAmount.toStringAsFixed(2)}₺',
+                                title: 'Onaylı Net Durum',
+                              );
+                            }
+                          },
+                          child: AutoSizeText(
+                            formatNumber(
+                              onayliToplamAlacaklarim - onayliToplamBorclarim,
+                            ),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: textMain,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            minFontSize: 12,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Net Durum',
-                      style: TextStyle(fontSize: 9, color: textSec),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      AutoSizeText(
+                        'Net Durum',
+                        style: TextStyle(fontSize: 9, color: textSec),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        minFontSize: 8,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1114,6 +1580,25 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   PieChartData(
                     sectionsSpace: 3,
                     centerSpaceRadius: 40,
+                    pieTouchData: PieTouchData(
+                      enabled: true,
+                      touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                        if (event is FlTapUpEvent || event is FlLongPressEnd) {
+                          _showPieTooltip(context, pieTouchResponse, [
+                            {
+                              'name': 'Not Alacaklarım',
+                              'value': toplamNotAlacaklarim,
+                              'color': blue,
+                            },
+                            {
+                              'name': 'Not Borçlarım',
+                              'value': toplamNotBorclarim,
+                              'color': orange,
+                            },
+                          ]);
+                        }
+                      },
+                    ),
                     sections: [
                       if (toplamNotAlacaklarim > 0)
                         PieChartSectionData(
@@ -1143,25 +1628,74 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                   ),
                 ),
                 // Ortadaki toplam bakiye
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${(toplamNotAlacaklarim - toplamNotBorclarim).toStringAsFixed(2)}₺',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: textMain,
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          final fullAmount =
+                              toplamNotAlacaklarim - toplamNotBorclarim;
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Not Net Durum',
+                          );
+                        },
+                        onLongPress: () {
+                          final fullAmount =
+                              toplamNotAlacaklarim - toplamNotBorclarim;
+                          _showCustomTooltip(
+                            context,
+                            '${fullAmount.toStringAsFixed(2)}₺',
+                            title: 'Not Net Durum',
+                          );
+                        },
+                        child: MouseRegion(
+                          onEnter: (_) {
+                            if (Theme.of(context).platform ==
+                                    TargetPlatform.windows ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.macOS ||
+                                Theme.of(context).platform ==
+                                    TargetPlatform.linux) {
+                              final fullAmount =
+                                  toplamNotAlacaklarim - toplamNotBorclarim;
+                              _showCustomTooltip(
+                                context,
+                                '${fullAmount.toStringAsFixed(2)}₺',
+                                title: 'Not Net Durum',
+                              );
+                            }
+                          },
+                          child: AutoSizeText(
+                            formatNumber(
+                              toplamNotAlacaklarim - toplamNotBorclarim,
+                            ),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: textMain,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            minFontSize: 12,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Not Net Durum',
-                      style: TextStyle(fontSize: 9, color: textSec),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      AutoSizeText(
+                        'Not Net Durum',
+                        style: TextStyle(fontSize: 9, color: textSec),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        minFontSize: 8,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

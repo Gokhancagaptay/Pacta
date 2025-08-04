@@ -9,8 +9,13 @@ import 'package:rxdart/rxdart.dart';
 
 class SavedContactsScreen extends StatefulWidget {
   final String title;
-  const SavedContactsScreen({Key? key, this.title = 'Kime Vereceksiniz?'})
-    : super(key: key);
+  final bool isNoteModeFlow;
+
+  const SavedContactsScreen({
+    Key? key,
+    this.title = 'Kime Vereceksiniz?',
+    this.isNoteModeFlow = false,
+  }) : super(key: key);
 
   @override
   State<SavedContactsScreen> createState() => _SavedContactsScreenState();
@@ -85,20 +90,27 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
     });
   }
 
-  void _showAddContactSheet() {
-    showModalBottomSheet(
+  void _showAddContactSheet() async {
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: const _AddContactSheet(),
+        child: _AddContactSheet(isNoteMode: widget.isNoteModeFlow),
       ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     );
+
+    // Kullanıcı eklendiyse listeyi yenile
+    if (result == true && mounted) {
+      setState(() {
+        // Stream otomatik güncellenecek ama setState ile UI'ın yenilenmesini garantiliyoruz
+      });
+    }
   }
 
   @override
@@ -265,6 +277,23 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
           },
         ),
         onTap: () {
+          // Null kontrol ve validation
+          if (contact.adSoyad.isEmpty || contact.email.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Kullanıcı bilgisi eksik! Lütfen tekrar deneyin.',
+                ),
+              ),
+            );
+            return;
+          }
+
+          // Debug log
+          print(
+            'DEBUG: Contact selected - ID: ${contact.uid}, Name: ${contact.adSoyad}, Email: ${contact.email}',
+          );
+
           Navigator.pop(context, contact);
         },
       ),
@@ -273,7 +302,8 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
 }
 
 class _AddContactSheet extends StatefulWidget {
-  const _AddContactSheet({Key? key}) : super(key: key);
+  final bool isNoteMode;
+  const _AddContactSheet({Key? key, this.isNoteMode = false}) : super(key: key);
 
   @override
   State<_AddContactSheet> createState() => __AddContactSheetState();
@@ -282,7 +312,7 @@ class _AddContactSheet extends StatefulWidget {
 class __AddContactSheetState extends State<_AddContactSheet> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  bool _isNoteMode = false;
+  late bool _isNoteMode;
   bool _isChecking = false;
   bool _userExists = false;
   Timer? _debounce;
@@ -291,6 +321,7 @@ class __AddContactSheetState extends State<_AddContactSheet> {
   @override
   void initState() {
     super.initState();
+    _isNoteMode = widget.isNoteMode;
     _emailController.addListener(_onEmailChanged);
   }
 
@@ -355,7 +386,7 @@ class __AddContactSheetState extends State<_AddContactSheet> {
       SavedContactModel(adSoyad: name, email: email, uid: user?.uid),
     );
 
-    Navigator.pop(context);
+    Navigator.pop(context, true); // Başarılı ekleme için true döndür
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$name kişilere eklendi.')));

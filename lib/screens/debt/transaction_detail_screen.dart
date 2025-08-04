@@ -36,9 +36,40 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _updateStatus(String newStatus) async {
+    if (_isProcessing) return;
+
     // Sadece 'pending' durumundaki işlemler için statü değişikliğine izin ver
     if (widget.debt.status == 'pending') {
-      await _firestoreService.updateDebtStatus(widget.debt.debtId!, newStatus);
+      setState(() => _isProcessing = true);
+
+      try {
+        await _firestoreService.updateDebtStatus(
+          widget.debt.debtId!,
+          newStatus,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                newStatus == 'approved'
+                    ? 'İşlem onaylandı.'
+                    : 'İşlem reddedildi.',
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Hata oluştu: $e')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isProcessing = false);
+        }
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -93,10 +124,50 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         actionsIconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {},
-            tooltip: 'Daha fazla',
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'delete') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('İşlemi Sil'),
+                    content: const Text(
+                      'Bu işlemi kalıcı olarak silmek istediğinize emin misiniz?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('İptal'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text(
+                          'Sil',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  // Firestore'dan silme işlemini çağır ve sonra geri git
+                  await _firestoreService.deleteDebt(widget.debt.debtId!);
+                  Navigator.pop(context);
+                }
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline, color: Colors.red),
+                  title: Text(
+                    'İşlemi Sil',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

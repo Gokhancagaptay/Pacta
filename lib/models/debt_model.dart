@@ -31,7 +31,6 @@ class DebtModel {
 
   Map<String, dynamic> toMap() {
     return {
-      'debtId': debtId,
       'borcluId': borcluId,
       'alacakliId': alacakliId,
       'miktar': miktar,
