@@ -9,11 +9,13 @@ class DebtModel {
   final double miktar;
   final String? aciklama;
   final DateTime islemTarihi;
-  final String status; // 'note', 'pending', 'approved', 'rejected'
+  final String
+  status; // 'note', 'pending', 'approved', 'rejected', 'pending_deletion'
   final bool isShared;
   final bool requiresApproval;
   final List<String> visibleto;
   final String? createdBy;
+  final String? deletionRequesterId;
 
   DebtModel({
     this.debtId,
@@ -27,6 +29,7 @@ class DebtModel {
     required this.requiresApproval,
     required this.visibleto,
     this.createdBy,
+    this.deletionRequesterId,
   });
 
   Map<String, dynamic> toMap() {
@@ -41,6 +44,7 @@ class DebtModel {
       'requiresApproval': requiresApproval,
       'visibleto': visibleto,
       'createdBy': createdBy,
+      'deletion_requester_id': deletionRequesterId,
     };
   }
 
@@ -57,6 +61,7 @@ class DebtModel {
       requiresApproval: map['requiresApproval'] ?? false,
       visibleto: List<String>.from(map['visibleto'] ?? []),
       createdBy: map['createdBy'],
+      deletionRequesterId: map['deletion_requester_id'],
     );
   }
 }

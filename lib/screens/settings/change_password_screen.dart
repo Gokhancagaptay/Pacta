@@ -56,41 +56,51 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF181A20) : const Color(0xFFF7F8FC);
+    final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Şifre Değiştir',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1A202C),
+            color: textMain,
+            fontSize: size.width * 0.05,
           ),
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: const Color(0xFFF7F8FC),
-        iconTheme: const IconThemeData(color: Color(0xFF1A202C)),
+        backgroundColor: bgColor,
+        iconTheme: IconThemeData(color: textMain),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(size.width * 0.04),
         child: Column(
           children: [
-            const SizedBox(height: 24),
+            SizedBox(height: size.height * 0.03),
             Text(
               'Güvenliğiniz için lütfen mevcut şifrenizi ve yeni şifrenizi girin.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: size.width * 0.038,
+              ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: size.height * 0.03),
             Card(
               elevation: 4.0,
               shadowColor: Colors.black.withOpacity(0.05),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(size.width * 0.04),
               ),
-              color: Colors.white,
+              color: cardColor,
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: EdgeInsets.all(size.width * 0.04),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -108,7 +118,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             ? 'Lütfen mevcut şifrenizi girin'
                             : null,
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: size.height * 0.02),
                       _buildPasswordTextField(
                         controller: _newPasswordController,
                         label: 'Yeni Şifre',
@@ -127,7 +137,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: size.height * 0.02),
                       _buildPasswordTextField(
                         controller: _confirmPasswordController,
                         label: 'Yeni Şifre (Tekrar)',
@@ -164,25 +174,34 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     required VoidCallback toggleVisibility,
     required FormFieldValidator<String> validator,
   }) {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fillColor = isDark ? const Color(0xFF2D3748) : Colors.white;
+
     return TextFormField(
       controller: controller,
       obscureText: !isVisible,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.green.shade600),
+        prefixIcon: Icon(
+          icon,
+          color: Colors.green.shade600,
+          size: size.width * 0.06,
+        ),
         suffixIcon: IconButton(
           icon: Icon(
             isVisible
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
+            size: size.width * 0.06,
           ),
           onPressed: toggleVisibility,
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: fillColor,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.0),
+          borderRadius: BorderRadius.circular(size.width * 0.03),
           borderSide: BorderSide.none,
         ),
       ),
@@ -190,27 +209,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Widget _buildUpdateButton() {
+    final size = MediaQuery.of(context).size;
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        MediaQuery.of(context).padding.bottom + 16,
+        size.width * 0.04,
+        size.width * 0.04,
+        size.width * 0.04,
+        MediaQuery.of(context).padding.bottom + size.height * 0.02,
       ),
       child: ElevatedButton(
         onPressed: _isLoading ? null : _changePassword,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green.shade600,
           foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
+          minimumSize: Size(double.infinity, size.height * 0.065),
           shape: const StadiumBorder(),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          textStyle: TextStyle(
+            fontSize: size.width * 0.04,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         child: _isLoading
-            ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(color: Colors.white),
+            ? SizedBox(
+                height: size.width * 0.06,
+                width: size.width * 0.06,
+                child: const CircularProgressIndicator(color: Colors.white),
               )
             : const Text('Şifreyi Güncelle'),
       ),

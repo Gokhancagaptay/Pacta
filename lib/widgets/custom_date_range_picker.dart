@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+
+// Bu fonksiyon custom date range picker dialog'unu gösterir
+Future<DateTimeRange?> showCustomDateRangePicker(
+  BuildContext context, {
+  DateTimeRange? initialDateRange,
+}) {
+  return showDialog<DateTimeRange>(
+    context: context,
+    builder: (context) =>
+        CustomDateRangePicker(initialDateRange: initialDateRange),
+  );
+}
 
 class CustomDateRangePicker extends StatefulWidget {
   final DateTimeRange? initialDateRange;
@@ -61,7 +72,7 @@ class _CustomDateRangePickerState extends State<CustomDateRangePicker> {
             TableCalendar(
               focusedDay: _focusedDay,
               firstDay: DateTime(2020),
-              lastDay: DateTime.now(),
+              lastDay: DateTime.now().add(const Duration(days: 365 * 5)),
               rangeStartDay: _rangeStart,
               rangeEndDay: _rangeEnd,
               onRangeSelected: _onRangeSelected,

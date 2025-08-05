@@ -9,6 +9,7 @@ import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:pacta/widgets/custom_date_range_picker.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'dart:async';
 
 class ContactAnalysisScreen extends StatefulWidget {
   final String contactId;
@@ -39,6 +40,12 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
   DateTimeRange? customDateRange;
   List<Map<String, dynamic>> filteredIslemler = [];
 
+  @override
+  void dispose() {
+    _hideCurrentTooltip();
+    super.dispose();
+  }
+
   // Sayı formatı yardımcı fonksiyonu
   String formatNumber(double number) {
     if (number.abs() >= 1000000) {
@@ -50,68 +57,62 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
     return '${number.toStringAsFixed(2)}₺';
   }
 
-  // Basit ve çalışır tooltip - SnackBar yaklaşımı
+  // Modern Baloncuk Tooltip - Overlay ile pozisyonlu gösterim
+  OverlayEntry? _currentTooltip;
+
   void _showCustomTooltip(
     BuildContext context,
     String fullAmount, {
     String? title,
+    GlobalKey? targetKey,
   }) {
     try {
+      // Önceki tooltip varsa kapat
+      _hideCurrentTooltip();
+
       final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      print('Tooltip tetiklendi: $fullAmount');
+      print('Baloncuk tooltip tetiklendi: $fullAmount');
 
-      // SnackBar ile güvenilir gösterim
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (title != null) ...[
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: isDark
-                          ? const Color(0xFF666666)
-                          : const Color(0xFFCCCCCC),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 2),
-                ],
-                Text(
-                  fullAmount,
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFF2D3748) : Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          backgroundColor: isDark ? Colors.white : const Color(0xFF2D3748),
-          duration: const Duration(milliseconds: 2500),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 8,
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      // Target widget'ın pozisyonunu bul
+      RenderBox? targetRenderBox;
+      Offset targetPosition = Offset.zero;
+      Size targetSize = Size.zero;
+
+      if (targetKey?.currentContext != null) {
+        targetRenderBox =
+            targetKey!.currentContext!.findRenderObject() as RenderBox?;
+        if (targetRenderBox != null) {
+          targetPosition = targetRenderBox.localToGlobal(Offset.zero);
+          targetSize = targetRenderBox.size;
+        }
+      }
+
+      // Overlay entry oluştur
+      _currentTooltip = OverlayEntry(
+        builder: (context) => _BubbleTooltip(
+          position: targetPosition,
+          targetSize: targetSize,
+          fullAmount: fullAmount,
+          title: title,
+          isDark: isDark,
+          onDismiss: _hideCurrentTooltip,
         ),
       );
 
-      print('Tooltip gösterildi: $fullAmount');
+      // Overlay'e ekle
+      Overlay.of(context).insert(_currentTooltip!);
+
+      // 3 saniye sonra otomatik kapat
+      Timer(const Duration(seconds: 3), () {
+        _hideCurrentTooltip();
+      });
+
+      print('Baloncuk tooltip gösterildi: $fullAmount');
     } catch (e) {
       print('Tooltip gösterme hatası: $e');
 
-      // En basit fallback
+      // Fallback: basit SnackBar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${title ?? "Tam Tutar"}: $fullAmount'),
@@ -119,6 +120,11 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         ),
       );
     }
+  }
+
+  void _hideCurrentTooltip() {
+    _currentTooltip?.remove();
+    _currentTooltip = null;
   }
 
   // Modern Pie Chart Tooltip
@@ -1318,55 +1324,66 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     GestureDetector(
-                                      onTap: () {
-                                        final fullAmount =
-                                            alacaklarim - borclarim;
-                                        _showCustomTooltip(
-                                          context,
-                                          '${fullAmount.toStringAsFixed(2)}₺',
-                                          title: 'Net Bakiye',
-                                        );
-                                      },
-                                      onLongPress: () {
-                                        final fullAmount =
-                                            alacaklarim - borclarim;
-                                        _showCustomTooltip(
-                                          context,
-                                          '${fullAmount.toStringAsFixed(2)}₺',
-                                          title: 'Net Bakiye',
-                                        );
-                                      },
-                                      child: MouseRegion(
-                                        onEnter: (_) {
-                                          if (Theme.of(context).platform ==
-                                                  TargetPlatform.windows ||
-                                              Theme.of(context).platform ==
-                                                  TargetPlatform.macOS ||
-                                              Theme.of(context).platform ==
-                                                  TargetPlatform.linux) {
-                                            final fullAmount =
-                                                alacaklarim - borclarim;
-                                            _showCustomTooltip(
-                                              context,
-                                              '${fullAmount.toStringAsFixed(2)}₺',
-                                              title: 'Net Bakiye',
-                                            );
-                                          }
+                                      child: Builder(
+                                        builder: (context) {
+                                          final tooltipKey = GlobalKey();
+
+                                          return GestureDetector(
+                                            onLongPress: () {
+                                              final fullAmount =
+                                                  alacaklarim - borclarim;
+                                              _showCustomTooltip(
+                                                context,
+                                                '${fullAmount.toStringAsFixed(2)}₺',
+                                                title: 'Net Bakiye',
+                                                targetKey: tooltipKey,
+                                              );
+                                            },
+                                            child: MouseRegion(
+                                              onEnter: (_) {
+                                                if (Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform
+                                                            .windows ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.macOS ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.linux) {
+                                                  final fullAmount =
+                                                      alacaklarim - borclarim;
+                                                  _showCustomTooltip(
+                                                    context,
+                                                    '${fullAmount.toStringAsFixed(2)}₺',
+                                                    title: 'Net Bakiye',
+                                                    targetKey: tooltipKey,
+                                                  );
+                                                }
+                                              },
+                                              child: AutoSizeText(
+                                                key: tooltipKey,
+                                                formatNumber(
+                                                  alacaklarim - borclarim,
+                                                ),
+                                                style: TextStyle(
+                                                  fontSize: 22,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDark
+                                                      ? Colors.white
+                                                      : const Color(0xFF1A202C),
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 1,
+                                                minFontSize: 12,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          );
                                         },
-                                        child: AutoSizeText(
-                                          formatNumber(alacaklarim - borclarim),
-                                          style: TextStyle(
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark
-                                                ? Colors.white
-                                                : const Color(0xFF1A202C),
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          maxLines: 1,
-                                          minFontSize: 12,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 2),
@@ -1437,48 +1454,57 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                           color: textSec,
                                         ),
                                       ),
-                                      GestureDetector(
-                                        onTap: () {
-                                          _showCustomTooltip(
-                                            context,
-                                            '${borclarim.toStringAsFixed(2)}₺',
-                                            title: 'Borçlarım',
-                                          );
-                                        },
-                                        onLongPress: () {
-                                          _showCustomTooltip(
-                                            context,
-                                            '${borclarim.toStringAsFixed(2)}₺',
-                                            title: 'Borçlarım',
-                                          );
-                                        },
-                                        child: MouseRegion(
-                                          onEnter: (_) {
-                                            if (Theme.of(context).platform ==
-                                                    TargetPlatform.windows ||
-                                                Theme.of(context).platform ==
-                                                    TargetPlatform.macOS ||
-                                                Theme.of(context).platform ==
-                                                    TargetPlatform.linux) {
+                                      Builder(
+                                        builder: (context) {
+                                          final tooltipKey = GlobalKey();
+
+                                          return GestureDetector(
+                                            onLongPress: () {
                                               _showCustomTooltip(
                                                 context,
                                                 '${borclarim.toStringAsFixed(2)}₺',
                                                 title: 'Borçlarım',
+                                                targetKey: tooltipKey,
                                               );
-                                            }
-                                          },
-                                          child: AutoSizeText(
-                                            formatNumber(borclarim),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color: textMain,
+                                            },
+                                            child: MouseRegion(
+                                              onEnter: (_) {
+                                                if (Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform
+                                                            .windows ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.macOS ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.linux) {
+                                                  _showCustomTooltip(
+                                                    context,
+                                                    '${borclarim.toStringAsFixed(2)}₺',
+                                                    title: 'Borçlarım',
+                                                    targetKey: tooltipKey,
+                                                  );
+                                                }
+                                              },
+                                              child: AutoSizeText(
+                                                key: tooltipKey,
+                                                formatNumber(borclarim),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                  color: textMain,
+                                                ),
+                                                maxLines: 1,
+                                                minFontSize: 9,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
-                                            maxLines: 1,
-                                            minFontSize: 9,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
+                                          );
+                                        },
                                       ),
                                     ],
                                   ),
@@ -1527,48 +1553,57 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                           color: textSec,
                                         ),
                                       ),
-                                      GestureDetector(
-                                        onTap: () {
-                                          _showCustomTooltip(
-                                            context,
-                                            '${alacaklarim.toStringAsFixed(2)}₺',
-                                            title: 'Alacaklarım',
-                                          );
-                                        },
-                                        onLongPress: () {
-                                          _showCustomTooltip(
-                                            context,
-                                            '${alacaklarim.toStringAsFixed(2)}₺',
-                                            title: 'Alacaklarım',
-                                          );
-                                        },
-                                        child: MouseRegion(
-                                          onEnter: (_) {
-                                            if (Theme.of(context).platform ==
-                                                    TargetPlatform.windows ||
-                                                Theme.of(context).platform ==
-                                                    TargetPlatform.macOS ||
-                                                Theme.of(context).platform ==
-                                                    TargetPlatform.linux) {
+                                      Builder(
+                                        builder: (context) {
+                                          final tooltipKey = GlobalKey();
+
+                                          return GestureDetector(
+                                            onLongPress: () {
                                               _showCustomTooltip(
                                                 context,
                                                 '${alacaklarim.toStringAsFixed(2)}₺',
                                                 title: 'Alacaklarım',
+                                                targetKey: tooltipKey,
                                               );
-                                            }
-                                          },
-                                          child: AutoSizeText(
-                                            formatNumber(alacaklarim),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color: textMain,
+                                            },
+                                            child: MouseRegion(
+                                              onEnter: (_) {
+                                                if (Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform
+                                                            .windows ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.macOS ||
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.linux) {
+                                                  _showCustomTooltip(
+                                                    context,
+                                                    '${alacaklarim.toStringAsFixed(2)}₺',
+                                                    title: 'Alacaklarım',
+                                                    targetKey: tooltipKey,
+                                                  );
+                                                }
+                                              },
+                                              child: AutoSizeText(
+                                                key: tooltipKey,
+                                                formatNumber(alacaklarim),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                  color: textMain,
+                                                ),
+                                                maxLines: 1,
+                                                minFontSize: 9,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
-                                            maxLines: 1,
-                                            minFontSize: 9,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
+                                          );
+                                        },
                                       ),
                                     ],
                                   ),
@@ -1618,48 +1653,60 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                             color: textSec,
                                           ),
                                         ),
-                                        GestureDetector(
-                                          onTap: () {
-                                            _showCustomTooltip(
-                                              context,
-                                              '${notAlacaklarim.toStringAsFixed(2)}₺',
-                                              title: 'Not Alacaklarım',
-                                            );
-                                          },
-                                          onLongPress: () {
-                                            _showCustomTooltip(
-                                              context,
-                                              '${notAlacaklarim.toStringAsFixed(2)}₺',
-                                              title: 'Not Alacaklarım',
-                                            );
-                                          },
-                                          child: MouseRegion(
-                                            onEnter: (_) {
-                                              if (Theme.of(context).platform ==
-                                                      TargetPlatform.windows ||
-                                                  Theme.of(context).platform ==
-                                                      TargetPlatform.macOS ||
-                                                  Theme.of(context).platform ==
-                                                      TargetPlatform.linux) {
+                                        Builder(
+                                          builder: (context) {
+                                            final tooltipKey = GlobalKey();
+
+                                            return GestureDetector(
+                                              onLongPress: () {
                                                 _showCustomTooltip(
                                                   context,
                                                   '${notAlacaklarim.toStringAsFixed(2)}₺',
                                                   title: 'Not Alacaklarım',
+                                                  targetKey: tooltipKey,
                                                 );
-                                              }
-                                            },
-                                            child: AutoSizeText(
-                                              formatNumber(notAlacaklarim),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: textMain,
+                                              },
+                                              child: MouseRegion(
+                                                onEnter: (_) {
+                                                  if (Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .windows ||
+                                                      Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .macOS ||
+                                                      Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .linux) {
+                                                    _showCustomTooltip(
+                                                      context,
+                                                      '${notAlacaklarim.toStringAsFixed(2)}₺',
+                                                      title: 'Not Alacaklarım',
+                                                      targetKey: tooltipKey,
+                                                    );
+                                                  }
+                                                },
+                                                child: AutoSizeText(
+                                                  key: tooltipKey,
+                                                  formatNumber(notAlacaklarim),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    color: textMain,
+                                                  ),
+                                                  maxLines: 1,
+                                                  minFontSize: 9,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
                                               ),
-                                              maxLines: 1,
-                                              minFontSize: 9,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -1704,48 +1751,60 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
                                             color: textSec,
                                           ),
                                         ),
-                                        GestureDetector(
-                                          onTap: () {
-                                            _showCustomTooltip(
-                                              context,
-                                              '${notBorclarim.toStringAsFixed(2)}₺',
-                                              title: 'Not Borçlarım',
-                                            );
-                                          },
-                                          onLongPress: () {
-                                            _showCustomTooltip(
-                                              context,
-                                              '${notBorclarim.toStringAsFixed(2)}₺',
-                                              title: 'Not Borçlarım',
-                                            );
-                                          },
-                                          child: MouseRegion(
-                                            onEnter: (_) {
-                                              if (Theme.of(context).platform ==
-                                                      TargetPlatform.windows ||
-                                                  Theme.of(context).platform ==
-                                                      TargetPlatform.macOS ||
-                                                  Theme.of(context).platform ==
-                                                      TargetPlatform.linux) {
+                                        Builder(
+                                          builder: (context) {
+                                            final tooltipKey = GlobalKey();
+
+                                            return GestureDetector(
+                                              onLongPress: () {
                                                 _showCustomTooltip(
                                                   context,
                                                   '${notBorclarim.toStringAsFixed(2)}₺',
                                                   title: 'Not Borçlarım',
+                                                  targetKey: tooltipKey,
                                                 );
-                                              }
-                                            },
-                                            child: AutoSizeText(
-                                              formatNumber(notBorclarim),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: textMain,
+                                              },
+                                              child: MouseRegion(
+                                                onEnter: (_) {
+                                                  if (Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .windows ||
+                                                      Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .macOS ||
+                                                      Theme.of(
+                                                            context,
+                                                          ).platform ==
+                                                          TargetPlatform
+                                                              .linux) {
+                                                    _showCustomTooltip(
+                                                      context,
+                                                      '${notBorclarim.toStringAsFixed(2)}₺',
+                                                      title: 'Not Borçlarım',
+                                                      targetKey: tooltipKey,
+                                                    );
+                                                  }
+                                                },
+                                                child: AutoSizeText(
+                                                  key: tooltipKey,
+                                                  formatNumber(notBorclarim),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    color: textMain,
+                                                  ),
+                                                  maxLines: 1,
+                                                  minFontSize: 9,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
                                               ),
-                                              maxLines: 1,
-                                              minFontSize: 9,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -2057,4 +2116,246 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
             ),
     );
   }
+}
+
+// 🎨 Modern Baloncuk Tooltip Widget - Contact Analysis için
+class _BubbleTooltip extends StatefulWidget {
+  final Offset position;
+  final Size targetSize;
+  final String fullAmount;
+  final String? title;
+  final bool isDark;
+  final VoidCallback onDismiss;
+
+  const _BubbleTooltip({
+    required this.position,
+    required this.targetSize,
+    required this.fullAmount,
+    this.title,
+    required this.isDark,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_BubbleTooltip> createState() => _BubbleTooltipState();
+}
+
+class _BubbleTooltipState extends State<_BubbleTooltip>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Animasyon kontrolcüsü
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    // Büyüme animasyonu
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
+
+    // Opacity animasyonu
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    // Animasyonu başlat
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Ekran boyutları
+    final screenSize = MediaQuery.of(context).size;
+
+    // Baloncuk boyutları
+    const tooltipWidth = 160.0;
+    const tooltipHeight = 60.0;
+    const arrowHeight = 8.0;
+
+    // Target'ın merkezi
+    final targetCenter = Offset(
+      widget.position.dx + (widget.targetSize.width / 2),
+      widget.position.dy + (widget.targetSize.height / 2),
+    );
+
+    // Baloncuk pozisyonunu hesapla (target'ın üstünde)
+    double tooltipX = targetCenter.dx - (tooltipWidth / 2);
+    double tooltipY = widget.position.dy - tooltipHeight - arrowHeight - 8;
+
+    // Ekran sınırları kontrolü
+    if (tooltipX < 16) tooltipX = 16;
+    if (tooltipX + tooltipWidth > screenSize.width - 16) {
+      tooltipX = screenSize.width - tooltipWidth - 16;
+    }
+
+    // Eğer üstte yer yoksa alt tarafa yerleştir
+    bool showBelow = false;
+    if (tooltipY < 50) {
+      tooltipY =
+          widget.position.dy + widget.targetSize.height + arrowHeight + 8;
+      showBelow = true;
+    }
+
+    // Ok pozisyonu (her zaman target'ın merkezini gösterir)
+    final arrowX = targetCenter.dx - tooltipX;
+
+    return GestureDetector(
+      onTap: widget.onDismiss,
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        width: screenSize.width,
+        height: screenSize.height,
+        child: AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            return Stack(
+              children: [
+                // Baloncuk
+                Positioned(
+                  left: tooltipX,
+                  top: tooltipY,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Opacity(
+                      opacity: _opacityAnimation.value,
+                      child: Container(
+                        width: tooltipWidth,
+                        height: tooltipHeight,
+                        child: Stack(
+                          children: [
+                            // Ana baloncuk gövdesi
+                            Container(
+                              width: tooltipWidth,
+                              height: tooltipHeight,
+                              decoration: BoxDecoration(
+                                color: widget.isDark
+                                    ? const Color(0xFF2D3748).withOpacity(0.95)
+                                    : Colors.white.withOpacity(0.95),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: widget.isDark
+                                      ? Colors.grey.withOpacity(0.3)
+                                      : Colors.grey.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(
+                                      widget.isDark ? 0.4 : 0.15,
+                                    ),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (widget.title != null) ...[
+                                    Text(
+                                      widget.title!,
+                                      style: TextStyle(
+                                        color: widget.isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 2),
+                                  ],
+                                  Text(
+                                    widget.fullAmount,
+                                    style: TextStyle(
+                                      color: widget.isDark
+                                          ? Colors.white
+                                          : const Color(0xFF1A202C),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Ok (Pointer)
+                            Positioned(
+                              left: arrowX.clamp(8.0, tooltipWidth - 16.0) - 8,
+                              top: showBelow ? -arrowHeight : tooltipHeight,
+                              child: CustomPaint(
+                                painter: _ArrowPainter(
+                                  color: widget.isDark
+                                      ? const Color(
+                                          0xFF2D3748,
+                                        ).withOpacity(0.95)
+                                      : Colors.white.withOpacity(0.95),
+                                  pointsUp: !showBelow,
+                                ),
+                                size: const Size(16, 8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// 🎯 Ok Çizer (Arrow Painter) - Contact Analysis için
+class _ArrowPainter extends CustomPainter {
+  final Color color;
+  final bool pointsUp;
+
+  _ArrowPainter({required this.color, required this.pointsUp});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+
+    if (pointsUp) {
+      // Yukarı ok
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(0, size.height);
+      path.lineTo(size.width, size.height);
+    } else {
+      // Aşağı ok
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    }
+
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

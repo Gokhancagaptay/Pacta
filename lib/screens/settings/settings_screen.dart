@@ -16,6 +16,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
     final user = FirebaseAuth.instance.currentUser;
     final themeMode = ref.watch(themeProvider);
     final isDark = theme.brightness == Brightness.dark;
@@ -31,7 +32,11 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(
           'Ayarlar',
-          style: TextStyle(fontWeight: FontWeight.bold, color: textMain),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: textMain,
+            fontSize: size.width * 0.05,
+          ),
         ),
         centerTitle: true,
         elevation: 0,
@@ -43,19 +48,17 @@ class SettingsScreen extends ConsumerWidget {
         builder: (context, snapshot) {
           final userModel = snapshot.data;
           return ListView(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(size.width * 0.04),
             children: [
-              // --- Profil Bilgileri ---
               if (userModel != null) ...[
                 _UserProfileHeader(
                   user: userModel,
                   cardBg: cardBg,
                   borderColor: borderColor,
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: size.height * 0.03),
               ],
 
-              // --- Hesap Bölümü ---
               _SettingsSection(
                 title: 'Hesap',
                 cardBg: cardBg,
@@ -77,9 +80,8 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: size.height * 0.02),
 
-              // --- Genel Ayarlar Bölümü ---
               _SettingsSection(
                 title: 'Genel',
                 cardBg: cardBg,
@@ -121,9 +123,8 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: size.height * 0.02),
 
-              // --- Diğer Bölümü ---
               _SettingsSection(
                 title: 'Diğer',
                 cardBg: cardBg,
@@ -147,14 +148,16 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
 
-              const SizedBox(height: 32),
+              SizedBox(height: size.height * 0.04),
 
-              // --- Çıkış Yap Butonu ---
               ElevatedButton.icon(
                 icon: const Icon(Icons.logout, color: Colors.white),
-                label: const Text(
+                label: Text(
                   'Çıkış Yap',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: size.width * 0.045,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onPressed: () async {
                   await AuthService().signOut();
@@ -166,9 +169,9 @@ class SettingsScreen extends ConsumerWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF87171),
                   foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 54),
+                  minimumSize: Size(double.infinity, size.height * 0.07),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(size.width * 0.045),
                   ),
                   elevation: 0,
                 ),
@@ -181,27 +184,25 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-// --- Yardımcı Widget'lar ---
-
 class _UserProfileHeader extends StatelessWidget {
   final UserModel user;
   final Color cardBg;
   final Color borderColor;
   const _UserProfileHeader({
-    Key? key,
     required this.user,
     required this.cardBg,
     required this.borderColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
     return Container(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(size.width * 0.045),
         border: Border.all(color: borderColor, width: 1),
         boxShadow: [
           BoxShadow(
@@ -214,7 +215,7 @@ class _UserProfileHeader extends StatelessWidget {
       child: Row(
         children: [
           CircleAvatar(
-            radius: 30,
+            radius: size.width * 0.075,
             backgroundColor: theme.colorScheme.primary.withOpacity(0.13),
             child: Text(
               user.adSoyad?.isNotEmpty ?? false
@@ -222,12 +223,12 @@ class _UserProfileHeader extends StatelessWidget {
                   : (user.email[0].toUpperCase()),
               style: TextStyle(
                 color: theme.colorScheme.primary,
-                fontSize: 24,
+                fontSize: size.width * 0.06,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: size.width * 0.04),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,12 +237,14 @@ class _UserProfileHeader extends StatelessWidget {
                   user.adSoyad ?? 'İsim Belirtilmemiş',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
+                    fontSize: size.width * 0.05,
                   ),
                 ),
                 Text(
                   user.email,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: size.width * 0.038,
                   ),
                 ),
               ],
@@ -259,26 +262,30 @@ class _SettingsSection extends StatelessWidget {
   final Color cardBg;
   final Color borderColor;
   const _SettingsSection({
-    Key? key,
     required this.title,
     required this.tiles,
     required this.cardBg,
     required this.borderColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 12.0, bottom: 8.0, top: 8.0),
+          padding: EdgeInsets.only(
+            left: size.width * 0.03,
+            bottom: size.height * 0.01,
+            top: size.height * 0.01,
+          ),
           child: Text(
             title,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: size.width * 0.04,
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
@@ -286,7 +293,7 @@ class _SettingsSection extends StatelessWidget {
         Container(
           decoration: BoxDecoration(
             color: cardBg,
-            borderRadius: BorderRadius.circular(18.0),
+            borderRadius: BorderRadius.circular(size.width * 0.045),
             border: Border.all(color: borderColor, width: 1),
           ),
           child: Column(children: tiles),
@@ -302,20 +309,22 @@ class _SettingsTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SettingsTile({
-    Key? key,
     required this.icon,
     required this.title,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return ListTile(
       onTap: onTap,
-      leading: Icon(icon),
-      title: Text(title),
-      trailing: const Icon(Icons.chevron_right),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)),
+      leading: Icon(icon, size: size.width * 0.06),
+      title: Text(title, style: TextStyle(fontSize: size.width * 0.042)),
+      trailing: Icon(Icons.chevron_right, size: size.width * 0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(size.width * 0.045),
+      ),
     );
   }
 }

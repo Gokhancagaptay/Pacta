@@ -26,14 +26,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return FirebaseFirestore.instance
         .collection('notifications')
         .where('toUserId', isEqualTo: uid)
-        .where('isRead', whereIn: [true, false])
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
+        .map((snapshot) {
+          final notifications = snapshot.docs
               .map((doc) => NotificationModel.fromFirestore(doc))
-              .toList(),
-        );
+              .toList();
+          // Sıralamayı sunucu yerine istemci tarafında yapıyoruz.
+          notifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return notifications;
+        });
   }
 
   @override
@@ -115,7 +116,7 @@ class _NotificationCardState extends State<_NotificationCard> {
   bool _isProcessing = false;
 
   Future<void> _handleApproval(bool isApproved) async {
-    if (_isProcessing) return;
+    if (_isProcessing || widget.notification.relatedDebtId == null) return;
     setState(() => _isProcessing = true);
 
     try {
@@ -125,32 +126,11 @@ class _NotificationCardState extends State<_NotificationCard> {
         newStatus,
       );
 
-      final senderName = await _firestoreService.getUserNameById(
-        widget.notification.createdById ?? '',
-      );
-
-      final newTitle = isApproved ? 'Talep Onaylandı' : 'Talep Reddedildi';
-      final newMessage = isApproved
-          ? '$senderName kullanıcısından gelen ${widget.notification.amount.toStringAsFixed(2)}₺ tutarındaki talebi onayladınız.'
-          : '$senderName kullanıcısından gelen ${widget.notification.amount.toStringAsFixed(2)}₺ tutarındaki talebi reddettiniz.';
-
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(widget.notification.id)
-          .update({
-            'type': isApproved
-                ? 'request_approved_local'
-                : 'request_rejected_local', // Türü güncelleyerek işlem butonlarını kaldırıyoruz
-            'message': newMessage,
-            'title': newTitle,
-            'isRead': true, // Okunmuş olarak işaretle
-          });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              isApproved ? 'Talep onaylandı.' : 'Talep reddedildi.',
+              isApproved ? 'İşlem onaylandı.' : 'İşlem reddedildi.',
             ),
           ),
         );
@@ -159,7 +139,7 @@ class _NotificationCardState extends State<_NotificationCard> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Hata oluştu: $e')));
+        ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
       }
     } finally {
       if (mounted) {
@@ -168,48 +148,61 @@ class _NotificationCardState extends State<_NotificationCard> {
     }
   }
 
-  Widget _buildLeadingIcon(DebtModel? currentDebt) {
+  Future<void> _handleDeleteRequestResponse(bool approved) async {
+    if (_isProcessing || widget.notification.relatedDebtId == null) return;
+    setState(() => _isProcessing = true);
+
+    try {
+      await _firestoreService.respondToDeleteRequest(
+        widget.notification.relatedDebtId!,
+        approved,
+        _auth.currentUser!.uid,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              approved ? 'Silme talebi onaylandı.' : 'Silme talebi reddedildi.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  Widget _buildLeadingIcon() {
     final notification = widget.notification;
     Color bgColor;
     IconData iconData;
 
     final String type = notification.type;
-    final String title = notification.title.toLowerCase();
 
-    // Eğer gerçek zamanlı borç durumu varsa, ona göre icon belirle
-    if (currentDebt != null) {
-      if (currentDebt.status == 'approved') {
-        bgColor = Colors.green;
-        iconData = Icons.check_circle_outline;
-      } else if (currentDebt.status == 'rejected') {
-        bgColor = Colors.red;
-        iconData = Icons.highlight_off;
-      } else if (currentDebt.status == 'pending' &&
-          type == 'approval_request') {
-        bgColor = Colors.blueGrey.shade400;
-        iconData = Icons.add_circle_outline;
-      } else {
-        bgColor = Colors.blue;
-        iconData = Icons.notifications;
-      }
+    if (type == 'deletion_request') {
+      bgColor = Colors.orange;
+      iconData = Icons.delete_sweep_outlined;
+    } else if (type == 'approval_request') {
+      bgColor = Colors.blueGrey.shade400;
+      iconData = Icons.add_circle_outline;
+    } else if (type == 'request_approved' || type == 'deletion_approved') {
+      bgColor = Colors.green;
+      iconData = Icons.check_circle_outline;
+    } else if (type == 'request_rejected' || type == 'deletion_rejected') {
+      bgColor = Colors.red;
+      iconData = Icons.highlight_off;
     } else {
-      // Mevcut mantık (gerçek zamanlı borç durumu yok)
-      if (type == 'approval_request') {
-        bgColor = Colors.blueGrey.shade400;
-        iconData = Icons.add_circle_outline;
-      } else if (title.contains('onayladı') || title.contains('onaylandı')) {
-        bgColor = Colors.green;
-        iconData = Icons.check_circle_outline;
-      } else if (title.contains('reddetti') ||
-          title.contains('reddedildi') ||
-          type == 'request_rejected' ||
-          type == 'request_rejected_local') {
-        bgColor = Colors.red;
-        iconData = Icons.highlight_off;
-      } else {
-        bgColor = Colors.blue;
-        iconData = Icons.notifications;
-      }
+      bgColor = Colors.blue;
+      iconData = Icons.notifications;
     }
 
     return CircleAvatar(
@@ -219,41 +212,20 @@ class _NotificationCardState extends State<_NotificationCard> {
   }
 
   Widget _buildContent(DebtModel? currentDebt) {
-    return FutureBuilder<String>(
-      future: _firestoreService.getUserNameById(
-        widget.notification.createdById ?? '',
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Yükleniyor...',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 4),
-            ],
-          );
-        }
-
-        final senderName = snapshot.data ?? 'Bilinmeyen Kullanıcı';
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [_buildTitle(senderName, currentDebt), _buildSubtitle()],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [_buildTitle(currentDebt), _buildSubtitle()],
     );
   }
 
-  RichText _buildTitle(String senderName, DebtModel? currentDebt) {
+  RichText _buildTitle(DebtModel? currentDebt) {
     final theme = Theme.of(context);
     final notification = widget.notification;
-    final currentUserId = _auth.currentUser?.uid;
     final isUnread =
-        !notification.isRead && notification.type == 'approval_request';
+        !notification.isRead &&
+        (notification.type == 'approval_request' ||
+            notification.type == 'deletion_request');
 
     final defaultStyle = theme.textTheme.bodyMedium!.copyWith(
       color: theme.colorScheme.onSurface,
@@ -261,25 +233,22 @@ class _NotificationCardState extends State<_NotificationCard> {
     );
     final boldStyle = defaultStyle.copyWith(fontWeight: FontWeight.bold);
 
-    // Doğru mantık: Bildirim alan kişi (currentUser) alacaklı mı borçlu mu?
-    bool isCurrentUserCreditor = currentUserId == notification.creditorId;
-    String sign = isCurrentUserCreditor ? '+' : '-';
+    bool isCurrentUserCreditor =
+        _auth.currentUser?.uid == notification.creditorId;
     Color amountColor = isCurrentUserCreditor ? Colors.green : Colors.red;
 
-    final amountText = '$sign${notification.amount.toStringAsFixed(2)}₺';
-
-    // Eğer gerçek zamanlı borç durumu varsa ve durum değişmişse mesajı güncelle
     String message = notification.message;
-    if (currentDebt != null &&
-        currentDebt.status != 'pending' &&
-        notification.type == 'approval_request') {
-      if (currentDebt.status == 'approved') {
+    // Eğer işlem sonuçlandıysa, mesajı güncelle
+    if (currentDebt != null) {
+      if (notification.type == 'approval_request' &&
+          currentDebt.status != 'pending') {
         message =
-            '$senderName kullanıcısından gelen ${notification.amount.toStringAsFixed(2)}₺ tutarındaki talebi onayladınız.';
-      } else if (currentDebt.status == 'rejected') {
-        message =
-            '$senderName kullanıcısından gelen ${notification.amount.toStringAsFixed(2)}₺ tutarındaki talebi reddettiniz.';
+            '${currentDebt.miktar.toStringAsFixed(2)}₺ tutarındaki işlemi ${currentDebt.status == 'approved' ? 'onayladınız' : 'reddettiniz'}.';
       }
+    } else if (notification.type == 'deletion_request' && currentDebt == null) {
+      // Borç silindiğinde currentDebt null gelir
+      message =
+          '${notification.amount.toStringAsFixed(2)}₺ tutarındaki işlemin silinmesini onayladınız.';
     }
 
     final amountRegex = RegExp(r'(\d[\d,.]*₺)');
@@ -290,13 +259,13 @@ class _NotificationCardState extends State<_NotificationCard> {
       spans.add(TextSpan(text: message.substring(0, amountMatch.start)));
       spans.add(
         TextSpan(
-          text: amountText,
+          text: amountMatch.group(0)!,
           style: boldStyle.copyWith(color: amountColor),
         ),
       );
       spans.add(TextSpan(text: message.substring(amountMatch.end)));
     } else {
-      spans.add(TextSpan(text: message));
+      spans.add(TextSpan(text: message, style: defaultStyle));
     }
 
     return RichText(
@@ -318,43 +287,17 @@ class _NotificationCardState extends State<_NotificationCard> {
     );
   }
 
-  Widget _buildTrailing(bool showActionButtons, DebtModel? currentDebt) {
-    // Eğer gerçek zamanlı borç durumu varsa ve işlem tamamlanmışsa durum göster
-    if (currentDebt != null && currentDebt.status != 'pending') {
-      String statusText;
-      Color statusColor;
+  Widget _buildTrailing(DebtModel? currentDebt) {
+    final notification = widget.notification;
+    final currentUserId = _auth.currentUser!.uid;
 
-      if (currentDebt.status == 'approved') {
-        statusText = 'Onaylandı';
-        statusColor = Colors.green;
-      } else if (currentDebt.status == 'rejected') {
-        statusText = 'Reddedildi';
-        statusColor = Colors.red;
-      } else {
-        statusText = currentDebt.status;
-        statusColor = Colors.grey;
-      }
+    final bool isActionable =
+        (notification.type == 'approval_request' &&
+            (currentDebt?.status == 'pending')) ||
+        (notification.type == 'deletion_request' &&
+            (currentDebt?.status == 'pending_deletion'));
 
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: statusColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: statusColor.withOpacity(0.3)),
-        ),
-        child: Text(
-          statusText,
-          style: TextStyle(
-            color: statusColor,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    // Eğer onay bekleyen bir işlemse ve butonlar gösterilecekse
-    if (showActionButtons) {
+    if (isActionable && notification.createdById != currentUserId) {
       return _isProcessing
           ? const SizedBox(
               width: 50,
@@ -366,19 +309,22 @@ class _NotificationCardState extends State<_NotificationCard> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.red),
-                  onPressed: () => _handleApproval(false),
+                  onPressed: () => notification.type == 'approval_request'
+                      ? _handleApproval(false)
+                      : _handleDeleteRequestResponse(false),
                   tooltip: 'Reddet',
                 ),
                 IconButton(
                   icon: const Icon(Icons.check, color: Colors.green),
-                  onPressed: () => _handleApproval(true),
+                  onPressed: () => notification.type == 'approval_request'
+                      ? _handleApproval(true)
+                      : _handleDeleteRequestResponse(true),
                   tooltip: 'Onayla',
                 ),
               ],
             );
     }
 
-    // Normal durum - sadece ok işareti
     return Icon(
       Icons.chevron_right,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -389,19 +335,17 @@ class _NotificationCardState extends State<_NotificationCard> {
     final debtId = widget.notification.relatedDebtId;
     if (debtId == null) return;
 
-    // Önce borç verisini Firestore'dan çek
     final debtDoc = await _firestoreService.debtsRef.doc(debtId).get();
     if (!debtDoc.exists) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('İlgili işlem bulunamadı.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İlgili işlem artık mevcut değil.')),
+      );
       return;
     }
 
     final debt = debtDoc.data();
     if (debt == null) return;
 
-    // Sonra TransactionDetailScreen'e yönlendir
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -416,25 +360,22 @@ class _NotificationCardState extends State<_NotificationCard> {
     final theme = Theme.of(context);
     final notification = widget.notification;
 
-    // Eğer notification'ın ilgili borcu varsa, gerçek zamanlı durumunu takip et
-    if (notification.relatedDebtId != null &&
-        notification.type == 'approval_request') {
+    final bool isActionableRequest =
+        notification.type == 'approval_request' ||
+        notification.type == 'deletion_request';
+
+    if (notification.relatedDebtId != null && isActionableRequest) {
       return StreamBuilder<DebtModel?>(
         stream: _firestoreService.getDebtByIdStream(
           notification.relatedDebtId!,
         ),
         builder: (context, debtSnapshot) {
-          if (!debtSnapshot.hasData) {
-            return _buildNotificationCard(theme, notification, null);
-          }
-
-          final currentDebt = debtSnapshot.data!;
+          final currentDebt = debtSnapshot.data;
           return _buildNotificationCard(theme, notification, currentDebt);
         },
       );
     }
 
-    // Normal notification (ilgili borç yok)
     return _buildNotificationCard(theme, notification, null);
   }
 
@@ -443,19 +384,10 @@ class _NotificationCardState extends State<_NotificationCard> {
     NotificationModel notification,
     DebtModel? currentDebt,
   ) {
-    // Eğer ilgili borç varsa ve durumu değişmişse, notification tipini güncelle
-    bool isApprovalRequest = notification.type == 'approval_request';
-    bool showActionButtons = isApprovalRequest;
-
-    if (currentDebt != null) {
-      // Borç durumu 'pending' değilse, artık onay beklemez
-      if (currentDebt.status != 'pending') {
-        showActionButtons = false;
-        isApprovalRequest = false;
-      }
-    }
-
-    final isUnread = !notification.isRead && isApprovalRequest;
+    final isUnread =
+        !notification.isRead &&
+        (notification.type == 'approval_request' ||
+            notification.type == 'deletion_request');
 
     return Card(
       elevation: 0,
@@ -478,10 +410,10 @@ class _NotificationCardState extends State<_NotificationCard> {
                   ),
                   child: Row(
                     children: [
-                      _buildLeadingIcon(currentDebt),
+                      _buildLeadingIcon(),
                       const SizedBox(width: 12.0),
                       Expanded(child: _buildContent(currentDebt)),
-                      _buildTrailing(showActionButtons, currentDebt),
+                      _buildTrailing(currentDebt),
                     ],
                   ),
                 ),

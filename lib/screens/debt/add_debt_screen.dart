@@ -162,46 +162,6 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
           'DEBUG: Debt details - borcluId: ${newDebt.borcluId}, alacakliId: ${newDebt.alacakliId}, createdBy: ${newDebt.createdBy}',
         );
 
-        // GEÇİCİ ÇÖZÜM: Cloud Function çalışmadığı için istemci tarafında bildirim gönder
-        if (_isPacta && newDebt.status == 'pending') {
-          final currentUserName =
-              currentUser.displayName ?? currentUser.email ?? 'Bilinmeyen';
-
-          // Bildirimi alacak kişiyi belirle (karşı taraf)
-          final toUserId = newDebt.createdBy == newDebt.alacakliId
-              ? newDebt.borcluId
-              : newDebt.alacakliId;
-
-          String title;
-          String message;
-
-          if (widget.isPactaAl) {
-            // PACTA AL: A, B'den borç istiyor → B'ye bildirim gönder
-            title = 'Yeni Alacak Talebi';
-            message =
-                '$currentUserName sizden ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir talepte bulundu.';
-          } else {
-            // PACTA VER: A, B'ye borç veriyor → B'ye bildirim gönder
-            title = 'Yeni Borç Bildirimi';
-            message =
-                '$currentUserName size ${newDebt.miktar.toStringAsFixed(2)}₺ tutarında bir borç bildiriminde bulundu.';
-          }
-
-          await firestoreService.sendNotification(
-            toUserId: toUserId,
-            createdById: currentUser.uid,
-            type: 'approval_request',
-            relatedDebtId: newDebtId,
-            title: title,
-            message: message,
-            debtorId: newDebt.borcluId,
-            creditorId: newDebt.alacakliId,
-            amount: newDebt.miktar,
-          );
-
-          print('DEBUG: Manual notification sent to: $toUserId');
-        }
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('İşlem başarıyla kaydedildi!')),
@@ -241,57 +201,64 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
         backgroundColor: theme.scaffoldBackgroundColor,
         iconTheme: IconThemeData(color: theme.colorScheme.onBackground),
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            _buildAmountCard(theme),
-            const SizedBox(height: 16),
-            _buildInputCard(
-              icon: Icons.person_outline,
-              child: TextFormField(
-                controller: _personController,
-                decoration: const InputDecoration(
-                  hintText: 'Kişi (E-posta)',
-                  border: InputBorder.none,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                _buildAmountCard(theme),
+                const SizedBox(height: 16),
+                _buildInputCard(
+                  icon: Icons.person_outline,
+                  child: TextFormField(
+                    controller: _personController,
+                    decoration: const InputDecoration(
+                      hintText: 'Kişi (E-posta)',
+                      border: InputBorder.none,
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Lütfen bir kişi girin';
+                      }
+                      if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value)) {
+                        return 'Lütfen geçerli bir e-posta adresi girin.';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty)
-                    return 'Lütfen bir kişi girin';
-                  if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value))
-                    return 'Lütfen geçerli bir e-posta adresi girin.';
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildInputCard(
-              icon: Icons.edit_outlined,
-              child: TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  hintText: 'Açıklama (Örn: Öğle yemeği)',
-                  border: InputBorder.none,
+                const SizedBox(height: 16),
+                _buildInputCard(
+                  icon: Icons.edit_outlined,
+                  child: TextFormField(
+                    controller: _descriptionController,
+                    decoration: const InputDecoration(
+                      hintText: 'Açıklama (Örn: Öğle yemeği)',
+                      border: InputBorder.none,
+                    ),
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
                 ),
-                textCapitalization: TextCapitalization.sentences,
-              ),
+                const SizedBox(height: 16),
+                _buildInputCard(
+                  icon: Icons.calendar_today_outlined,
+                  isTappable: true,
+                  onTap: () => _selectDate(context),
+                  child: Text(
+                    DateFormat('d MMMM y, EEEE', 'tr_TR').format(_selectedDate),
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (!widget.isNote) _buildPactaSwitchCard(theme),
+                const SizedBox(height: 32),
+              ],
             ),
-            const SizedBox(height: 16),
-            _buildInputCard(
-              icon: Icons.calendar_today_outlined,
-              isTappable: true,
-              onTap: () => _selectDate(context),
-              child: Text(
-                DateFormat('d MMMM y, EEEE', 'tr_TR').format(_selectedDate),
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (!widget.isNote) _buildPactaSwitchCard(theme),
-            const SizedBox(height: 32),
-          ],
+          ),
         ),
       ),
       bottomNavigationBar: _buildBottomButton(theme),
@@ -299,8 +266,10 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   }
 
   Widget _buildAmountCard(ThemeData theme) {
+    final screenWidth = MediaQuery.of(context).size.width;
     final isDark = theme.brightness == Brightness.dark;
     final color = widget.isPactaAl ? Colors.green : Colors.red;
+    final double fontSize = screenWidth > 400 ? 48.0 : 36.0;
 
     return Card(
       elevation: 4.0,
@@ -316,7 +285,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                 controller: _amountController,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 48.0,
+                  fontSize: fontSize,
                   fontWeight: FontWeight.bold,
                   color: isDark ? color.shade200 : color.shade800,
                 ),
@@ -324,7 +293,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                   border: InputBorder.none,
                   hintText: '0',
                   hintStyle: TextStyle(
-                    fontSize: 48.0,
+                    fontSize: fontSize,
                     fontWeight: FontWeight.bold,
                     color: theme.hintColor.withOpacity(0.5),
                   ),
@@ -338,8 +307,9 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                 validator: (value) {
                   if (value == null ||
                       value.isEmpty ||
-                      double.tryParse(value)! <= 0)
+                      double.tryParse(value)! <= 0) {
                     return 'Tutar girmelisiniz';
+                  }
                   return null;
                 },
               ),
@@ -348,7 +318,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
             Text(
               '₺',
               style: TextStyle(
-                fontSize: 28.0,
+                fontSize: fontSize * 0.6,
                 fontWeight: FontWeight.normal,
                 color: isDark ? color.shade200 : color.shade800,
               ),
@@ -418,11 +388,16 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   }
 
   Widget _buildBottomButton(ThemeData theme) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = screenWidth > 632
+        ? (screenWidth - 600) / 2
+        : 16.0;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
         16,
-        16,
-        16,
+        horizontalPadding,
         MediaQuery.of(context).padding.bottom + 16,
       ),
       child: ElevatedButton(

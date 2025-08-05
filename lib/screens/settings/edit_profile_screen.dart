@@ -5,8 +5,6 @@ import 'package:pacta/services/firestore_service.dart';
 import 'package:pacta/screens/auth/giris_ekrani.dart';
 import 'package:pacta/screens/settings/change_password_screen.dart';
 import 'package:pacta/screens/settings/notification_settings_screen.dart';
-// import 'package:image_picker/image_picker.dart'; // Add this for image picking
-// import 'dart:io';
 
 class EditProfileScreen extends StatefulWidget {
   final UserModel user;
@@ -23,7 +21,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
-  // File? _image;
 
   @override
   void initState() {
@@ -39,15 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // Future<void> _pickImage() async {
-  //   final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-  //   if (pickedFile != null) {
-  //     setState(() {
-  //       _image = File(pickedFile.path);
-  //     });
-  //   }
-  // }
-
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -57,7 +45,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           updatedData['adSoyad'] = _nameController.text;
         }
         if (_emailController.text != widget.user.email) {
-          // You might want to add email validation logic here
           updatedData['email'] = _emailController.text;
         }
 
@@ -80,33 +67,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF181A20) : const Color(0xFFF7F8FC);
+    final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Profili Düzenle',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1A202C),
+            color: textMain,
+            fontSize: size.width * 0.05,
           ),
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: const Color(0xFFF7F8FC),
-        iconTheme: const IconThemeData(color: Color(0xFF1A202C)),
+        backgroundColor: bgColor,
+        iconTheme: IconThemeData(color: textMain),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        padding: EdgeInsets.symmetric(horizontal: size.width * 0.04),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildProfileHeader(),
-              const SizedBox(height: 24),
+              SizedBox(height: size.height * 0.03),
               _buildSectionTitle('Profil Bilgileri'),
               _buildProfileInfoCard(),
-              const SizedBox(height: 24),
+              SizedBox(height: size.height * 0.03),
               _buildSectionTitle('Güvenlik ve Diğer Ayarlar'),
               _buildSettingsCard(),
             ],
@@ -118,57 +111,59 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
+    final size = MediaQuery.of(context).size;
     return Padding(
-      padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+      padding: EdgeInsets.only(
+        left: size.width * 0.02,
+        bottom: size.height * 0.01,
+      ),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
           fontWeight: FontWeight.bold,
           color: Colors.grey.shade600,
-          fontSize: 12,
+          fontSize: size.width * 0.03,
         ),
       ),
     );
   }
 
   Widget _buildProfileHeader() {
+    final size = MediaQuery.of(context).size;
+    final textMain = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : const Color(0xFF1A202C);
     return Column(
       children: [
-        const SizedBox(height: 16),
+        SizedBox(height: size.height * 0.02),
         Center(
           child: Stack(
             children: [
               CircleAvatar(
-                radius: 50,
+                radius: size.width * 0.125,
                 backgroundColor: Colors.green.shade100,
-                // backgroundImage: _image != null ? FileImage(_image!) : null,
-                child:
-                    // _image == null
-                    //     ?
-                    Text(
-                      widget.user.adSoyad?.isNotEmpty ?? false
-                          ? widget.user.adSoyad![0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade700,
-                      ),
-                    ),
-                // : null,
+                child: Text(
+                  widget.user.adSoyad?.isNotEmpty ?? false
+                      ? widget.user.adSoyad![0].toUpperCase()
+                      : '?',
+                  style: TextStyle(
+                    fontSize: size.width * 0.1,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                  ),
+                ),
               ),
               Positioned(
                 bottom: 0,
                 right: 0,
                 child: GestureDetector(
-                  // onTap: _pickImage,
                   child: CircleAvatar(
-                    radius: 18,
+                    radius: size.width * 0.045,
                     backgroundColor: Theme.of(context).primaryColor,
-                    child: const Icon(
+                    child: Icon(
                       Icons.camera_alt,
                       color: Colors.white,
-                      size: 20,
+                      size: size.width * 0.05,
                     ),
                   ),
                 ),
@@ -176,29 +171,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: size.height * 0.02),
         Text(
           _nameController.text,
-          style: const TextStyle(
-            fontSize: 22,
+          style: TextStyle(
+            fontSize: size.width * 0.055,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1A202C),
+            color: textMain,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: size.height * 0.005),
         Text(
           _emailController.text,
-          style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+          style: TextStyle(
+            fontSize: size.width * 0.04,
+            color: Colors.grey.shade600,
+          ),
         ),
       ],
     );
   }
 
   Widget _buildProfileInfoCard() {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
+
     return Card(
       elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(size.width * 0.03),
+      ),
       child: Column(
         children: [
           _buildTextField(
@@ -222,15 +226,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required IconData icon,
     required String label,
   }) {
+    final size = MediaQuery.of(context).size;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-      leading: Icon(icon, color: Colors.green.shade600),
+      contentPadding: EdgeInsets.symmetric(horizontal: size.width * 0.04),
+      leading: Icon(
+        icon,
+        color: Colors.green.shade600,
+        size: size.width * 0.06,
+      ),
       title: TextFormField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
           border: InputBorder.none,
-          labelStyle: TextStyle(color: Colors.grey.shade600),
+          labelStyle: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: size.width * 0.04,
+          ),
         ),
         onChanged: (value) => setState(() {}),
       ),
@@ -238,10 +250,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildSettingsCard() {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
     return Card(
       elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(size.width * 0.03),
+      ),
       child: Column(
         children: [
           _buildSettingsTile(
@@ -291,36 +308,54 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     Color? textColor,
     required VoidCallback onTap,
   }) {
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
     return ListTile(
       onTap: onTap,
-      leading: Icon(icon, color: textColor ?? Colors.grey.shade700),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: Icon(Icons.chevron_right, color: Colors.grey.withOpacity(0.5)),
+      leading: Icon(
+        icon,
+        color: textColor ?? defaultColor,
+        size: size.width * 0.06,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(color: textColor, fontSize: size.width * 0.042),
+      ),
+      trailing: Icon(
+        Icons.chevron_right,
+        color: Colors.grey.withOpacity(0.5),
+        size: size.width * 0.06,
+      ),
     );
   }
 
   Widget _buildSaveButton() {
+    final size = MediaQuery.of(context).size;
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        MediaQuery.of(context).padding.bottom + 16,
+        size.width * 0.04,
+        size.width * 0.04,
+        size.width * 0.04,
+        MediaQuery.of(context).padding.bottom + size.height * 0.02,
       ),
       child: ElevatedButton(
         onPressed: _isLoading ? null : _saveProfile,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green.shade600,
           foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
+          minimumSize: Size(double.infinity, size.height * 0.065),
           shape: const StadiumBorder(),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          textStyle: TextStyle(
+            fontSize: size.width * 0.04,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         child: _isLoading
-            ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(color: Colors.white),
+            ? SizedBox(
+                height: size.width * 0.06,
+                width: size.width * 0.06,
+                child: const CircularProgressIndicator(color: Colors.white),
               )
             : const Text('Değişiklikleri Kaydet'),
       ),

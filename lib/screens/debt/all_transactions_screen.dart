@@ -32,47 +32,54 @@ class AllTransactionsScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: IconThemeData(color: textMain),
       ),
-      body: StreamBuilder<List<DebtModel>>(
-        stream: firestoreService.getUserDebtsStream(userId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Bir hata oluştu: ${snapshot.error}',
-                style: TextStyle(color: textSec),
-              ),
-            );
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return _buildEmptyState(context, textSec);
-          }
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: StreamBuilder<List<DebtModel>>(
+            stream: firestoreService.getUserDebtsStream(userId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Bir hata oluştu: ${snapshot.error}',
+                    style: TextStyle(color: textSec),
+                  ),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return _buildEmptyState(context, textSec);
+              }
 
-          final allDebts = snapshot.data!;
-          final filteredDebts = allDebts
-              .where((d) => statuses.contains(d.status))
-              .toList();
+              final allDebts = snapshot.data!;
+              final filteredDebts = allDebts
+                  .where((d) => statuses.contains(d.status))
+                  .toList();
 
-          if (filteredDebts.isEmpty) {
-            return _buildEmptyState(context, textSec);
-          }
+              if (filteredDebts.isEmpty) {
+                return _buildEmptyState(context, textSec);
+              }
 
-          filteredDebts.sort((a, b) => b.islemTarihi.compareTo(a.islemTarihi));
+              filteredDebts.sort(
+                (a, b) => b.islemTarihi.compareTo(a.islemTarihi),
+              );
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 8.0,
-            ),
-            itemCount: filteredDebts.length,
-            itemBuilder: (context, index) {
-              final debt = filteredDebts[index];
-              return _TransactionCard(d: debt, userId: userId);
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
+                itemCount: filteredDebts.length,
+                itemBuilder: (context, index) {
+                  final debt = filteredDebts[index];
+                  return _TransactionCard(d: debt, userId: userId);
+                },
+              );
             },
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -136,7 +143,6 @@ class _TransactionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double width = MediaQuery.of(context).size.width;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color textMain = isDark ? Colors.white : const Color(0xFF111827);
     final Color textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
@@ -161,129 +167,139 @@ class _TransactionCard extends StatelessWidget {
         final Color cardBg = isDark ? const Color(0xFF23262F) : Colors.white;
         final Color borderColor = isDark ? Colors.white10 : Colors.grey[200]!;
 
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    TransactionDetailScreen(debt: d, userId: userId),
-              ),
-            );
-          },
-          child: Container(
-            margin: EdgeInsets.symmetric(vertical: width * 0.015),
-            padding: EdgeInsets.symmetric(
-              vertical: width * 0.025,
-              horizontal: width * 0.03,
-            ),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: amountColor.withOpacity(isDark ? 0.10 : 0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: width * 0.07,
-                  backgroundColor: amountColor.withOpacity(0.13),
-                  child: Text(
-                    (otherPartyName.isNotEmpty
-                        ? otherPartyName[0].toUpperCase()
-                        : '?'),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: width * 0.07,
-                      color: amountColor,
-                    ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final double cardWidth = constraints.maxWidth;
+            final double avatarRadius = cardWidth * 0.08;
+            final double horizontalPadding = cardWidth * 0.04;
+            final double verticalPadding = cardWidth * 0.03;
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TransactionDetailScreen(debt: d, userId: userId),
                   ),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 6.0),
+                padding: EdgeInsets.symmetric(
+                  vertical: verticalPadding,
+                  horizontal: horizontalPadding,
                 ),
-                SizedBox(width: width * 0.04),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        otherPartyName,
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: borderColor, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: amountColor.withOpacity(isDark ? 0.10 : 0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: avatarRadius,
+                      backgroundColor: amountColor.withOpacity(0.13),
+                      child: Text(
+                        (otherPartyName.isNotEmpty
+                            ? otherPartyName[0].toUpperCase()
+                            : '?'),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: width * 0.045,
-                          color: textMain,
+                          fontSize: avatarRadius,
+                          color: amountColor,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: width * 0.01),
-                      Text(
-                        d.aciklama?.isNotEmpty == true
-                            ? d.aciklama!
-                            : 'Açıklama bulunamadı 🤔',
-                        style: TextStyle(
-                          fontSize: width * 0.038,
-                          color: textSec,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: width * 0.01),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: width * 0.02,
+                    ),
+                    SizedBox(width: horizontalPadding),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            d.islemTarihi != null
-                                ? DateFormat(
-                                    'd MMMM y',
-                                    'tr_TR',
-                                  ).format(d.islemTarihi)
-                                : '-',
+                            otherPartyName,
                             style: TextStyle(
-                              fontSize: width * 0.032,
+                              fontWeight: FontWeight.bold,
+                              fontSize: cardWidth * 0.045,
+                              color: textMain,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4.0),
+                          Text(
+                            d.aciklama?.isNotEmpty == true
+                                ? d.aciklama!
+                                : 'Açıklama bulunamadı 🤔',
+                            style: TextStyle(
+                              fontSize: cardWidth * 0.038,
                               color: textSec,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.13),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              statusLabel,
-                              style: TextStyle(
-                                fontSize: width * 0.032,
-                                color: statusColor,
-                                fontWeight: FontWeight.w600,
+                          const SizedBox(height: 4.0),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: [
+                              Text(
+                                d.islemTarihi != null
+                                    ? DateFormat(
+                                        'd MMMM y',
+                                        'tr_TR',
+                                      ).format(d.islemTarihi)
+                                    : '-',
+                                style: TextStyle(
+                                  fontSize: cardWidth * 0.032,
+                                  color: textSec,
+                                ),
                               ),
-                            ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.13),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  statusLabel,
+                                  style: TextStyle(
+                                    fontSize: cardWidth * 0.032,
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8.0),
+                    Text(
+                      amountPrefix + d.miktar.toStringAsFixed(2) + '₺',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: cardWidth * 0.042,
+                        color: amountColor,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: width * 0.02),
-                Text(
-                  amountPrefix + d.miktar.toStringAsFixed(2) + '₺',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: width * 0.05,
-                    color: amountColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

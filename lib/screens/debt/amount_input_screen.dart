@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'add_debt_screen.dart';
-
 import 'package:pacta/models/saved_contact_model.dart';
 
 final amountProvider = StateProvider.autoDispose<String>((ref) => '');
@@ -22,9 +21,6 @@ class AmountInputScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final amount = ref.watch(amountProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final Size size = MediaQuery.of(context).size;
-    final double width = size.width;
-    final double height = size.height;
 
     final Color themeColor = isNote
         ? const Color(0xFFFACC15) // Sarı (Not)
@@ -60,146 +56,157 @@ class AmountInputScreen extends ConsumerWidget {
         double.tryParse(amount.replaceAll(',', '.')) != null;
 
     return Scaffold(
-      body: Container(
-        decoration: isDark
-            ? BoxDecoration(gradient: darkGradient)
-            : BoxDecoration(color: bg),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            SafeArea(
-              child: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                leading: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: textMain,
-                    size: width * 0.07,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                title: Text(
-                  isNote ? 'Not için Tutar Gir' : 'Tutar Gir',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textMain,
-                    fontSize: width * 0.055,
-                  ),
-                ),
-                centerTitle: true,
-              ),
-            ),
-            if (isNote)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                margin: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 20,
+      body: SafeArea(
+        child: Container(
+          decoration: isDark
+              ? BoxDecoration(gradient: darkGradient)
+              : BoxDecoration(color: bg),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double width = constraints.maxWidth;
+              final double height = constraints.maxHeight;
+
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  AppBar(
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: textMain,
+                        size: width * 0.06,
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    title: FittedBox(
                       child: Text(
-                        'Bu bir nottur ve karşı tarafa bildirim gitmez.',
+                        isNote ? 'Not için Tutar Gir' : 'Tutar Gir',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: textMain,
+                          fontSize: width * 0.05,
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  '${amount.isEmpty ? '0,00' : amount}₺',
-                  style: TextStyle(
-                    fontSize: width * 0.13,
-                    fontWeight: FontWeight.bold,
-                    color: textMain,
-                    letterSpacing: 1.5,
+                    centerTitle: true,
                   ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: width * 0.06,
-                vertical: height * 0.01,
-              ),
-              child: GestureDetector(
-                onTap: () {
-                  if (!isActive) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AddDebtScreen(
-                        amount: amount.replaceAll(',', '.'),
-                        selectedContact: selectedContact,
-                        isPactaAl: isPactaAl,
-                        isNote: isNote,
+                  if (isNote)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            color: Colors.white.withOpacity(0.8),
+                            size: width * 0.05,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Bu bir nottur ve karşı tarafa bildirim gitmez.',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: width * 0.035,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: height * 0.075,
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? (isDark ? Colors.white : darkThemeColor)
-                        : Colors.grey[400],
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: isActive ? buttonShadow : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Devam Et',
-                      style: TextStyle(
-                        fontSize: width * 0.05,
-                        fontWeight: FontWeight.bold,
-                        color: isActive
-                            ? (isDark ? darkThemeColor : Colors.white)
-                            : Colors.white,
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        child: Text(
+                          '${amount.isEmpty ? '0,00' : amount}₺',
+                          style: TextStyle(
+                            fontSize: width * 0.12,
+                            fontWeight: FontWeight.bold,
+                            color: textMain,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            _NumericKeypad(
-              onKeyPressed: (key) {
-                ref.read(amountProvider.notifier).update((state) {
-                  if (key == '⌫') {
-                    return state.isNotEmpty
-                        ? state.substring(0, state.length - 1)
-                        : '';
-                  }
-                  if (key == ',' && state.contains(',')) return state;
-                  if (state.isEmpty && key == ',') return '0,';
-                  // Virgülden sonra en fazla 2 basamak
-                  if (state.contains(',') && state.split(',')[1].length >= 2) {
-                    return state;
-                  }
-                  return state + key;
-                });
-              },
-              textColor: textMain,
-            ),
-          ],
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: width * 0.06,
+                      vertical: height * 0.01,
+                    ),
+                    child: GestureDetector(
+                      onTap: () {
+                        if (!isActive) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddDebtScreen(
+                              amount: amount.replaceAll(',', '.'),
+                              selectedContact: selectedContact,
+                              isPactaAl: isPactaAl,
+                              isNote: isNote,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: height * 0.08,
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? (isDark ? Colors.white : darkThemeColor)
+                              : Colors.grey[400],
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: isActive ? buttonShadow : null,
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Devam Et',
+                            style: TextStyle(
+                              fontSize: width * 0.045,
+                              fontWeight: FontWeight.bold,
+                              color: isActive
+                                  ? (isDark ? darkThemeColor : Colors.white)
+                                  : Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  _NumericKeypad(
+                    onKeyPressed: (key) {
+                      ref.read(amountProvider.notifier).update((state) {
+                        if (key == '⌫') {
+                          return state.isNotEmpty
+                              ? state.substring(0, state.length - 1)
+                              : '';
+                        }
+                        if (key == ',' && state.contains(',')) return state;
+                        if (state.isEmpty && key == ',') return '0,';
+                        if (state.contains(',') &&
+                            state.split(',')[1].length >= 2) {
+                          return state;
+                        }
+                        return state + key;
+                      });
+                    },
+                    textColor: textMain,
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -218,21 +225,30 @@ class _NumericKeypad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final childAspectRatio = (size.width / 3) / (size.height / 8 * 0.7);
+
     return GridView.count(
       crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 2 / 1.3,
+      childAspectRatio: childAspectRatio,
       children: ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫']
           .map(
             (key) => TextButton(
               onPressed: () => onKeyPressed(key),
-              child: Text(
-                key,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
+              style: TextButton.styleFrom(
+                shape: const CircleBorder(),
+                padding: const EdgeInsets.all(16.0),
+              ),
+              child: FittedBox(
+                child: Text(
+                  key,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w500,
+                    color: textColor,
+                  ),
                 ),
               ),
             ),

@@ -8,6 +8,8 @@ import 'package:intl/intl.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'dart:async';
+import 'package:pacta/widgets/custom_date_range_picker.dart';
 
 class UserAnalysisScreen extends StatefulWidget {
   const UserAnalysisScreen({Key? key}) : super(key: key);
@@ -29,6 +31,12 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
   List<Map<String, dynamic>> tumIslemler = [];
   List<Map<String, dynamic>> filteredIslemler = [];
 
+  // Filtreleme değişkenleri
+  String selectedTransactionType = 'Tümü';
+  String selectedStatus = 'Tümü';
+  String selectedDateRange = 'Tüm Zamanlar';
+  DateTimeRange? customDateRange;
+
   late PageController _pageController;
   int _currentPage = 0;
 
@@ -45,68 +53,62 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     return '${number.toStringAsFixed(2)}₺';
   }
 
-  // Basit ve çalışır tooltip - SnackBar yaklaşımı
+  // Modern Baloncuk Tooltip - Overlay ile pozisyonlu gösterim
+  OverlayEntry? _currentTooltip;
+
   void _showCustomTooltip(
     BuildContext context,
     String fullAmount, {
     String? title,
+    GlobalKey? targetKey,
   }) {
     try {
+      // Önceki tooltip varsa kapat
+      _hideCurrentTooltip();
+
       final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      print('Tooltip tetiklendi: $fullAmount');
+      print('Baloncuk tooltip tetiklendi: $fullAmount');
 
-      // SnackBar ile güvenilir gösterim
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (title != null) ...[
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: isDark
-                          ? const Color(0xFF666666)
-                          : const Color(0xFFCCCCCC),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 2),
-                ],
-                Text(
-                  fullAmount,
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFF2D3748) : Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          backgroundColor: isDark ? Colors.white : const Color(0xFF2D3748),
-          duration: const Duration(milliseconds: 2500),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 8,
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      // Target widget'ın pozisyonunu bul
+      RenderBox? targetRenderBox;
+      Offset targetPosition = Offset.zero;
+      Size targetSize = Size.zero;
+
+      if (targetKey?.currentContext != null) {
+        targetRenderBox =
+            targetKey!.currentContext!.findRenderObject() as RenderBox?;
+        if (targetRenderBox != null) {
+          targetPosition = targetRenderBox.localToGlobal(Offset.zero);
+          targetSize = targetRenderBox.size;
+        }
+      }
+
+      // Overlay entry oluştur
+      _currentTooltip = OverlayEntry(
+        builder: (context) => _BubbleTooltip(
+          position: targetPosition,
+          targetSize: targetSize,
+          fullAmount: fullAmount,
+          title: title,
+          isDark: isDark,
+          onDismiss: _hideCurrentTooltip,
         ),
       );
 
-      print('Tooltip gösterildi: $fullAmount');
+      // Overlay'e ekle
+      Overlay.of(context).insert(_currentTooltip!);
+
+      // 3 saniye sonra otomatik kapat
+      Timer(const Duration(seconds: 3), () {
+        _hideCurrentTooltip();
+      });
+
+      print('Baloncuk tooltip gösterildi: $fullAmount');
     } catch (e) {
       print('Tooltip gösterme hatası: $e');
 
-      // En basit fallback
+      // Fallback: basit SnackBar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${title ?? "Tam Tutar"}: $fullAmount'),
@@ -114,6 +116,393 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
         ),
       );
     }
+  }
+
+  void _hideCurrentTooltip() {
+    _currentTooltip?.remove();
+    _currentTooltip = null;
+  }
+
+  void _applyFilters() {
+    setState(() {
+      List<Map<String, dynamic>> baseFilteredIslemler;
+
+      // Adım 1: Mevcut sayfaya göre temel filtreleme
+      switch (_currentPage) {
+        case 1: // Onaylı İşlemler
+          baseFilteredIslemler = tumIslemler
+              .where((islem) => islem['status'] == 'approved')
+              .toList();
+          break;
+        case 2: // Not İşlemleri
+          baseFilteredIslemler = tumIslemler.where((islem) {
+            final status = islem['status']?.toString().toLowerCase() ?? '';
+            return status == 'note' || status == 'not' || status == 'notes';
+          }).toList();
+          break;
+        default: // Genel Durum (Tüm İşlemler)
+          baseFilteredIslemler = List.from(tumIslemler);
+          break;
+      }
+
+      // Adım 2: Kullanıcı tarafından seçilen ek filtreleri uygula
+      filteredIslemler = baseFilteredIslemler.where((islem) {
+        final isBorc =
+            islem['borcluId'] == FirebaseAuth.instance.currentUser?.uid;
+
+        // İşlem Türü Filtresi
+        if (selectedTransactionType != 'Tümü') {
+          if (selectedTransactionType == 'Sadece Borçlar' && !isBorc) {
+            return false;
+          }
+          if (selectedTransactionType == 'Sadece Alacaklar' && isBorc) {
+            return false;
+          }
+        }
+
+        // Durum Filtresi (Sadece Genel Durum sayfasında aktif)
+        if (_currentPage == 0 && selectedStatus != 'Tümü') {
+          final status = islem['status']?.toString().toLowerCase() ?? '';
+          if (selectedStatus == 'Onaylananlar' && status != 'approved') {
+            return false;
+          }
+          if (selectedStatus == 'Notlar' &&
+              (status != 'note' && status != 'not' && status != 'notes')) {
+            return false;
+          }
+        }
+
+        // Tarih Aralığı Filtresi
+        if (selectedDateRange != 'Tüm Zamanlar') {
+          final islemTarihi = islem['tarih'] ?? islem['islemTarihi'];
+          if (islemTarihi == null) return false;
+
+          DateTime? tarih;
+          try {
+            if (islemTarihi is DateTime) {
+              tarih = islemTarihi;
+            } else if (islemTarihi is String) {
+              tarih = DateTime.parse(islemTarihi);
+            } else if (islemTarihi is Timestamp) {
+              tarih = islemTarihi.toDate();
+            }
+          } catch (e) {
+            print('UserAnalysisScreen: Tarih parse hatası: $e');
+          }
+
+          if (tarih == null) return false;
+
+          final now = DateTime.now();
+          if (selectedDateRange == 'Son 1 Hafta') {
+            if (tarih.isBefore(now.subtract(const Duration(days: 7))) ||
+                tarih.isAfter(now.add(const Duration(days: 7)))) {
+              return false;
+            }
+          } else if (selectedDateRange == 'Son 1 Ay') {
+            if (tarih.isBefore(now.subtract(const Duration(days: 30))) ||
+                tarih.isAfter(now.add(const Duration(days: 30)))) {
+              return false;
+            }
+          } else if (selectedDateRange == 'Tarih Seç' &&
+              customDateRange != null) {
+            final start = DateTime(
+              customDateRange!.start.year,
+              customDateRange!.start.month,
+              customDateRange!.start.day,
+            );
+            final end = DateTime(
+              customDateRange!.end.year,
+              customDateRange!.end.month,
+              customDateRange!.end.day,
+              23,
+              59,
+              59,
+            );
+            if (tarih.isBefore(start) || tarih.isAfter(end)) {
+              return false;
+            }
+          }
+        }
+
+        return true;
+      }).toList();
+    });
+  }
+
+  void _showFilterPanel() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        String tempSelectedTransactionType = selectedTransactionType;
+        String tempSelectedStatus = selectedStatus;
+        String tempSelectedDateRange = selectedDateRange;
+        DateTimeRange? tempCustomDateRange = customDateRange;
+        final size = MediaQuery.of(context).size;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final backgroundColor = isDark
+                ? const Color(0xFF2D3748)
+                : Colors.white;
+            final textColor = isDark ? Colors.white : const Color(0xFF1A202C);
+            final primaryColor = const Color(0xFF6366F1);
+
+            return Container(
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(size.width * 0.06),
+                  topRight: Radius.circular(size.width * 0.06),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom:
+                      MediaQuery.of(context).viewInsets.bottom +
+                      size.height * 0.025,
+                  top: size.height * 0.025,
+                  left: size.width * 0.06,
+                  right: size.width * 0.06,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.filter_list_rounded,
+                          color: textColor.withOpacity(0.8),
+                          size: size.width * 0.06,
+                        ),
+                        SizedBox(width: size.width * 0.03),
+                        Text(
+                          'Filtrele',
+                          style: TextStyle(
+                            fontSize: size.width * 0.055,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              tempSelectedTransactionType = 'Tümü';
+                              tempSelectedStatus = 'Tümü';
+                              tempSelectedDateRange = 'Tüm Zamanlar';
+                              tempCustomDateRange = null;
+                            });
+                          },
+                          child: Text(
+                            'Sıfırla',
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontSize: size.width * 0.04,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: size.height * 0.03),
+                    Text(
+                      'İşlem Türü',
+                      style: TextStyle(
+                        fontSize: size.width * 0.04,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
+                    SizedBox(height: size.height * 0.015),
+                    Wrap(
+                      spacing: size.width * 0.02,
+                      runSpacing: size.height * 0.01,
+                      children: ['Tümü', 'Sadece Borçlar', 'Sadece Alacaklar']
+                          .map(
+                            (label) => _buildFilterChip(
+                              label,
+                              tempSelectedTransactionType,
+                              primaryColor,
+                              (value) => setModalState(
+                                () => tempSelectedTransactionType = value,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    SizedBox(height: size.height * 0.025),
+                    if (_currentPage == 0) ...[
+                      Text(
+                        'Durum',
+                        style: TextStyle(
+                          fontSize: size.width * 0.04,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                      ),
+                      SizedBox(height: size.height * 0.015),
+                      Wrap(
+                        spacing: size.width * 0.02,
+                        runSpacing: size.height * 0.01,
+                        children: ['Tümü', 'Onaylananlar', 'Notlar']
+                            .map(
+                              (label) => _buildFilterChip(
+                                label,
+                                tempSelectedStatus,
+                                primaryColor,
+                                (value) => setModalState(
+                                  () => tempSelectedStatus = value,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      SizedBox(height: size.height * 0.025),
+                    ],
+                    Text(
+                      'Tarih Aralığı',
+                      style: TextStyle(
+                        fontSize: size.width * 0.04,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
+                    SizedBox(height: size.height * 0.015),
+                    Wrap(
+                      spacing: size.width * 0.02,
+                      runSpacing: size.height * 0.01,
+                      children:
+                          [
+                                'Tüm Zamanlar',
+                                'Son 1 Hafta',
+                                'Son 1 Ay',
+                                'Tarih Seç',
+                              ]
+                              .map(
+                                (label) => _buildFilterChip(
+                                  label,
+                                  tempSelectedDateRange,
+                                  primaryColor,
+                                  (value) async {
+                                    if (value == 'Tarih Seç') {
+                                      final result =
+                                          await showDialog<DateTimeRange>(
+                                            context: context,
+                                            builder: (context) =>
+                                                CustomDateRangePicker(
+                                                  initialDateRange:
+                                                      tempCustomDateRange,
+                                                ),
+                                          );
+                                      if (result != null) {
+                                        setModalState(() {
+                                          tempSelectedDateRange = value;
+                                          tempCustomDateRange = result;
+                                        });
+                                      }
+                                    } else {
+                                      setModalState(() {
+                                        tempSelectedDateRange = value;
+                                        tempCustomDateRange = null;
+                                      });
+                                    }
+                                  },
+                                ),
+                              )
+                              .toList(),
+                    ),
+                    SizedBox(height: size.height * 0.04),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            selectedTransactionType =
+                                tempSelectedTransactionType;
+                            selectedStatus = tempSelectedStatus;
+                            selectedDateRange = tempSelectedDateRange;
+                            customDateRange = tempCustomDateRange;
+                            _applyFilters();
+                          });
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: size.height * 0.02,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              size.width * 0.04,
+                            ),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Filtreyi Uygula',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: size.width * 0.04,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip(
+    String label,
+    String selectedValue,
+    Color primaryColor,
+    Function(String) onTap,
+  ) {
+    final isSelected = selectedValue == label;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final size = MediaQuery.of(context).size;
+
+    return GestureDetector(
+      onTap: () => onTap(label),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: size.width * 0.04,
+          vertical: size.height * 0.01,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? primaryColor
+              : (isDark ? Colors.grey[700] : Colors.grey[200]),
+          borderRadius: BorderRadius.circular(size.width * 0.05),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected
+                ? Colors.white
+                : (isDark ? Colors.white : Colors.black87),
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            fontSize: size.width * 0.035,
+          ),
+        ),
+      ),
+    );
   }
 
   // Modern Pie Chart Tooltip
@@ -282,6 +671,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
 
   @override
   void dispose() {
+    _hideCurrentTooltip();
     _pageController.dispose();
     super.dispose();
   }
@@ -395,6 +785,8 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
         filteredIslemler = List.from(tumIslemler);
         isLoading = false;
       });
+      // İlk yükleme sonrası filtreleri uygula
+      _applyFilters();
     }
   }
 
@@ -420,11 +812,9 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final size = MediaQuery.of(context).size;
     final bgColor = isDark ? const Color(0xFF181A20) : const Color(0xFFF7F8FC);
     final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-    final cardInnerColor = isDark
-        ? const Color(0xFF2A2D3A)
-        : const Color(0xFFF8F9FA);
     final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
     final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
     final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
@@ -457,7 +847,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
         title: Text(
           'Genel Analiz',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: size.width * 0.05,
             fontWeight: FontWeight.w600,
             color: textMain,
           ),
@@ -467,41 +857,42 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
           icon: Icon(
             Icons.arrow_back_ios_new_rounded,
             color: iconMain,
-            size: 20,
+            size: size.width * 0.05,
           ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.description_outlined, color: iconShare, size: 22),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const GenerateDocumentScreen(),
-                ),
-              );
-            },
+            icon: Icon(
+              Icons.description_outlined,
+              color: iconShare,
+              size: size.width * 0.055,
+            ),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const GenerateDocumentScreen(),
+              ),
+            ),
           ),
         ],
       ),
       body: Stack(
         children: [
-          // Background
           isLoading
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(
+                      const CircularProgressIndicator(
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
-                      SizedBox(height: 16),
+                      SizedBox(height: size.height * 0.02),
                       Text(
                         'Analiz yükleniyor...',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: size.width * 0.04,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -510,56 +901,26 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                 )
               : Column(
                   children: [
-                    const SizedBox(height: 100),
+                    SizedBox(height: size.height * 0.12), // AppBar space
                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: MediaQuery.of(context).size.width * 0.05,
+                          horizontal: size.width * 0.05,
                         ),
                         child: Column(
                           children: [
                             SizedBox(
-                              height: 350,
+                              height: size.height * 0.4,
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  // PageView
                                   PageView(
                                     controller: _pageController,
                                     onPageChanged: (page) {
                                       setState(() {
                                         _currentPage = page;
-                                        // Sayfa değiştikçe listeyi filtrele
-                                        switch (page) {
-                                          case 1: // Onaylı İşlemler
-                                            filteredIslemler = tumIslemler
-                                                .where(
-                                                  (islem) =>
-                                                      islem['status'] ==
-                                                      'approved',
-                                                )
-                                                .toList();
-                                            break;
-                                          case 2: // Not İşlemleri
-                                            filteredIslemler = tumIslemler
-                                                .where((islem) {
-                                                  final status =
-                                                      islem['status']
-                                                          ?.toString()
-                                                          .toLowerCase() ??
-                                                      '';
-                                                  return status == 'note' ||
-                                                      status == 'not' ||
-                                                      status == 'notes';
-                                                })
-                                                .toList();
-                                            break;
-                                          default: // Genel Durum
-                                            filteredIslemler = List.from(
-                                              tumIslemler,
-                                            );
-                                            break;
-                                        }
+                                        selectedStatus = 'Tümü';
+                                        _applyFilters();
                                       });
                                     },
                                     children: [
@@ -591,62 +952,60 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                       ),
                                     ],
                                   ),
-
-                                  // Sol Ok
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: Visibility(
                                       visible: _currentPage > 0,
                                       child: Container(
-                                        margin: const EdgeInsets.only(left: 8),
+                                        margin: EdgeInsets.only(
+                                          left: size.width * 0.02,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: Colors.black.withOpacity(0.2),
                                           shape: BoxShape.circle,
                                         ),
                                         child: IconButton(
-                                          icon: const Icon(
+                                          icon: Icon(
                                             Icons.arrow_back_ios_new_rounded,
                                             color: Colors.white,
-                                            size: 18,
+                                            size: size.width * 0.045,
                                           ),
-                                          onPressed: () {
-                                            _pageController.previousPage(
-                                              duration: const Duration(
-                                                milliseconds: 400,
+                                          onPressed: () =>
+                                              _pageController.previousPage(
+                                                duration: const Duration(
+                                                  milliseconds: 400,
+                                                ),
+                                                curve: Curves.easeInOut,
                                               ),
-                                              curve: Curves.easeInOut,
-                                            );
-                                          },
                                         ),
                                       ),
                                     ),
                                   ),
-
-                                  // Sağ Ok
                                   Align(
                                     alignment: Alignment.centerRight,
                                     child: Visibility(
                                       visible: _currentPage < 2,
                                       child: Container(
-                                        margin: const EdgeInsets.only(right: 8),
+                                        margin: EdgeInsets.only(
+                                          right: size.width * 0.02,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: Colors.black.withOpacity(0.2),
                                           shape: BoxShape.circle,
                                         ),
                                         child: IconButton(
-                                          icon: const Icon(
+                                          icon: Icon(
                                             Icons.arrow_forward_ios_rounded,
                                             color: Colors.white,
-                                            size: 18,
+                                            size: size.width * 0.045,
                                           ),
-                                          onPressed: () {
-                                            _pageController.nextPage(
-                                              duration: const Duration(
-                                                milliseconds: 400,
+                                          onPressed: () =>
+                                              _pageController.nextPage(
+                                                duration: const Duration(
+                                                  milliseconds: 400,
+                                                ),
+                                                curve: Curves.easeInOut,
                                               ),
-                                              curve: Curves.easeInOut,
-                                            );
-                                          },
                                         ),
                                       ),
                                     ),
@@ -654,20 +1013,18 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            // İşlemler Listesi
+                            SizedBox(height: size.height * 0.02),
                             Expanded(
                               child: Container(
                                 margin: EdgeInsets.symmetric(
-                                  horizontal:
-                                      MediaQuery.of(context).size.width * 0.01,
+                                  horizontal: size.width * 0.01,
                                 ),
-                                padding: EdgeInsets.all(
-                                  MediaQuery.of(context).size.width * 0.05,
-                                ),
+                                padding: EdgeInsets.all(size.width * 0.05),
                                 decoration: BoxDecoration(
                                   color: cardColor,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(
+                                    size.width * 0.04,
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.black.withOpacity(
@@ -681,40 +1038,43 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Başlık
                                     Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          listTitle, // Dinamik başlık
+                                          listTitle,
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 18,
+                                            fontSize: size.width * 0.045,
                                             color: textMain,
                                           ),
                                         ),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              '${filteredIslemler.length} işlem',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: textSec,
+                                        GestureDetector(
+                                          onTap: _showFilterPanel,
+                                          child: Row(
+                                            children: [
+                                              Text(
+                                                '${filteredIslemler.length} işlem',
+                                                style: TextStyle(
+                                                  fontSize: size.width * 0.035,
+                                                  color: textSec,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Icon(
-                                              Icons.filter_list,
-                                              color: textSec,
-                                              size: 20,
-                                            ),
-                                          ],
+                                              SizedBox(
+                                                width: size.width * 0.02,
+                                              ),
+                                              Icon(
+                                                Icons.filter_list,
+                                                color: textSec,
+                                                size: size.width * 0.05,
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
-                                    // İşlemler Listesi
+                                    SizedBox(height: size.height * 0.015),
                                     Expanded(
                                       child: filteredIslemler.isEmpty
                                           ? Center(
@@ -724,28 +1084,34 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                                 children: [
                                                   Icon(
                                                     Icons.search_off_rounded,
-                                                    size: 60,
+                                                    size: size.width * 0.15,
                                                     color: textSec.withOpacity(
                                                       0.5,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 16),
+                                                  SizedBox(
+                                                    height: size.height * 0.02,
+                                                  ),
                                                   Text(
                                                     'İşlem Bulunamadı',
                                                     style: TextStyle(
-                                                      fontSize: 18,
+                                                      fontSize:
+                                                          size.width * 0.045,
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       color: textMain
                                                           .withOpacity(0.8),
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 4),
+                                                  SizedBox(
+                                                    height: size.height * 0.005,
+                                                  ),
                                                   Text(
                                                     'Bu kritere uygun işlem kaydı yok.',
                                                     textAlign: TextAlign.center,
                                                     style: TextStyle(
-                                                      fontSize: 14,
+                                                      fontSize:
+                                                          size.width * 0.035,
                                                       color: textSec,
                                                     ),
                                                   ),
@@ -765,7 +1131,6 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                                         .instance
                                                         .currentUser
                                                         ?.uid;
-
                                                 return _buildTransactionListItem(
                                                   islem,
                                                   isAlacak,
@@ -798,6 +1163,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     int index,
   ) {
     final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
     final isDark = theme.brightness == Brightness.dark;
     final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
     final textSec = isDark ? Colors.grey[400]! : Colors.grey[600]!;
@@ -838,12 +1204,12 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
 
     return Container(
       margin: EdgeInsets.only(
-        bottom: index == filteredIslemler.length - 1 ? 0 : 12,
+        bottom: index == filteredIslemler.length - 1 ? 0 : size.height * 0.015,
       ),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
         color: cardInnerColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(size.width * 0.04),
         border: Border.all(
           color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
         ),
@@ -851,18 +1217,18 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
       child: Row(
         children: [
           CircleAvatar(
-            radius: 22,
+            radius: size.width * 0.055,
             backgroundColor: (isAlacak ? green : red).withOpacity(0.1),
             child: Text(
               otherPartyName.isNotEmpty ? otherPartyName[0].toUpperCase() : '?',
               style: TextStyle(
                 color: isAlacak ? green : red,
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: size.width * 0.045,
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: size.width * 0.03),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -875,65 +1241,67 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                         otherPartyName,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: size.width * 0.04,
                           color: textMain,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        _showCustomTooltip(
-                          context,
-                          '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
-                          title: isAlacak ? 'Alacağınız' : 'Borcunuz',
-                        );
-                      },
-                      onLongPress: () {
-                        _showCustomTooltip(
-                          context,
-                          '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
-                          title: isAlacak ? 'Alacağınız' : 'Borcunuz',
-                        );
-                      },
-                      child: MouseRegion(
-                        onEnter: (_) {
-                          if (Theme.of(context).platform ==
-                                  TargetPlatform.windows ||
-                              Theme.of(context).platform ==
-                                  TargetPlatform.macOS ||
-                              Theme.of(context).platform ==
-                                  TargetPlatform.linux) {
-                            _showCustomTooltip(
-                              context,
-                              '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
-                              title: isAlacak ? 'Alacağınız' : 'Borcunuz',
-                            );
-                          }
-                        },
-                        child: AutoSizeText(
-                          '${isAlacak ? '+' : '-'}${formatNumber(miktar).replaceAll('₺', '')}₺',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: isAlacak ? green : red,
+                    Builder(
+                      builder: (context) {
+                        final tooltipKey = GlobalKey();
+                        return GestureDetector(
+                          onLongPress: () => _showCustomTooltip(
+                            context,
+                            '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
+                            title: isAlacak ? 'Alacağınız' : 'Borcunuz',
+                            targetKey: tooltipKey,
                           ),
-                          maxLines: 1,
-                          minFontSize: 10,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                          child: MouseRegion(
+                            onEnter: (_) {
+                              if (Theme.of(context).platform ==
+                                      TargetPlatform.windows ||
+                                  Theme.of(context).platform ==
+                                      TargetPlatform.macOS ||
+                                  Theme.of(context).platform ==
+                                      TargetPlatform.linux) {
+                                _showCustomTooltip(
+                                  context,
+                                  '${isAlacak ? '+' : '-'}${miktar.toStringAsFixed(2)}₺',
+                                  title: isAlacak ? 'Alacağınız' : 'Borcunuz',
+                                  targetKey: tooltipKey,
+                                );
+                              }
+                            },
+                            child: AutoSizeText(
+                              key: tooltipKey,
+                              '${isAlacak ? '+' : '-'}${formatNumber(miktar).replaceAll('₺', '')}₺',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: size.width * 0.04,
+                                color: isAlacak ? green : red,
+                              ),
+                              maxLines: 1,
+                              minFontSize: 10,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: size.height * 0.005),
                 Text(
                   aciklama.isNotEmpty ? aciklama : 'Açıklama bulunamadı 🤔',
-                  style: TextStyle(fontSize: 14, color: textSec),
+                  style: TextStyle(
+                    fontSize: size.width * 0.035,
+                    color: textSec,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: size.height * 0.01),
                 Row(
                   children: [
                     Text(
@@ -941,26 +1309,26 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           ? DateFormat('d MMMM yyyy', 'tr_TR').format(tarih)
                           : 'Tarih yok',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: size.width * 0.03,
                         color: textSec.withOpacity(0.8),
                       ),
                     ),
                     const Spacer(),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: size.width * 0.025,
+                        vertical: size.height * 0.005,
                       ),
                       decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(size.width * 0.03),
                       ),
                       child: Text(
                         statusText,
                         style: TextStyle(
                           color: statusColor,
                           fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                          fontSize: size.width * 0.028,
                         ),
                       ),
                     ),
@@ -984,11 +1352,13 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     Color orange,
     bool isDark,
   ) {
+    final size = MediaQuery.of(context).size;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(size.width * 0.04),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.18 : 0.08),
@@ -1004,21 +1374,20 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
             'Genel Durum',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: size.width * 0.045,
               color: textMain,
             ),
           ),
-          const SizedBox(height: 16),
-          // Grafik
+          SizedBox(height: size.height * 0.02),
           SizedBox(
-            height: 120,
+            height: size.height * 0.14,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 PieChart(
                   PieChartData(
                     sectionsSpace: 3,
-                    centerSpaceRadius: 40,
+                    centerSpaceRadius: size.width * 0.1,
                     pieTouchData: PieTouchData(
                       enabled: true,
                       touchCallback: (FlTouchEvent event, pieTouchResponse) {
@@ -1054,28 +1423,28 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: green,
                           value: toplamAlacaklarim,
                           showTitle: false,
-                          radius: 55,
+                          radius: size.width * 0.13,
                         ),
                       if (toplamNotAlacaklarim > 0)
                         PieChartSectionData(
                           color: blue,
                           value: toplamNotAlacaklarim,
                           showTitle: false,
-                          radius: 55,
+                          radius: size.width * 0.13,
                         ),
                       if (toplamBorclarim > 0)
                         PieChartSectionData(
                           color: red,
                           value: toplamBorclarim,
                           showTitle: false,
-                          radius: 55,
+                          radius: size.width * 0.13,
                         ),
                       if (toplamNotBorclarim > 0)
                         PieChartSectionData(
                           color: orange,
                           value: toplamNotBorclarim,
                           showTitle: false,
-                          radius: 55,
+                          radius: size.width * 0.13,
                         ),
                       if (toplamBorclarim == 0 &&
                           toplamAlacaklarim == 0 &&
@@ -1085,46 +1454,21 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: isDark ? Colors.grey[800]! : Colors.grey,
                           value: 1,
                           showTitle: false,
-                          radius: 55,
+                          radius: size.width * 0.13,
                         ),
                     ],
                   ),
                 ),
-                // Ortadaki toplam bakiye
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
+                  padding: EdgeInsets.all(size.width * 0.02),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          final fullAmount =
-                              (toplamAlacaklarim + toplamNotAlacaklarim) -
-                              (toplamBorclarim + toplamNotBorclarim);
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Net Bakiye',
-                          );
-                        },
-                        onLongPress: () {
-                          final fullAmount =
-                              (toplamAlacaklarim + toplamNotAlacaklarim) -
-                              (toplamBorclarim + toplamNotBorclarim);
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Net Bakiye',
-                          );
-                        },
-                        child: MouseRegion(
-                          onEnter: (_) {
-                            if (Theme.of(context).platform ==
-                                    TargetPlatform.windows ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.macOS ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.linux) {
+                      Builder(
+                        builder: (context) {
+                          final tooltipKey = GlobalKey();
+                          return GestureDetector(
+                            onLongPress: () {
                               final fullAmount =
                                   (toplamAlacaklarim + toplamNotAlacaklarim) -
                                   (toplamBorclarim + toplamNotBorclarim);
@@ -1132,34 +1476,60 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                 context,
                                 '${fullAmount.toStringAsFixed(2)}₺',
                                 title: 'Net Bakiye',
+                                targetKey: tooltipKey,
                               );
-                            }
-                          },
-                          child: AutoSizeText(
-                            formatNumber(
-                              (toplamAlacaklarim + toplamNotAlacaklarim) -
-                                  (toplamBorclarim + toplamNotBorclarim),
+                            },
+                            child: MouseRegion(
+                              onEnter: (_) {
+                                if (Theme.of(context).platform ==
+                                        TargetPlatform.windows ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.macOS ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.linux) {
+                                  final fullAmount =
+                                      (toplamAlacaklarim +
+                                          toplamNotAlacaklarim) -
+                                      (toplamBorclarim + toplamNotBorclarim);
+                                  _showCustomTooltip(
+                                    context,
+                                    '${fullAmount.toStringAsFixed(2)}₺',
+                                    title: 'Net Bakiye',
+                                    targetKey: tooltipKey,
+                                  );
+                                }
+                              },
+                              child: AutoSizeText(
+                                key: tooltipKey,
+                                formatNumber(
+                                  (toplamAlacaklarim + toplamNotAlacaklarim) -
+                                      (toplamBorclarim + toplamNotBorclarim),
+                                ),
+                                style: TextStyle(
+                                  fontSize: size.width * 0.045,
+                                  fontWeight: FontWeight.bold,
+                                  color: textMain,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                minFontSize: 10,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: textMain,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            minFontSize: 10,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: size.height * 0.0025),
                       AutoSizeText(
                         (toplamAlacaklarim + toplamNotAlacaklarim) -
                                     (toplamBorclarim + toplamNotBorclarim) >=
                                 0
                             ? 'Alacaklısın'
                             : 'Borçlusun',
-                        style: TextStyle(fontSize: 9, color: textSec),
+                        style: TextStyle(
+                          fontSize: size.width * 0.022,
+                          color: textSec,
+                        ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         minFontSize: 8,
@@ -1171,13 +1541,11 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
               ],
             ),
           ),
-          const Spacer(), // DİNAMİK BOŞLUK
-          // Bar Graph
+          const Spacer(),
           if (toplamAlacaklarim > 0 || toplamBorclarim > 0)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // SOL TARAF (ALACAKLAR)
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Alacaklarım',
@@ -1189,8 +1557,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                     textSec: textSec,
                   ),
                 ),
-                const SizedBox(width: 20),
-                // SAĞ TARAF (BORÇLAR)
+                SizedBox(width: size.width * 0.05),
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Borçlarım',
@@ -1206,12 +1573,11 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
             ),
           if ((toplamAlacaklarim > 0 || toplamBorclarim > 0) &&
               (toplamNotAlacaklarim > 0 || toplamNotBorclarim > 0))
-            const SizedBox(height: 12),
+            SizedBox(height: size.height * 0.015),
           if (toplamNotAlacaklarim > 0 || toplamNotBorclarim > 0)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // SOL TARAF (NOT ALACAKLAR)
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Not Alacaklarım',
@@ -1223,8 +1589,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                     textSec: textSec,
                   ),
                 ),
-                const SizedBox(width: 20),
-                // SAĞ TARAF (NOT BORÇLAR)
+                SizedBox(width: size.width * 0.05),
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Not Borçlarım',
@@ -1252,22 +1617,21 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     required Color textMain,
     required Color textSec,
   }) {
+    final size = MediaQuery.of(context).size;
     final factor = total > 0 ? amount / total : 0.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          height: 8,
+          height: size.height * 0.01,
           decoration: BoxDecoration(
-            color: Colors.transparent, // Arka planı şeffaf yap
+            color: Colors.transparent,
             border: Border.all(
-              color: isDark
-                  ? Colors.grey[700]!
-                  : Colors.grey[300]!, // Çerçeve rengi
+              color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
               width: 1.0,
             ),
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(size.width * 0.01),
           ),
           child: FractionallySizedBox(
             alignment: Alignment.centerLeft,
@@ -1275,62 +1639,61 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
             child: Container(
               decoration: BoxDecoration(
                 color: color,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(size.width * 0.01),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: size.height * 0.01),
         AutoSizeText(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w500,
-            fontSize: 11,
+            fontSize: size.width * 0.028,
             color: textSec,
           ),
           maxLines: 1,
           minFontSize: 8,
           overflow: TextOverflow.ellipsis,
         ),
-        GestureDetector(
-          onTap: () {
-            _showCustomTooltip(
-              context,
-              '${amount.toStringAsFixed(2)}₺',
-              title: title,
-            );
-          },
-          onLongPress: () {
-            _showCustomTooltip(
-              context,
-              '${amount.toStringAsFixed(2)}₺',
-              title: title,
-            );
-          },
-          child: MouseRegion(
-            onEnter: (_) {
-              if (Theme.of(context).platform == TargetPlatform.windows ||
-                  Theme.of(context).platform == TargetPlatform.macOS ||
-                  Theme.of(context).platform == TargetPlatform.linux) {
-                _showCustomTooltip(
-                  context,
-                  '${amount.toStringAsFixed(2)}₺',
-                  title: title,
-                );
-              }
-            },
-            child: AutoSizeText(
-              formatNumber(amount),
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: textMain,
+        Builder(
+          builder: (context) {
+            final tooltipKey = GlobalKey();
+            return GestureDetector(
+              onLongPress: () => _showCustomTooltip(
+                context,
+                '${amount.toStringAsFixed(2)}₺',
+                title: title,
+                targetKey: tooltipKey,
               ),
-              maxLines: 1,
-              minFontSize: 9,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+              child: MouseRegion(
+                onEnter: (_) {
+                  if (Theme.of(context).platform == TargetPlatform.windows ||
+                      Theme.of(context).platform == TargetPlatform.macOS ||
+                      Theme.of(context).platform == TargetPlatform.linux) {
+                    _showCustomTooltip(
+                      context,
+                      '${amount.toStringAsFixed(2)}₺',
+                      title: title,
+                      targetKey: tooltipKey,
+                    );
+                  }
+                },
+                child: AutoSizeText(
+                  key: tooltipKey,
+                  formatNumber(amount),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: size.width * 0.033,
+                    color: textMain,
+                  ),
+                  maxLines: 1,
+                  minFontSize: 9,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -1344,11 +1707,12 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     Color green,
     bool isDark,
   ) {
+    final size = MediaQuery.of(context).size;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(size.width * 0.04),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.18 : 0.08),
@@ -1364,21 +1728,20 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
             'Onaylı İşlemler',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: size.width * 0.045,
               color: textMain,
             ),
           ),
-          const SizedBox(height: 16),
-          // Grafik
+          SizedBox(height: size.height * 0.02),
           SizedBox(
-            height: 120,
+            height: size.height * 0.14,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 PieChart(
                   PieChartData(
                     sectionsSpace: 3,
-                    centerSpaceRadius: 40,
+                    centerSpaceRadius: size.width * 0.1,
                     pieTouchData: PieTouchData(
                       enabled: true,
                       touchCallback: (FlTouchEvent event, pieTouchResponse) {
@@ -1404,7 +1767,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: red,
                           value: onayliToplamBorclarim,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                       if (onayliToplamAlacaklarim > 0)
@@ -1412,7 +1775,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: green,
                           value: onayliToplamAlacaklarim,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                       if (onayliToplamBorclarim == 0 &&
@@ -1421,45 +1784,22 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
                           value: 1,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                     ],
                   ),
                 ),
-                // Ortadaki toplam bakiye
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
+                  padding: EdgeInsets.all(size.width * 0.02),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          final fullAmount =
-                              onayliToplamAlacaklarim - onayliToplamBorclarim;
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Onaylı Net Durum',
-                          );
-                        },
-                        onLongPress: () {
-                          final fullAmount =
-                              onayliToplamAlacaklarim - onayliToplamBorclarim;
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Onaylı Net Durum',
-                          );
-                        },
-                        child: MouseRegion(
-                          onEnter: (_) {
-                            if (Theme.of(context).platform ==
-                                    TargetPlatform.windows ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.macOS ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.linux) {
+                      Builder(
+                        builder: (context) {
+                          final tooltipKey = GlobalKey();
+                          return GestureDetector(
+                            onLongPress: () {
                               final fullAmount =
                                   onayliToplamAlacaklarim -
                                   onayliToplamBorclarim;
@@ -1467,29 +1807,55 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                 context,
                                 '${fullAmount.toStringAsFixed(2)}₺',
                                 title: 'Onaylı Net Durum',
+                                targetKey: tooltipKey,
                               );
-                            }
-                          },
-                          child: AutoSizeText(
-                            formatNumber(
-                              onayliToplamAlacaklarim - onayliToplamBorclarim,
+                            },
+                            child: MouseRegion(
+                              onEnter: (_) {
+                                if (Theme.of(context).platform ==
+                                        TargetPlatform.windows ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.macOS ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.linux) {
+                                  final fullAmount =
+                                      onayliToplamAlacaklarim -
+                                      onayliToplamBorclarim;
+                                  _showCustomTooltip(
+                                    context,
+                                    '${fullAmount.toStringAsFixed(2)}₺',
+                                    title: 'Onaylı Net Durum',
+                                    targetKey: tooltipKey,
+                                  );
+                                }
+                              },
+                              child: AutoSizeText(
+                                key: tooltipKey,
+                                formatNumber(
+                                  onayliToplamAlacaklarim -
+                                      onayliToplamBorclarim,
+                                ),
+                                style: TextStyle(
+                                  fontSize: size.width * 0.05,
+                                  fontWeight: FontWeight.bold,
+                                  color: textMain,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                minFontSize: 12,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: textMain,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            minFontSize: 12,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: size.height * 0.0025),
                       AutoSizeText(
                         'Net Durum',
-                        style: TextStyle(fontSize: 9, color: textSec),
+                        style: TextStyle(
+                          fontSize: size.width * 0.022,
+                          color: textSec,
+                        ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         minFontSize: 8,
@@ -1501,8 +1867,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
               ],
             ),
           ),
-          const Spacer(), // DİNAMİK BOŞLUK
-          // Bar Graph
+          const Spacer(),
           if (onayliToplamAlacaklarim > 0 || onayliToplamBorclarim > 0)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1518,7 +1883,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                     textSec: textSec,
                   ),
                 ),
-                const SizedBox(width: 20),
+                SizedBox(width: size.width * 0.05),
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Borçlarım',
@@ -1545,11 +1910,12 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     Color orange,
     bool isDark,
   ) {
+    final size = MediaQuery.of(context).size;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(size.width * 0.04),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.18 : 0.08),
@@ -1565,21 +1931,20 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
             'Not İşlemleri',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: size.width * 0.045,
               color: textMain,
             ),
           ),
-          const SizedBox(height: 16),
-          // Grafik
+          SizedBox(height: size.height * 0.02),
           SizedBox(
-            height: 120,
+            height: size.height * 0.14,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 PieChart(
                   PieChartData(
                     sectionsSpace: 3,
-                    centerSpaceRadius: 40,
+                    centerSpaceRadius: size.width * 0.1,
                     pieTouchData: PieTouchData(
                       enabled: true,
                       touchCallback: (FlTouchEvent event, pieTouchResponse) {
@@ -1605,7 +1970,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: blue,
                           value: toplamNotAlacaklarim,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                       if (toplamNotBorclarim > 0)
@@ -1613,7 +1978,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: orange,
                           value: toplamNotBorclarim,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                       if (toplamNotAlacaklarim == 0 && toplamNotBorclarim == 0)
@@ -1621,74 +1986,75 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                           color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
                           value: 1,
                           title: '',
-                          radius: 55,
+                          radius: size.width * 0.13,
                           showTitle: false,
                         ),
                     ],
                   ),
                 ),
-                // Ortadaki toplam bakiye
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
+                  padding: EdgeInsets.all(size.width * 0.02),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          final fullAmount =
-                              toplamNotAlacaklarim - toplamNotBorclarim;
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Not Net Durum',
-                          );
-                        },
-                        onLongPress: () {
-                          final fullAmount =
-                              toplamNotAlacaklarim - toplamNotBorclarim;
-                          _showCustomTooltip(
-                            context,
-                            '${fullAmount.toStringAsFixed(2)}₺',
-                            title: 'Not Net Durum',
-                          );
-                        },
-                        child: MouseRegion(
-                          onEnter: (_) {
-                            if (Theme.of(context).platform ==
-                                    TargetPlatform.windows ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.macOS ||
-                                Theme.of(context).platform ==
-                                    TargetPlatform.linux) {
+                      Builder(
+                        builder: (context) {
+                          final tooltipKey = GlobalKey();
+                          return GestureDetector(
+                            onLongPress: () {
                               final fullAmount =
                                   toplamNotAlacaklarim - toplamNotBorclarim;
                               _showCustomTooltip(
                                 context,
                                 '${fullAmount.toStringAsFixed(2)}₺',
                                 title: 'Not Net Durum',
+                                targetKey: tooltipKey,
                               );
-                            }
-                          },
-                          child: AutoSizeText(
-                            formatNumber(
-                              toplamNotAlacaklarim - toplamNotBorclarim,
+                            },
+                            child: MouseRegion(
+                              onEnter: (_) {
+                                if (Theme.of(context).platform ==
+                                        TargetPlatform.windows ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.macOS ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.linux) {
+                                  final fullAmount =
+                                      toplamNotAlacaklarim - toplamNotBorclarim;
+                                  _showCustomTooltip(
+                                    context,
+                                    '${fullAmount.toStringAsFixed(2)}₺',
+                                    title: 'Not Net Durum',
+                                    targetKey: tooltipKey,
+                                  );
+                                }
+                              },
+                              child: AutoSizeText(
+                                key: tooltipKey,
+                                formatNumber(
+                                  toplamNotAlacaklarim - toplamNotBorclarim,
+                                ),
+                                style: TextStyle(
+                                  fontSize: size.width * 0.05,
+                                  fontWeight: FontWeight.bold,
+                                  color: textMain,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                minFontSize: 12,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: textMain,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            minFontSize: 12,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: size.height * 0.0025),
                       AutoSizeText(
                         'Not Net Durum',
-                        style: TextStyle(fontSize: 9, color: textSec),
+                        style: TextStyle(
+                          fontSize: size.width * 0.022,
+                          color: textSec,
+                        ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         minFontSize: 8,
@@ -1700,8 +2066,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
               ],
             ),
           ),
-          const Spacer(), // DİNAMİK BOŞLUK
-          // Bar Graph
+          const Spacer(),
           if (toplamNotAlacaklarim > 0 || toplamNotBorclarim > 0)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1717,7 +2082,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                     textSec: textSec,
                   ),
                 ),
-                const SizedBox(width: 20),
+                SizedBox(width: size.width * 0.05),
                 Expanded(
                   child: _buildBarGraphItem(
                     title: 'Not Borçlarım',
@@ -1735,4 +2100,246 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
       ),
     );
   }
+}
+
+// 🎨 Modern Baloncuk Tooltip Widget
+class _BubbleTooltip extends StatefulWidget {
+  final Offset position;
+  final Size targetSize;
+  final String fullAmount;
+  final String? title;
+  final bool isDark;
+  final VoidCallback onDismiss;
+
+  const _BubbleTooltip({
+    required this.position,
+    required this.targetSize,
+    required this.fullAmount,
+    this.title,
+    required this.isDark,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_BubbleTooltip> createState() => _BubbleTooltipState();
+}
+
+class _BubbleTooltipState extends State<_BubbleTooltip>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Animasyon kontrolcüsü
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    // Büyüme animasyonu
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
+
+    // Opacity animasyonu
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    // Animasyonu başlat
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Ekran boyutları
+    final screenSize = MediaQuery.of(context).size;
+
+    // Baloncuk boyutları
+    const tooltipWidth = 160.0;
+    const tooltipHeight = 60.0;
+    const arrowHeight = 8.0;
+
+    // Target'ın merkezi
+    final targetCenter = Offset(
+      widget.position.dx + (widget.targetSize.width / 2),
+      widget.position.dy + (widget.targetSize.height / 2),
+    );
+
+    // Baloncuk pozisyonunu hesapla (target'ın üstünde)
+    double tooltipX = targetCenter.dx - (tooltipWidth / 2);
+    double tooltipY = widget.position.dy - tooltipHeight - arrowHeight - 8;
+
+    // Ekran sınırları kontrolü
+    if (tooltipX < 16) tooltipX = 16;
+    if (tooltipX + tooltipWidth > screenSize.width - 16) {
+      tooltipX = screenSize.width - tooltipWidth - 16;
+    }
+
+    // Eğer üstte yer yoksa alt tarafa yerleştir
+    bool showBelow = false;
+    if (tooltipY < 50) {
+      tooltipY =
+          widget.position.dy + widget.targetSize.height + arrowHeight + 8;
+      showBelow = true;
+    }
+
+    // Ok pozisyonu (her zaman target'ın merkezini gösterir)
+    final arrowX = targetCenter.dx - tooltipX;
+
+    return GestureDetector(
+      onTap: widget.onDismiss,
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        width: screenSize.width,
+        height: screenSize.height,
+        child: AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            return Stack(
+              children: [
+                // Baloncuk
+                Positioned(
+                  left: tooltipX,
+                  top: tooltipY,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Opacity(
+                      opacity: _opacityAnimation.value,
+                      child: Container(
+                        width: tooltipWidth,
+                        height: tooltipHeight,
+                        child: Stack(
+                          children: [
+                            // Ana baloncuk gövdesi
+                            Container(
+                              width: tooltipWidth,
+                              height: tooltipHeight,
+                              decoration: BoxDecoration(
+                                color: widget.isDark
+                                    ? const Color(0xFF2D3748).withOpacity(0.95)
+                                    : Colors.white.withOpacity(0.95),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: widget.isDark
+                                      ? Colors.grey.withOpacity(0.3)
+                                      : Colors.grey.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(
+                                      widget.isDark ? 0.4 : 0.15,
+                                    ),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (widget.title != null) ...[
+                                    Text(
+                                      widget.title!,
+                                      style: TextStyle(
+                                        color: widget.isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 2),
+                                  ],
+                                  Text(
+                                    widget.fullAmount,
+                                    style: TextStyle(
+                                      color: widget.isDark
+                                          ? Colors.white
+                                          : const Color(0xFF1A202C),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Ok (Pointer)
+                            Positioned(
+                              left: arrowX.clamp(8.0, tooltipWidth - 16.0) - 8,
+                              top: showBelow ? -arrowHeight : tooltipHeight,
+                              child: CustomPaint(
+                                painter: _ArrowPainter(
+                                  color: widget.isDark
+                                      ? const Color(
+                                          0xFF2D3748,
+                                        ).withOpacity(0.95)
+                                      : Colors.white.withOpacity(0.95),
+                                  pointsUp: !showBelow,
+                                ),
+                                size: const Size(16, 8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// 🎯 Ok Çizer (Arrow Painter)
+class _ArrowPainter extends CustomPainter {
+  final Color color;
+  final bool pointsUp;
+
+  _ArrowPainter({required this.color, required this.pointsUp});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+
+    if (pointsUp) {
+      // Yukarı ok
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(0, size.height);
+      path.lineTo(size.width, size.height);
+    } else {
+      // Aşağı ok
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    }
+
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

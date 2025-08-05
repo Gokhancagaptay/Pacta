@@ -67,6 +67,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final textMain =
+        theme.textTheme.titleLarge?.color ??
+        (isDark ? Colors.white : const Color(0xFF1A202C));
+    final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
+
     void showAddContactSheet() {
       showModalBottomSheet(
         context: context,
@@ -77,19 +86,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
           child: const _AddContactSheet(),
         ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(size.width * 0.05),
+          ),
         ),
       );
     }
-
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bgColor = theme.scaffoldBackgroundColor;
-    final textMain =
-        theme.textTheme.titleLarge?.color ??
-        (isDark ? Colors.white : const Color(0xFF1A202C));
-    final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -101,12 +104,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
           style: TextStyle(
             color: textMain,
             fontWeight: FontWeight.bold,
-            fontSize: 20,
+            fontSize: size.width * 0.05,
           ),
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: iconMain),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: iconMain,
+            size: size.width * 0.05,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
@@ -114,6 +121,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             icon: Icon(
               _showOnlyFavorites ? Icons.favorite : Icons.favorite_border,
               color: _showOnlyFavorites ? Colors.redAccent : iconMain,
+              size: size.width * 0.06,
             ),
             tooltip: 'Sadece Favorileri Göster',
             onPressed: () {
@@ -123,7 +131,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             },
           ),
           IconButton(
-            icon: Icon(Icons.add, color: iconMain, size: 28),
+            icon: Icon(Icons.add, color: iconMain, size: size.width * 0.07),
             tooltip: 'Kişi Ekle',
             onPressed: showAddContactSheet,
           ),
@@ -142,7 +150,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               child: Text(
                 'Kayıtlı kişi bulunamadı.',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: size.width * 0.04,
                   color: Theme.of(context).disabledColor,
                 ),
               ),
@@ -155,13 +163,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
             return Center(
               child: Text(
                 'Favori kişi bulunamadı.',
-                style: TextStyle(color: Theme.of(context).disabledColor),
+                style: TextStyle(
+                  color: Theme.of(context).disabledColor,
+                  fontSize: size.width * 0.04,
+                ),
               ),
             );
           }
 
           return ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            padding: EdgeInsets.symmetric(
+              horizontal: size.width * 0.04,
+              vertical: size.height * 0.02,
+            ),
             children: [
               if (_showOnlyFavorites)
                 ...favorites.map((contact) => _buildContactCard(contact, true))
@@ -173,7 +187,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   ),
                 ],
                 if (others.isNotEmpty) ...[
-                  if (favorites.isNotEmpty) const SizedBox(height: 20),
+                  if (favorites.isNotEmpty)
+                    SizedBox(height: size.height * 0.025),
                   _buildSectionHeader('Tüm Kişiler'),
                   ...others.map((contact) => _buildContactCard(contact, false)),
                 ],
@@ -186,12 +201,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildSectionHeader(String title) {
+    final size = MediaQuery.of(context).size;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+      padding: EdgeInsets.only(
+        bottom: size.height * 0.01,
+        left: size.width * 0.01,
+      ),
       child: Text(
         title,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: size.width * 0.035,
           fontWeight: FontWeight.bold,
           color: Colors.grey.shade600,
         ),
@@ -200,6 +219,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildContactCard(SavedContactModel contact, bool isFavorite) {
+    final size = MediaQuery.of(context).size;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final cardColor = theme.cardColor;
@@ -213,28 +233,39 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.only(bottom: size.height * 0.015),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(size.width * 0.03),
+      ),
       color: cardColor,
       child: ListTile(
         leading: CircleAvatar(
+          radius: size.width * 0.06,
           backgroundColor: isDark ? Colors.blueGrey[800] : Colors.blueGrey[100],
           child: Text(
             (contact.adSoyad)[0].toUpperCase(),
-            style: TextStyle(fontWeight: FontWeight.bold, color: textMain),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: textMain,
+              fontSize: size.width * 0.04,
+            ),
           ),
         ),
         title: Text(
           contact.adSoyad,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 16,
+            fontSize: size.width * 0.04,
             color: textMain,
           ),
         ),
         subtitle: Text(
           contact.email,
-          style: TextStyle(color: textSec, fontWeight: FontWeight.normal),
+          style: TextStyle(
+            color: textSec,
+            fontWeight: FontWeight.normal,
+            fontSize: size.width * 0.035,
+          ),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -243,6 +274,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               icon: Icon(
                 isFavorite ? Icons.favorite : Icons.favorite_border,
                 color: isFavorite ? Colors.redAccent : Colors.grey,
+                size: size.width * 0.055,
               ),
               tooltip: isFavorite ? 'Favorilerden Kaldır' : 'Favorilere Ekle',
               onPressed: () {
@@ -255,6 +287,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               icon: Icon(
                 Icons.bar_chart_outlined,
                 color: isDark ? Colors.tealAccent : Colors.blueGrey,
+                size: size.width * 0.055,
               ),
               tooltip: 'Analiz',
               onPressed: () {
@@ -271,7 +304,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
             ),
             IconButton(
-              icon: Icon(Icons.delete_outline, color: iconDelete),
+              icon: Icon(
+                Icons.delete_outline,
+                color: iconDelete,
+                size: size.width * 0.055,
+              ),
               tooltip: 'Sil',
               onPressed: () async {
                 final confirm = await showDialog<bool>(
@@ -293,15 +330,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ],
                   ),
                 );
-                if (confirm == true) {
-                  if (currentUserId != null) {
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(currentUserId)
-                        .collection('savedContacts')
-                        .doc(contact.id!)
-                        .delete();
-                  }
+                if (confirm == true && currentUserId != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(currentUserId)
+                      .collection('savedContacts')
+                      .doc(contact.id!)
+                      .delete();
                 }
               },
             ),
@@ -351,52 +386,60 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         .doc(currentUserId)
         .collection('savedContacts');
 
-    if (_isNoteMode) {
-      await savedContactsRef.add({
-        'adSoyad': name,
-        'email': identifier,
-        'uid': null,
-      });
-      Navigator.pop(context);
-    } else {
-      final UserModel? user = await _firestoreService.getUserByEmail(
-        identifier,
-      );
-
-      if (user != null) {
+    try {
+      if (_isNoteMode) {
         await savedContactsRef.add({
           'adSoyad': name,
           'email': identifier,
-          'uid': user.uid,
+          'uid': null,
         });
         Navigator.pop(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Bu e-posta ile kayıtlı kullanıcı bulunamadı. Lütfen kişiyi Pacta\'ya davet edin veya Not Modu\'nda ekleyin.',
-            ),
-            duration: Duration(seconds: 4),
-          ),
+        final UserModel? user = await _firestoreService.getUserByEmail(
+          identifier,
         );
+
+        if (user != null) {
+          await savedContactsRef.add({
+            'adSoyad': name,
+            'email': identifier,
+            'uid': user.uid,
+          });
+          Navigator.pop(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Bu e-posta ile kayıtlı kullanıcı bulunamadı. Lütfen kişiyi Pacta\'ya davet edin veya Not Modu\'nda ekleyin.',
+              ),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
       }
     }
-    setState(() => _isChecking = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Padding(
-      padding: const EdgeInsets.all(20.0),
+      padding: EdgeInsets.all(size.width * 0.05),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Yeni Kişi Ekle',
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontSize: size.width * 0.06),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: size.height * 0.025),
           TextField(
             controller: _nameController,
             decoration: const InputDecoration(
@@ -404,7 +447,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: size.height * 0.015),
           TextField(
             controller: _identifierController,
             decoration: const InputDecoration(
@@ -413,7 +456,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             ),
             keyboardType: TextInputType.emailAddress,
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: size.height * 0.015),
           SwitchListTile(
             title: const Text('Not Modu'),
             subtitle: const Text('Kişiyi sadece kendi takibiniz için ekleyin.'),
@@ -424,7 +467,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               });
             },
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: size.height * 0.025),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -432,14 +475,14 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('İptal'),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: size.width * 0.03),
               ElevatedButton(
                 onPressed: _isChecking ? null : _addContact,
                 child: _isChecking
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? SizedBox(
+                        width: size.width * 0.05,
+                        height: size.width * 0.05,
+                        child: const CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('Ekle'),
               ),

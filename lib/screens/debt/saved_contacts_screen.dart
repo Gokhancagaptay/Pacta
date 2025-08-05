@@ -53,8 +53,9 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
   }
 
   Stream<Map<String, List<SavedContactModel>>> _getContactsStream() {
-    if (currentUserId == null)
+    if (currentUserId == null) {
       return Stream.value({'favorites': [], 'others': []});
+    }
 
     final savedContactsStream = _firestoreService.getSavedContactsStream(
       _searchTerm,
@@ -105,11 +106,8 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
       ),
     );
 
-    // Kullanıcı eklendiyse listeyi yenile
     if (result == true && mounted) {
-      setState(() {
-        // Stream otomatik güncellenecek ama setState ile UI'ın yenilenmesini garantiliyoruz
-      });
+      setState(() {});
     }
   }
 
@@ -140,84 +138,94 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Kişi ara...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-              ),
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<Map<String, List<SavedContactModel>>>(
-              stream: _getContactsStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData ||
-                    (snapshot.data!['favorites']!.isEmpty &&
-                        snapshot.data!['others']!.isEmpty)) {
-                  return Center(
-                    child: Text(
-                      'Kayıtlı kişi bulunamadı.',
-                      style: TextStyle(color: Theme.of(context).disabledColor),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Kişi ara...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: BorderSide.none,
                     ),
-                  );
-                }
-
-                final favorites = snapshot.data!['favorites']!;
-                final others = snapshot.data!['others']!;
-
-                if (_showOnlyFavorites && favorites.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'Favori kişi bulunamadı.',
-                      style: TextStyle(color: Theme.of(context).disabledColor),
-                    ),
-                  );
-                }
-
-                return ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+                    filled: true,
                   ),
-                  children: [
-                    if (_showOnlyFavorites)
-                      ...favorites.map(
-                        (contact) => _buildContactCard(contact, true),
-                      )
-                    else ...[
-                      if (favorites.isNotEmpty) ...[
-                        _buildSectionHeader('Favoriler'),
-                        ...favorites.map(
-                          (contact) => _buildContactCard(contact, true),
+                ),
+              ),
+              Expanded(
+                child: StreamBuilder<Map<String, List<SavedContactModel>>>(
+                  stream: _getContactsStream(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData ||
+                        (snapshot.data!['favorites']!.isEmpty &&
+                            snapshot.data!['others']!.isEmpty)) {
+                      return Center(
+                        child: Text(
+                          'Kayıtlı kişi bulunamadı.',
+                          style: TextStyle(
+                            color: Theme.of(context).disabledColor,
+                          ),
                         ),
-                      ],
-                      if (others.isNotEmpty) ...[
-                        if (favorites.isNotEmpty) const SizedBox(height: 20),
-                        _buildSectionHeader('Tüm Kişiler'),
-                        ...others.map(
-                          (contact) => _buildContactCard(contact, false),
+                      );
+                    }
+
+                    final favorites = snapshot.data!['favorites']!;
+                    final others = snapshot.data!['others']!;
+
+                    if (_showOnlyFavorites && favorites.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'Favori kişi bulunamadı.',
+                          style: TextStyle(
+                            color: Theme.of(context).disabledColor,
+                          ),
                         ),
+                      );
+                    }
+
+                    return ListView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      children: [
+                        if (_showOnlyFavorites)
+                          ...favorites.map(
+                            (contact) => _buildContactCard(contact, true),
+                          )
+                        else ...[
+                          if (favorites.isNotEmpty) ...[
+                            _buildSectionHeader('Favoriler'),
+                            ...favorites.map(
+                              (contact) => _buildContactCard(contact, true),
+                            ),
+                          ],
+                          if (others.isNotEmpty) ...[
+                            if (favorites.isNotEmpty)
+                              const SizedBox(height: 20),
+                            _buildSectionHeader('Tüm Kişiler'),
+                            ...others.map(
+                              (contact) => _buildContactCard(contact, false),
+                            ),
+                          ],
+                        ],
                       ],
-                    ],
-                  ],
-                );
-              },
-            ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddContactSheet,
@@ -277,7 +285,6 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
           },
         ),
         onTap: () {
-          // Null kontrol ve validation
           if (contact.adSoyad.isEmpty || contact.email.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -288,12 +295,6 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
             );
             return;
           }
-
-          // Debug log
-          print(
-            'DEBUG: Contact selected - ID: ${contact.uid}, Name: ${contact.adSoyad}, Email: ${contact.email}',
-          );
-
           Navigator.pop(context, contact);
         },
       ),
@@ -386,7 +387,7 @@ class __AddContactSheetState extends State<_AddContactSheet> {
       SavedContactModel(adSoyad: name, email: email, uid: user?.uid),
     );
 
-    Navigator.pop(context, true); // Başarılı ekleme için true döndür
+    Navigator.pop(context, true);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$name kişilere eklendi.')));
@@ -399,75 +400,88 @@ class __AddContactSheetState extends State<_AddContactSheet> {
         _emailController.text.isNotEmpty &&
         (_isNoteMode || (_userExists && !_isChecking));
 
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Yeni Kişi Ekle',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Ad Soyad',
-              border: OutlineInputBorder(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20.0,
+              20.0,
+              20.0,
+              MediaQuery.of(context).viewInsets.bottom + 20.0,
             ),
-            onChanged: (value) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailController,
-            decoration: InputDecoration(
-              labelText: 'E-posta',
-              border: const OutlineInputBorder(),
-              suffixIcon: _isChecking
-                  ? const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : _emailController.text.isNotEmpty && !_isNoteMode
-                  ? Icon(
-                      _userExists ? Icons.check_circle : Icons.error,
-                      color: _userExists ? Colors.green : Colors.red,
-                    )
-                  : null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Yeni Kişi Ekle',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Ad Soyad',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _emailController,
+                  decoration: InputDecoration(
+                    labelText: 'E-posta',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _isChecking
+                        ? const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : _emailController.text.isNotEmpty && !_isNoteMode
+                        ? Icon(
+                            _userExists ? Icons.check_circle : Icons.error,
+                            color: _userExists ? Colors.green : Colors.red,
+                          )
+                        : null,
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  title: const Text('Not Modu'),
+                  subtitle: const Text(
+                    'Kişiyi sadece kendi takibiniz için ekleyin.',
+                  ),
+                  value: _isNoteMode,
+                  onChanged: (value) {
+                    setState(() {
+                      _isNoteMode = value;
+                      _onEmailChanged();
+                    });
+                  },
+                  secondary: const Icon(Icons.note_alt_outlined),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('İptal'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: canAdd ? _addContact : null,
+                      child: const Text('Ekle'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            keyboardType: TextInputType.emailAddress,
           ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('Not Modu'),
-            subtitle: const Text('Kişiyi sadece kendi takibiniz için ekleyin.'),
-            value: _isNoteMode,
-            onChanged: (value) {
-              setState(() {
-                _isNoteMode = value;
-                _onEmailChanged();
-              });
-            },
-            secondary: const Icon(Icons.note_alt_outlined),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('İptal'),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: canAdd ? _addContact : null,
-                child: const Text('Ekle'),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
