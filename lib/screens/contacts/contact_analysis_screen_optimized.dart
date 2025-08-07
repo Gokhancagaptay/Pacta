@@ -11,22 +11,24 @@ import 'package:pacta/widgets/common/loading_widget.dart';
 import 'package:pacta/widgets/common/empty_state_widget.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
 
-/// Contact Analysis ekranı - Responsive ve optimize edilmiş
-class ContactAnalysisScreen extends StatefulWidget {
+/// Optimize edilmiş Contact Analysis ekranı
+class ContactAnalysisScreenOptimized extends StatefulWidget {
   final String contactId;
   final String contactName;
 
-  const ContactAnalysisScreen({
+  const ContactAnalysisScreenOptimized({
     super.key,
     required this.contactId,
     required this.contactName,
   });
 
   @override
-  State<ContactAnalysisScreen> createState() => _ContactAnalysisScreenState();
+  State<ContactAnalysisScreenOptimized> createState() =>
+      _ContactAnalysisScreenOptimizedState();
 }
 
-class _ContactAnalysisScreenState extends State<ContactAnalysisScreen>
+class _ContactAnalysisScreenOptimizedState
+    extends State<ContactAnalysisScreenOptimized>
     with TickerProviderStateMixin {
   late TabController _tabController;
   ContactAnalysisData? _analysisData;

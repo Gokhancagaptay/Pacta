@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:pacta/widgets/custom_date_range_picker.dart';
@@ -169,11 +170,16 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
   }
 
   Future<void> _selectDateRange() async {
-    final picked = await showDialog<DateTimeRange>(
-      context: context,
-      builder: (context) =>
-          CustomDateRangePicker(initialDateRange: _selectedDateRange),
+    final picked = await showCustomDateRangePicker(
+      context,
+      initialDateRange: _selectedDateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      helpText: 'Belge için tarih aralığı seçin',
+      cancelText: 'İptal',
+      confirmText: 'Seç',
     );
+
     if (picked != null) {
       setState(() {
         _selectedDateRange = picked;
@@ -556,20 +562,25 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF121212)
+        : const Color(0xFFF7F8FC);
+    final textColor = isDark ? Colors.white : const Color(0xFF1A202C);
+    final primaryColor = Colors.green.shade600;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Belge Oluştur',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1A202C),
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: const Color(0xFFF7F8FC),
-        iconTheme: const IconThemeData(color: Color(0xFF1A202C)),
+        backgroundColor: backgroundColor,
+        iconTheme: IconThemeData(color: textColor),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -592,22 +603,30 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
   }
 
   Widget _buildUserSelectionCard() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final primaryColor = Colors.green.shade600;
+    final secondaryTextColor = isDark
+        ? Colors.grey.shade400
+        : Colors.grey.shade600;
+
     return Card(
       elevation: 2.0,
-      shadowColor: Colors.black.withOpacity(0.05),
+      shadowColor: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      color: Colors.white,
+      color: cardColor,
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: _isLoadingContacts ? null : _showUserSelectionDialog,
-        leading: Icon(Icons.people_outline, color: Colors.green.shade600),
+        leading: Icon(Icons.people_outline, color: primaryColor),
         title: const Text(
           'Kullanıcılar',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
           _userSelectionText,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: secondaryTextColor, fontSize: 14),
           overflow: TextOverflow.ellipsis,
         ),
         trailing: _isLoadingContacts
@@ -622,13 +641,19 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondaryTextColor = isDark
+        ? Colors.grey.shade400
+        : Colors.grey.shade600;
+
     return Padding(
       padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
+          color: secondaryTextColor,
           fontSize: 12,
         ),
       ),
@@ -636,11 +661,15 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
   }
 
   Widget _buildDocTypeSelectionCard() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? AppColors.darkSurface : Colors.white;
+
     return Card(
       elevation: 2.0,
-      shadowColor: Colors.black.withOpacity(0.05),
+      shadowColor: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      color: Colors.white,
+      color: cardColor,
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -671,11 +700,20 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
     String subtitle,
     DocumentType value,
   ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = isDark
+        ? AppColors.darkPrimary
+        : AppColors.lightPrimary;
+    final secondaryTextColor = isDark
+        ? Colors.grey.shade400
+        : Colors.grey.shade600;
+
     return RadioListTile<DocumentType>(
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(
         subtitle,
-        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        style: TextStyle(color: secondaryTextColor, fontSize: 12),
       ),
       value: value,
       groupValue: _documentType,
@@ -686,30 +724,35 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
           });
         }
       },
-      activeColor: Colors.green.shade600,
+      activeColor: primaryColor,
     );
   }
 
   Widget _buildDateRangeCard() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final primaryColor = Colors.green.shade600;
+    final secondaryTextColor = isDark
+        ? Colors.grey.shade400
+        : Colors.grey.shade600;
+
     return Card(
       elevation: 2.0,
-      shadowColor: Colors.black.withOpacity(0.05),
+      shadowColor: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      color: Colors.white,
+      color: cardColor,
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: _selectDateRange,
-        leading: Icon(
-          Icons.calendar_today_outlined,
-          color: Colors.green.shade600,
-        ),
+        leading: Icon(Icons.calendar_today_outlined, color: primaryColor),
         title: const Text(
           'Tarih Aralığı',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
           _dateRangeText,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: secondaryTextColor, fontSize: 14),
         ),
         trailing: const Icon(Icons.chevron_right),
       ),

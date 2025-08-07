@@ -2,25 +2,52 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/models/saved_contact_model.dart';
 import 'package:pacta/models/user_model.dart';
 
+/// Firestore veritabanı işlemleri için servis sınıfı
+///
+/// Bu sınıf kullanıcı, borç ve bildirim verilerinin
+/// Firestore veritabanında CRUD işlemlerini yönetir.
+///
+/// Ayrıca performans için user name cache'i ve
+/// consistent error handling sağlar.
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late final CollectionReference<UserModel> usersRef;
   late final CollectionReference<DebtModel> debtsRef;
 
+  // Use constants from AppConstants
+  static const String _usersCollection = AppConstants.usersCollection;
+  static const String _debtsCollection = AppConstants.debtsCollection;
+  static const String _notificationsCollection =
+      AppConstants.notificationsCollection;
+  static const String _savedContactsCollection =
+      AppConstants.savedContactsCollection;
+
+  // Status constants from AppConstants
+  static const String statusApproved = AppConstants.statusApproved;
+  static const String statusPending = AppConstants.statusPending;
+  static const String statusRejected = AppConstants.statusRejected;
+  static const String statusNote = AppConstants.statusNote;
+  static const String statusPendingDeletion =
+      AppConstants.statusPendingDeletion;
+
+  // Cache for user names to reduce database calls
+  static final Map<String, String> _userNameCache = <String, String>{};
+
   FirestoreService() {
     usersRef = _db
-        .collection('users')
+        .collection(_usersCollection)
         .withConverter<UserModel>(
           fromFirestore: (snapshot, _) => UserModel.fromMap(snapshot.data()!),
           toFirestore: (user, _) => user.toMap(),
         );
 
     debtsRef = _db
-        .collection('debts')
+        .collection(_debtsCollection)
         .withConverter<DebtModel>(
           fromFirestore: (snapshot, options) =>
               DebtModel.fromMap(snapshot.data()!, snapshot.id),
@@ -44,10 +71,19 @@ class FirestoreService {
 
   Future<String> getUserNameById(String userId) async {
     if (userId.isEmpty) return 'Bilinmeyen Kullanıcı';
+
+    // Check cache first for performance
+    if (_userNameCache.containsKey(userId)) {
+      return _userNameCache[userId]!;
+    }
+
     try {
       final user = await getUser(userId);
-      if (user != null) return user.adSoyad ?? user.email;
-      return 'Bilinmeyen Kullanıcı';
+      final userName = user?.adSoyad ?? user?.email ?? 'Bilinmeyen Kullanıcı';
+
+      // Cache the result
+      _userNameCache[userId] = userName;
+      return userName;
     } catch (e) {
       print('Error getting user name: $e');
       return 'Hata';
@@ -55,6 +91,8 @@ class FirestoreService {
   }
 
   Future<UserModel?> getUserByEmail(String email) async {
+    if (email.isEmpty) return null;
+
     try {
       final querySnapshot = await usersRef
           .where('email', isEqualTo: email)
@@ -69,7 +107,14 @@ class FirestoreService {
   }
 
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
-    await usersRef.doc(uid).update(data);
+    if (uid.isEmpty || data.isEmpty) return;
+
+    try {
+      await usersRef.doc(uid).update(data);
+    } catch (e) {
+      print('Error updating user: $e');
+      rethrow;
+    }
   }
 
   // DEBT METHODS
@@ -78,7 +123,7 @@ class FirestoreService {
       final docRef = await debtsRef.add(debt);
       final newDebtId = docRef.id;
 
-      if (debt.requiresApproval && debt.status == 'pending') {
+      if (debt.requiresApproval && debt.status == statusPending) {
         final currentUser = FirebaseAuth.instance.currentUser;
         if (currentUser != null) {
           final currentUserName = await getUserNameById(currentUser.uid);
@@ -117,19 +162,19 @@ class FirestoreService {
 
     await debtRef.update({'status': newStatus, 'updatedById': currentUser.uid});
 
-    if (newStatus == 'approved' || newStatus == 'rejected') {
+    if (newStatus == statusApproved || newStatus == statusRejected) {
       final updatedByName = await getUserNameById(currentUser.uid);
       final createdBy = debt.createdBy;
 
       if (createdBy != null && createdBy != currentUser.uid) {
-        final message = newStatus == 'approved'
+        final message = newStatus == statusApproved
             ? '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından onaylandı.'
             : '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından reddedildi.';
 
         await sendNotification(
           toUserId: createdBy,
           createdById: currentUser.uid,
-          type: newStatus == 'approved'
+          type: newStatus == statusApproved
               ? 'request_approved'
               : 'request_rejected',
           relatedDebtId: debtId,
@@ -149,7 +194,7 @@ class FirestoreService {
     final debt = debtSnapshot.data()!;
 
     await debtRef.update({
-      'status': 'pending_deletion',
+      'status': statusPendingDeletion,
       'deletion_requester_id': requesterId,
     });
 
@@ -225,7 +270,7 @@ class FirestoreService {
     required String creditorId,
     required double amount,
   }) async {
-    await _db.collection('notifications').add({
+    await _db.collection(_notificationsCollection).add({
       'toUserId': toUserId,
       'type': type,
       'relatedDebtId': relatedDebtId,
@@ -267,22 +312,34 @@ class FirestoreService {
   Stream<List<SavedContactModel>> getSavedContactsStream(String searchTerm) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream.value([]);
-    var query = _db.collection('users').doc(uid).collection('savedContacts');
+
+    var query = _db
+        .collection(_usersCollection)
+        .doc(uid)
+        .collection(_savedContactsCollection);
     return query.snapshots().map((snapshot) {
-      var contacts = snapshot.docs
-          .map((doc) => SavedContactModel.fromFirestore(doc))
-          .toList();
-      if (searchTerm.isNotEmpty) {
-        contacts = contacts
-            .where(
-              (c) =>
-                  c.adSoyad.toLowerCase().contains(searchTerm.toLowerCase()) ||
-                  c.email.toLowerCase().contains(searchTerm.toLowerCase()),
-            )
+      try {
+        var contacts = snapshot.docs
+            .map((doc) => SavedContactModel.fromFirestore(doc))
             .toList();
+
+        if (searchTerm.isNotEmpty) {
+          final searchLower = searchTerm.toLowerCase();
+          contacts = contacts
+              .where(
+                (c) =>
+                    c.adSoyad.toLowerCase().contains(searchLower) ||
+                    c.email.toLowerCase().contains(searchLower),
+              )
+              .toList();
+        }
+
+        contacts.sort((a, b) => a.adSoyad.compareTo(b.adSoyad));
+        return contacts;
+      } catch (e) {
+        print('Error processing contacts stream: $e');
+        return <SavedContactModel>[];
       }
-      contacts.sort((a, b) => a.adSoyad.compareTo(b.adSoyad));
-      return contacts;
     });
   }
 
@@ -308,15 +365,15 @@ class FirestoreService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     await _db
-        .collection('users')
+        .collection(_usersCollection)
         .doc(uid)
-        .collection('savedContacts')
+        .collection(_savedContactsCollection)
         .add(contact.toMap());
   }
 
   Stream<bool> getUnreadNotificationsStream(String userId) {
     return _db
-        .collection('notifications')
+        .collection(_notificationsCollection)
         .where('toUserId', isEqualTo: userId)
         .where('isRead', isEqualTo: false)
         .snapshots()
@@ -325,7 +382,7 @@ class FirestoreService {
 
   Future<void> markAllNotificationsAsRead(String userId) async {
     final querySnapshot = await _db
-        .collection('notifications')
+        .collection(_notificationsCollection)
         .where('toUserId', isEqualTo: userId)
         .where('isRead', isEqualTo: false)
         .get();

@@ -396,13 +396,16 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
                                   (value) async {
                                     if (value == 'Tarih Seç') {
                                       final result =
-                                          await showDialog<DateTimeRange>(
-                                            context: context,
-                                            builder: (context) =>
-                                                CustomDateRangePicker(
-                                                  initialDateRange:
-                                                      tempCustomDateRange,
-                                                ),
+                                          await showCustomDateRangePicker(
+                                            context,
+                                            initialDateRange:
+                                                tempCustomDateRange,
+                                            firstDate: DateTime(2020),
+                                            lastDate: DateTime.now(),
+                                            helpText:
+                                                'Analiz için tarih aralığı seçin',
+                                            cancelText: 'İptal',
+                                            confirmText: 'Uygula',
                                           );
                                       if (result != null) {
                                         setModalState(() {
@@ -676,6 +679,7 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     super.dispose();
   }
 
+  /// Ana analiz verilerini getiren metod
   Future<void> fetchUserAnalysis() async {
     if (!mounted) return;
     setState(() => isLoading = true);
@@ -686,6 +690,36 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
       return;
     }
 
+    try {
+      final analysisData = await _loadUserAnalysisData(currentUserId);
+
+      if (mounted) {
+        setState(() {
+          toplamBorclarim = analysisData.borclarim;
+          toplamAlacaklarim = analysisData.alacaklarim;
+          toplamNotBorclarim = analysisData.notBorclarim;
+          toplamNotAlacaklarim = analysisData.notAlacaklarim;
+          onayliToplamBorclarim = analysisData.onayliBorclarim;
+          onayliToplamAlacaklarim = analysisData.onayliAlacaklarim;
+          tumIslemler = analysisData.islemler;
+          filteredIslemler = List.from(tumIslemler);
+          isLoading = false;
+        });
+        _applyFilters();
+      }
+    } catch (e) {
+      print('Analysis fetch error: $e');
+      if (mounted) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Veriler yüklenirken hata oluştu.')),
+        );
+      }
+    }
+  }
+
+  /// Kullanıcı analiz verilerini yükleyen metod
+  Future<_AnalysisData> _loadUserAnalysisData(String currentUserId) async {
     double tempBorclarim = 0;
     double tempAlacaklarim = 0;
     double tempNotBorclarim = 0;
@@ -693,120 +727,134 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
     double tempOnayliBorclarim = 0;
     double tempOnayliAlacaklarim = 0;
     List<Map<String, dynamic>> tempIslemler = [];
-    final Map<String, String> _nameCache = {};
+    final Map<String, String> nameCache = {};
 
-    try {
-      final allDebtsSnap = await FirebaseFirestore.instance
-          .collection('debts')
-          .get();
-      for (var doc in allDebtsSnap.docs) {
-        final data = doc.data();
-        final borcluId = data['borcluId'] as String?;
-        final alacakliId = data['alacakliId'] as String?;
+    final allDebtsSnap = await FirebaseFirestore.instance
+        .collection('debts')
+        .where('visibleto', arrayContains: currentUserId)
+        .get();
 
-        if (borcluId != currentUserId && alacakliId != currentUserId) {
-          continue;
-        }
+    for (var doc in allDebtsSnap.docs) {
+      final data = doc.data();
+      final borcluId = data['borcluId'] as String?;
+      final alacakliId = data['alacakliId'] as String?;
 
-        final status = data['status']?.toString().toLowerCase() ?? '';
-        final miktar = (data['miktar'] as num?)?.toDouble() ?? 0;
+      // Skip if user is not involved
+      if (borcluId != currentUserId && alacakliId != currentUserId) continue;
 
-        DateTime? islemTarihi;
-        final dynamic islemTarihiData = data['islemTarihi'];
-        if (islemTarihiData is Timestamp) {
-          islemTarihi = islemTarihiData.toDate();
-        } else if (islemTarihiData is String) {
-          islemTarihi = DateTime.tryParse(islemTarihiData);
-        }
+      final debtInfo = await _processDebtDocument(
+        doc.id,
+        data,
+        currentUserId,
+        nameCache,
+      );
 
-        // Karşı tarafın adını çek ve cache'le
-        final String otherPartyId = borcluId == currentUserId
-            ? (alacakliId ?? '')
-            : (borcluId ?? '');
-        String otherPartyName = 'Bilinmeyen Kullanıcı';
-        if (otherPartyId.isNotEmpty) {
-          if (_nameCache.containsKey(otherPartyId)) {
-            otherPartyName = _nameCache[otherPartyId]!;
-          } else {
-            otherPartyName = await _firestoreService.getUserNameById(
-              otherPartyId,
-            );
-            _nameCache[otherPartyId] = otherPartyName;
-          }
-        }
+      // Update totals
+      _updateTotals(
+        debtInfo,
+        currentUserId,
+        tempBorclarim: () => tempBorclarim += debtInfo.miktar,
+        tempAlacaklarim: () => tempAlacaklarim += debtInfo.miktar,
+        tempNotBorclarim: () => tempNotBorclarim += debtInfo.miktar,
+        tempNotAlacaklarim: () => tempNotAlacaklarim += debtInfo.miktar,
+        tempOnayliBorclarim: () => tempOnayliBorclarim += debtInfo.miktar,
+        tempOnayliAlacaklarim: () => tempOnayliAlacaklarim += debtInfo.miktar,
+      );
 
-        final islemDetayi = {
-          'debtId': doc.id,
-          'miktar': miktar,
-          'tarih': islemTarihi,
-          'status': status,
-          'aciklama': data['aciklama'] ?? '',
-          'borcluId': borcluId,
-          'alacakliId': alacakliId,
-          'otherPartyName': otherPartyName, // Zenginleştirilmiş veri
-        };
-
-        if (status == 'approved' || status == 'note') {
-          tempIslemler.add(islemDetayi);
-        }
-
-        if (status == 'note') {
-          if (borcluId == currentUserId)
-            tempNotBorclarim += miktar;
-          else if (alacakliId == currentUserId)
-            tempNotAlacaklarim += miktar;
-        } else if (status == 'approved') {
-          if (borcluId == currentUserId)
-            tempBorclarim += miktar;
-          else if (alacakliId == currentUserId)
-            tempAlacaklarim += miktar;
-        }
-
-        if (status == 'approved') {
-          if (borcluId == currentUserId)
-            tempOnayliBorclarim += miktar;
-          else if (alacakliId == currentUserId)
-            tempOnayliAlacaklarim += miktar;
-        }
+      if (debtInfo.status == 'approved' || debtInfo.status == 'note') {
+        tempIslemler.add(debtInfo.toMap());
       }
-    } catch (e) {
-      // Hata yönetimi (örn. bir snackbar gösterme)
     }
 
-    if (mounted) {
-      setState(() {
-        toplamBorclarim = tempBorclarim;
-        toplamAlacaklarim = tempAlacaklarim;
-        toplamNotBorclarim = tempNotBorclarim;
-        toplamNotAlacaklarim = tempNotAlacaklarim;
-        onayliToplamBorclarim = tempOnayliBorclarim;
-        onayliToplamAlacaklarim = tempOnayliAlacaklarim;
-        tumIslemler = tempIslemler;
-        filteredIslemler = List.from(tumIslemler);
-        isLoading = false;
-      });
-      // İlk yükleme sonrası filtreleri uygula
-      _applyFilters();
-    }
+    return _AnalysisData(
+      borclarim: tempBorclarim,
+      alacaklarim: tempAlacaklarim,
+      notBorclarim: tempNotBorclarim,
+      notAlacaklarim: tempNotAlacaklarim,
+      onayliBorclarim: tempOnayliBorclarim,
+      onayliAlacaklarim: tempOnayliAlacaklarim,
+      islemler: tempIslemler,
+    );
   }
 
-  void _showTransactionDetail(Map<String, dynamic> islem) {
-    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TransactionDetailScreen(
-          debt: DebtModel.fromMap(
-            islem
-              ..['islemTarihi'] = Timestamp.fromDate(
-                islem['tarih'] ?? DateTime.now(),
-              ),
-            islem['debtId'],
-          ),
-          userId: currentUserId,
-        ),
-      ),
+  /// Borç belgesini işleyen metod
+  Future<_DebtInfo> _processDebtDocument(
+    String docId,
+    Map<String, dynamic> data,
+    String currentUserId,
+    Map<String, String> nameCache,
+  ) async {
+    final borcluId = data['borcluId'] as String?;
+    final alacakliId = data['alacakliId'] as String?;
+    final status = data['status']?.toString().toLowerCase() ?? '';
+    final miktar = (data['miktar'] as num?)?.toDouble() ?? 0;
+
+    // Parse transaction date
+    DateTime? islemTarihi;
+    final dynamic islemTarihiData = data['islemTarihi'];
+    if (islemTarihiData is Timestamp) {
+      islemTarihi = islemTarihiData.toDate();
+    } else if (islemTarihiData is String) {
+      islemTarihi = DateTime.tryParse(islemTarihiData);
+    }
+
+    // Get other party name with caching
+    final String otherPartyId = borcluId == currentUserId
+        ? (alacakliId ?? '')
+        : (borcluId ?? '');
+
+    String otherPartyName = 'Bilinmeyen Kullanıcı';
+    if (otherPartyId.isNotEmpty) {
+      if (nameCache.containsKey(otherPartyId)) {
+        otherPartyName = nameCache[otherPartyId]!;
+      } else {
+        otherPartyName = await _firestoreService.getUserNameById(otherPartyId);
+        nameCache[otherPartyId] = otherPartyName;
+      }
+    }
+
+    return _DebtInfo(
+      debtId: docId,
+      miktar: miktar,
+      tarih: islemTarihi,
+      status: status,
+      aciklama: data['aciklama'] ?? '',
+      borcluId: borcluId,
+      alacakliId: alacakliId,
+      otherPartyName: otherPartyName,
     );
+  }
+
+  /// Toplamları güncelleyen metod
+  void _updateTotals(
+    _DebtInfo debtInfo,
+    String currentUserId, {
+    required VoidCallback tempBorclarim,
+    required VoidCallback tempAlacaklarim,
+    required VoidCallback tempNotBorclarim,
+    required VoidCallback tempNotAlacaklarim,
+    required VoidCallback tempOnayliBorclarim,
+    required VoidCallback tempOnayliAlacaklarim,
+  }) {
+    final status = debtInfo.status;
+    final borcluId = debtInfo.borcluId;
+    final alacakliId = debtInfo.alacakliId;
+
+    if (status == 'note') {
+      if (borcluId == currentUserId) {
+        tempNotBorclarim();
+      } else if (alacakliId == currentUserId) {
+        tempNotAlacaklarim();
+      }
+    } else if (status == 'approved') {
+      if (borcluId == currentUserId) {
+        tempBorclarim();
+        tempOnayliBorclarim();
+      } else if (alacakliId == currentUserId) {
+        tempAlacaklarim();
+        tempOnayliAlacaklarim();
+      }
+    }
   }
 
   @override
@@ -2342,4 +2390,61 @@ class _ArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Analiz verilerini tutacak data sınıfı
+class _AnalysisData {
+  final double borclarim;
+  final double alacaklarim;
+  final double notBorclarim;
+  final double notAlacaklarim;
+  final double onayliBorclarim;
+  final double onayliAlacaklarim;
+  final List<Map<String, dynamic>> islemler;
+
+  const _AnalysisData({
+    required this.borclarim,
+    required this.alacaklarim,
+    required this.notBorclarim,
+    required this.notAlacaklarim,
+    required this.onayliBorclarim,
+    required this.onayliAlacaklarim,
+    required this.islemler,
+  });
+}
+
+/// Borç bilgilerini tutacak data sınıfı
+class _DebtInfo {
+  final String debtId;
+  final double miktar;
+  final DateTime? tarih;
+  final String status;
+  final String aciklama;
+  final String? borcluId;
+  final String? alacakliId;
+  final String otherPartyName;
+
+  const _DebtInfo({
+    required this.debtId,
+    required this.miktar,
+    required this.tarih,
+    required this.status,
+    required this.aciklama,
+    required this.borcluId,
+    required this.alacakliId,
+    required this.otherPartyName,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'debtId': debtId,
+      'miktar': miktar,
+      'tarih': tarih,
+      'status': status,
+      'aciklama': aciklama,
+      'borcluId': borcluId,
+      'alacakliId': alacakliId,
+      'otherPartyName': otherPartyName,
+    };
+  }
 }

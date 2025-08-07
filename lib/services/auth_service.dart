@@ -5,6 +5,15 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 
+/// Firebase Authentication işlemleri için servis sınıfı
+///
+/// Bu sınıf kullanıcı authentication işlemlerini yönetir:
+/// - Email/şifre ile giriş ve kayıt
+/// - Google ile giriş
+/// - Şifre değiştirme
+/// - Çıkış yapma
+///
+/// Tüm metotlar Türkçe error mesajları ve proper validation içerir.
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreService _firestoreService = FirestoreService();
@@ -13,120 +22,145 @@ class AuthService {
   // Kullanıcı oturum durumunu dinleyen stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // --- GÜNCELLENMİŞ KAYIT METODU ---
-  // Artık 4 parametre alıyor: email, password, adSoyad, ve telefon
+  /// Kayıt metodu: Email, şifre, ad soyad ve telefon ile yeni kullanıcı oluşturur
   Future<String?> signUpWithEmailAndPassword(
     String email,
     String password,
     String adSoyad,
     String telefon,
   ) async {
+    // Input validation
+    if (email.isEmpty || password.isEmpty || adSoyad.isEmpty) {
+      return 'Gerekli alanlar boş bırakılamaz.';
+    }
+
     try {
-      // E-posta ile kayıt
-      try {
-        // Önce bu e-posta ile kayıtlı kullanıcı var mı diye kontrol et
-        final existingUserByEmail = await _firestoreService.getUserByEmail(
-          email,
-        );
-        if (existingUserByEmail != null) {
-          return 'Bu e-posta adresi zaten kullanımda.';
-        }
-        // // Telefon ile kullanıcı kontrolü (opsiyonel, FirestoreService'e eklenmeli)
-        // if (telefon.isNotEmpty) {
-        //   final existingUserByPhone = await _firestoreService.searchUserByAny(
-        //     telefon,
-        //   );
-        //   if (existingUserByPhone != null) {
-        //     return 'Bu telefon numarası zaten kullanımda.';
-        //   }
-        // }
-
-        final userCredential = await _auth.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-        User? user = userCredential.user;
-
-        // Yeni kullanıcı için Firestore'da bir belge oluştur
-        if (userCredential.user != null) {
-          final userModel = UserModel(
-            uid: userCredential.user!.uid,
-            email: email,
-            adSoyad: adSoyad,
-            telefon: telefon,
-            etiket: null, // Etiket şimdilik boş bırakılıyor
-            aramaAnahtarlari: [adSoyad.toLowerCase(), email.toLowerCase()],
-          );
-          await _firestoreService.createUser(userModel);
-        }
-
-        return null;
-      } on FirebaseAuthException catch (e) {
-        return e.message; // Firebase'den gelen spesifik hata mesajını döndür
-      } catch (e) {
-        return e.toString(); // Diğer genel hatalar için
+      // Check if email is already in use
+      final existingUserByEmail = await _firestoreService.getUserByEmail(email);
+      if (existingUserByEmail != null) {
+        return 'Bu e-posta adresi zaten kullanımda.';
       }
+
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Create user document in Firestore
+      if (userCredential.user != null) {
+        final userModel = UserModel(
+          uid: userCredential.user!.uid,
+          email: email,
+          adSoyad: adSoyad,
+          telefon: telefon,
+          etiket: null,
+          aramaAnahtarlari: [adSoyad.toLowerCase(), email.toLowerCase()],
+        );
+        await _firestoreService.createUser(userModel);
+      }
+
+      return null; // Success
     } on FirebaseAuthException catch (e) {
-      return e.message; // Firebase'den gelen spesifik hata mesajını döndür
+      return _handleAuthError(e);
     } catch (e) {
-      return e.toString(); // Diğer genel hatalar için
+      print('Unexpected error during sign up: $e');
+      return 'Beklenmeyen bir hata oluştu.';
     }
   }
 
-  // Giriş yapma metodu
+  /// Giriş yapma metodu
   Future<String?> signInWithEmailAndPassword(
     String email,
     String password,
   ) async {
+    // Input validation
+    if (email.isEmpty || password.isEmpty) {
+      return 'E-posta ve şifre boş bırakılamaz.';
+    }
+
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      return null; // Başarılı, hata yok.
+      return null; // Success
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return _handleAuthError(e);
     } catch (e) {
-      return e.toString();
+      print('Unexpected error during sign in: $e');
+      return 'Beklenmeyen bir hata oluştu.';
     }
   }
 
-  // Google ile giriş metodu
+  /// Firebase Auth hatalarını Türkçe mesajlara çeviren yardımcı metod
+  String _handleAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'user-not-found':
+        return 'Bu e-posta adresi ile kayıtlı kullanıcı bulunamadı.';
+      case 'wrong-password':
+        return 'Hatalı şifre girdiniz.';
+      case 'email-already-in-use':
+        return 'Bu e-posta adresi zaten kullanımda.';
+      case 'weak-password':
+        return 'Şifre çok zayıf. Lütfen daha güçlü bir şifre seçin.';
+      case 'invalid-email':
+        return 'Geçersiz e-posta adresi.';
+      case 'too-many-requests':
+        return 'Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.';
+      case 'network-request-failed':
+        return 'İnternet bağlantınızı kontrol edin.';
+      default:
+        return e.message ?? 'Bilinmeyen bir hata oluştu.';
+    }
+  }
+
+  /// Google ile giriş metodu
   Future<String?> googleSignIn() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         return 'Google hesabı seçilmedi.';
       }
+
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      UserCredential userCredential = await _auth.signInWithCredential(
+
+      final UserCredential userCredential = await _auth.signInWithCredential(
         credential,
       );
-      User? user = userCredential.user;
+      final User? user = userCredential.user;
 
-      // Firestore'da kullanıcı var mı kontrol et, yoksa ekle
+      // Create user document if doesn't exist
       if (user != null) {
-        final userDoc = await _firestoreService.usersRef.doc(user.uid).get();
-        if (!userDoc.exists) {
-          UserModel userModel = UserModel(
-            uid: user.uid,
-            email: user.email ?? '',
-            adSoyad: user.displayName ?? '',
-            telefon: user.phoneNumber ?? '',
-            etiket: null,
-            aramaAnahtarlari: [
-              user.displayName?.toLowerCase() ?? '',
-              user.email?.toLowerCase() ?? '',
-            ],
-          );
-          await _firestoreService.createUser(userModel);
-        }
+        await _createUserIfNotExists(user);
       }
-      return null; // Başarılı
+
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return _handleAuthError(e);
     } catch (e) {
-      return e.toString();
+      print('Unexpected error during Google sign in: $e');
+      return 'Google ile giriş yapılırken hata oluştu.';
+    }
+  }
+
+  /// Kullanıcı yoksa Firestore'da oluşturan yardımcı metod
+  Future<void> _createUserIfNotExists(User user) async {
+    final userDoc = await _firestoreService.usersRef.doc(user.uid).get();
+    if (!userDoc.exists) {
+      final userModel = UserModel(
+        uid: user.uid,
+        email: user.email ?? '',
+        adSoyad: user.displayName ?? '',
+        telefon: user.phoneNumber ?? '',
+        etiket: null,
+        aramaAnahtarlari: [
+          user.displayName?.toLowerCase() ?? '',
+          user.email?.toLowerCase() ?? '',
+        ],
+      );
+      await _firestoreService.createUser(userModel);
     }
   }
 
@@ -140,17 +174,39 @@ class AuthService {
     await _auth.currentUser?.verifyBeforeUpdateEmail(newEmail);
   }
 
-  // Şifre değiştirme metodu
-  Future<void> changePassword(
+  /// Şifre değiştirme metodu
+  Future<String?> changePassword(
     String currentPassword,
     String newPassword,
   ) async {
-    final user = _auth.currentUser;
-    final cred = EmailAuthProvider.credential(
-      email: user!.email!,
-      password: currentPassword,
-    );
-    await user.reauthenticateWithCredential(cred);
-    await user.updatePassword(newPassword);
+    // Input validation
+    if (currentPassword.isEmpty || newPassword.isEmpty) {
+      return 'Mevcut şifre ve yeni şifre boş bırakılamaz.';
+    }
+
+    if (newPassword.length < 6) {
+      return 'Yeni şifre en az 6 karakter olmalıdır.';
+    }
+
+    try {
+      final user = _auth.currentUser;
+      if (user?.email == null) {
+        return 'Kullanıcı bilgisi bulunamadı.';
+      }
+
+      final credential = EmailAuthProvider.credential(
+        email: user!.email!,
+        password: currentPassword,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return _handleAuthError(e);
+    } catch (e) {
+      print('Unexpected error during password change: $e');
+      return 'Şifre değiştirilirken hata oluştu.';
+    }
   }
 }
