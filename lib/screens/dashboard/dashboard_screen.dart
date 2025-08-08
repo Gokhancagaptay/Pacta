@@ -54,114 +54,133 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return Scaffold(
       backgroundColor: bg,
-      body: StreamBuilder<DocumentSnapshot<UserModel>>(
-        stream: _firestoreService.usersRef.doc(userId).snapshots(),
-        builder: (context, userSnap) {
-          if (userSnap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!userSnap.hasData || userSnap.data?.data() == null) {
-            return Center(
-              child: Text(
-                'Kullanıcı verisi bulunamadı.',
-                style: TextStyle(color: textSec),
-              ),
-            );
-          }
-
-          final userModel = userSnap.data!.data()!;
-          final userName =
-              userModel.adSoyad ?? userModel.email.split('@').first;
-
-          return StreamBuilder<List<DebtModel>>(
-            stream: _firestoreService.getRecentDebtsStream(userId),
-            builder: (context, recentSnapshot) {
-              if (recentSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (recentSnapshot.hasError) {
-                return Center(
-                  child: Text(
-                    'Veriler alınırken hata oluştu.',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                );
-              }
-              final allRecent = recentSnapshot.data ?? [];
-              final onayliList = allRecent
-                  .where(
-                    (d) =>
-                        d.status == 'approved' ||
-                        d.status == 'pending' ||
-                        d.status == 'rejected' ||
-                        d.status == 'pending_deletion',
-                  )
-                  .toList();
-              final takipList = allRecent
-                  .where((d) => d.status == 'note')
-                  .toList();
-
-              return StreamBuilder<List<DebtModel>>(
-                stream: _firestoreService.getUserDebtsStream(userId),
-                builder: (context, allDebtsSnapshot) {
-                  final allDebts = allDebtsSnapshot.data ?? [];
-                  final approved = allDebts
-                      .where((d) => d.status == 'approved')
-                      .toList();
-                  final note = allDebts
-                      .where((d) => d.status == 'note')
-                      .toList();
-                  final double approvedBakiye = _calculateBakiye(
-                    approved,
-                    userId,
-                  );
-                  final double noteBakiye = _calculateBakiye(note, userId);
-                  final double ortakBakiye = approvedBakiye + noteBakiye;
-
-                  return Stack(
-                    children: [
-                      SafeArea(
-                        child: SingleChildScrollView(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: width * 0.04,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(height: height * 0.025),
-                                _buildHeader(context, userName),
-                                _BakiyeCardSection(
-                                  approvedBakiye: approvedBakiye,
-                                  noteBakiye: noteBakiye,
-                                  ortakBakiye: ortakBakiye,
-                                ),
-                                _buildQuickActions(context),
-                                _buildTransactionSections(
-                                  context,
-                                  onayliList,
-                                  takipList,
-                                ),
-                                SizedBox(
-                                  height: height * 0.12,
-                                ), // Bottom nav bar space
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          );
-        },
+      body: IndexedStack(
+        index: _selectedTab,
+        children: [
+          // Ana Sayfa (Dashboard)
+          _buildDashboardContent(
+            context,
+            userId,
+            textMain,
+            textSec,
+            width,
+            height,
+          ),
+          // Kişiler
+          const ContactsScreen(),
+          // Analiz
+          const UserAnalysisScreen(),
+        ],
       ),
       bottomNavigationBar: _ModernBottomBar(
         selectedTab: _selectedTab,
         onTabChanged: (i) => _onTabChanged(context, i),
       ),
+    );
+  }
+
+  Widget _buildDashboardContent(
+    BuildContext context,
+    String userId,
+    Color textMain,
+    Color textSec,
+    double width,
+    double height,
+  ) {
+    return StreamBuilder<DocumentSnapshot<UserModel>>(
+      stream: _firestoreService.usersRef.doc(userId).snapshots(),
+      builder: (context, userSnap) {
+        if (userSnap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!userSnap.hasData || userSnap.data?.data() == null) {
+          return Center(
+            child: Text(
+              'Kullanıcı verisi bulunamadı.',
+              style: TextStyle(color: textSec),
+            ),
+          );
+        }
+
+        final userModel = userSnap.data!.data()!;
+        final userName = userModel.adSoyad ?? userModel.email.split('@').first;
+
+        return StreamBuilder<List<DebtModel>>(
+          stream: _firestoreService.getRecentDebtsStream(userId),
+          builder: (context, recentSnapshot) {
+            if (recentSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (recentSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Veriler alınırken hata oluştu.',
+                  style: TextStyle(color: Colors.red),
+                ),
+              );
+            }
+            final allRecent = recentSnapshot.data ?? [];
+            final onayliList = allRecent
+                .where(
+                  (d) =>
+                      d.status == 'approved' ||
+                      d.status == 'pending' ||
+                      d.status == 'rejected' ||
+                      d.status == 'pending_deletion',
+                )
+                .toList();
+            final takipList = allRecent
+                .where((d) => d.status == 'note')
+                .toList();
+
+            return StreamBuilder<List<DebtModel>>(
+              stream: _firestoreService.getUserDebtsStream(userId),
+              builder: (context, allDebtsSnapshot) {
+                final allDebts = allDebtsSnapshot.data ?? [];
+                final approved = allDebts
+                    .where((d) => d.status == 'approved')
+                    .toList();
+                final note = allDebts.where((d) => d.status == 'note').toList();
+                final double approvedBakiye = _calculateBakiye(
+                  approved,
+                  userId,
+                );
+                final double noteBakiye = _calculateBakiye(note, userId);
+                final double ortakBakiye = approvedBakiye + noteBakiye;
+
+                return SafeArea(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: width * 0.04),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(height: height * 0.025),
+                          _buildHeader(context, userName),
+                          _BakiyeCardSection(
+                            approvedBakiye: approvedBakiye,
+                            noteBakiye: noteBakiye,
+                            ortakBakiye: ortakBakiye,
+                          ),
+                          _buildQuickActions(context),
+                          _buildTransactionSections(
+                            context,
+                            onayliList,
+                            takipList,
+                          ),
+                          SizedBox(
+                            height: height * 0.12,
+                          ), // Bottom nav bar space
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -248,7 +267,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Padding(
       padding: EdgeInsets.only(top: size.height * 0.03),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _AnimatedActionButton(
             icon: Icons.send_rounded,
@@ -267,15 +286,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             label: "Not Ekle",
             color: const Color(0xFFFACC15),
             onTap: () => _showAddNoteDialog(context),
-          ),
-          _AnimatedActionButton(
-            icon: Icons.analytics_rounded,
-            label: "Analiz",
-            color: const Color(0xFF8B5CF6),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const UserAnalysisScreen()),
-            ),
           ),
         ],
       ),
@@ -342,32 +352,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _onTabChanged(BuildContext context, int i) {
-    if (_selectedTab == i && i == 0) return;
+    if (_selectedTab == i) return;
 
-    if (i == 0) {
-      setState(() => _selectedTab = i);
+    if (i == 3) {
+      // Ayarlar: yeni sayfa aç
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      );
     } else {
-      setState(() => _selectedTab = 0);
-      switch (i) {
-        case 1:
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ContactsScreen()),
-          );
-          break;
-        case 2:
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const UserAnalysisScreen()),
-          );
-          break;
-        case 3:
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsScreen()),
-          );
-          break;
-      }
+      // Ana Sayfa, Kişiler, Analiz: tab değiştir
+      setState(() => _selectedTab = i);
     }
   }
 
@@ -379,7 +374,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       context,
       MaterialPageRoute(
         builder: (_) => SavedContactsScreen(
-          title: isPactaAl ? 'Kimden Aldınız?' : 'Kime Verdiniz?',
+          title: isPactaAl ? ' Aldınız?' : 'Kime Verdiniz?',
         ),
       ),
     );
@@ -897,7 +892,7 @@ class _ModernBottomBar extends StatelessWidget {
           _ModernNavItem(
             icon: Icons.settings_rounded,
             label: "Ayarlar",
-            selected: selectedTab == 3,
+            selected: false, // Ayarlar hiç seçili görünmez
             onTap: () => onTabChanged(3),
           ),
         ],

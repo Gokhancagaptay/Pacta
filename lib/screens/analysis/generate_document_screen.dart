@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 import 'package:intl/intl.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/models/user_model.dart';
@@ -325,15 +326,11 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
 
   Future<void> _generateDocument() async {
     if (_selectedDateRange == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen bir tarih aralığı seçin.')),
-      );
+      DialogUtils.showWarning(context, 'Lütfen bir tarih aralığı seçin.');
       return;
     }
     if (!_isAllUsersSelected && _selectedContactIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen en az bir kullanıcı seçin.')),
-      );
+      DialogUtils.showWarning(context, 'Lütfen en az bir kullanıcı seçin.');
       return;
     }
 
@@ -346,8 +343,9 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
         onLayout: (PdfPageFormat format) async => pdf.save(),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Belge oluşturulurken bir hata oluştu: $e')),
+      DialogUtils.showError(
+        context,
+        'Belge oluşturulurken bir hata oluştu: $e',
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

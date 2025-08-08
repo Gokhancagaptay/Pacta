@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({Key? key}) : super(key: key);
@@ -24,8 +25,9 @@ class _NotificationSettingsScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ayarlar güncellenirken bir hata oluştu: $e')),
+      DialogUtils.showError(
+        context,
+        'Ayarlar güncellenirken bir hata oluştu: $e',
       );
     }
   }

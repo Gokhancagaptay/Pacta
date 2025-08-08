@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 
 import 'package:pacta/models/saved_contact_model.dart';
 // ... (existing imports)
@@ -86,11 +87,10 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
       setState(() => _isSaving = true);
 
       try {
+        final bool isNoteFlow = widget.isNote || !_isPacta;
         final miktar = double.tryParse(_amountController.text);
         if (miktar == null || miktar <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lütfen geçerli bir tutar girin.')),
-          );
+          DialogUtils.showError(context, 'Lütfen geçerli bir tutar girin.');
           if (mounted) setState(() => _isSaving = false);
           return;
         }
@@ -104,26 +104,33 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
         final firestoreService = FirestoreService();
         UserModel? otherUser;
 
-        if (widget.selectedContact.uid != null) {
-          otherUser = await firestoreService.getUserByEmail(
-            _personController.text,
-          );
-        } else {
-          // This is a note-only contact, create a temporary UserModel
+        if (isNoteFlow) {
+          // NOTE flow: email doğrulaması yapma, kullanıcıyı serbest bırak
+          final String generatedUid =
+              widget.selectedContact.uid ??
+              widget.selectedContact.id ??
+              'note_user_${DateTime.now().millisecondsSinceEpoch}';
           otherUser = UserModel(
-            uid:
-                widget.selectedContact.id ??
-                'note_user_${DateTime.now().millisecondsSinceEpoch}',
-            email: widget.selectedContact.email,
+            uid: generatedUid,
+            email: _personController.text,
             adSoyad: widget.selectedContact.adSoyad,
           );
+        } else {
+          // Onaylı işlem: mevcut kullanıcıyı doğrula
+          if (widget.selectedContact.uid != null) {
+            otherUser = await firestoreService.getUserByEmail(
+              _personController.text,
+            );
+          } else {
+            // Saved contact note-mode ise ama onaylı işlem seçilmişse, devam edemeyiz
+            otherUser = null;
+          }
         }
 
         if (otherUser == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Bu e-posta adresine sahip bir kullanıcı yok.'),
-            ),
+          DialogUtils.showError(
+            context,
+            'Bu e-posta adresine sahip bir kullanıcı yok.',
           );
           if (mounted) setState(() => _isSaving = false);
           return;
@@ -148,10 +155,9 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
         final newDebtId = await firestoreService.addDebt(newDebt);
 
         if (newDebtId.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('İşlem kaydedilemedi. Lütfen tekrar deneyin.'),
-            ),
+          DialogUtils.showError(
+            context,
+            'İşlem kaydedilemedi. Lütfen tekrar deneyin.',
           );
           if (mounted) setState(() => _isSaving = false);
           return;
@@ -163,16 +169,12 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('İşlem başarıyla kaydedildi!')),
-          );
+          DialogUtils.showSuccess(context, 'İşlem başarıyla kaydedildi!');
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+          DialogUtils.showError(context, 'Bir hata oluştu: $e');
         }
       } finally {
         if (mounted) {
@@ -215,8 +217,10 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                   icon: Icons.person_outline,
                   child: TextFormField(
                     controller: _personController,
-                    decoration: const InputDecoration(
-                      hintText: 'Kişi (E-posta)',
+                    decoration: InputDecoration(
+                      hintText: widget.isNote
+                          ? 'Kişi (e‑posta veya serbest metin)'
+                          : 'Kişi (E‑posta)',
                       border: InputBorder.none,
                     ),
                     keyboardType: TextInputType.emailAddress,
@@ -224,8 +228,11 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Lütfen bir kişi girin';
                       }
-                      if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value)) {
-                        return 'Lütfen geçerli bir e-posta adresi girin.';
+                      // Note modunda e‑posta formatını zorunlu kılma
+                      if (!(widget.isNote || !_isPacta)) {
+                        if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value)) {
+                          return 'Lütfen geçerli bir e‑posta adresi girin.';
+                        }
                       }
                       return null;
                     },

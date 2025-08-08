@@ -9,6 +9,7 @@ import 'package:pacta/models/notification_model.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/screens/settings/notification_settings_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({Key? key}) : super(key: key);
@@ -127,19 +128,14 @@ class _NotificationCardState extends State<_NotificationCard> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isApproved ? 'İşlem onaylandı.' : 'İşlem reddedildi.',
-            ),
-          ),
+        DialogUtils.showSuccess(
+          context,
+          isApproved ? 'İşlem onaylandı.' : 'İşlem reddedildi.',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+        DialogUtils.showError(context, 'Bir hata oluştu: $e');
       }
     } finally {
       if (mounted) {
@@ -160,19 +156,14 @@ class _NotificationCardState extends State<_NotificationCard> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              approved ? 'Silme talebi onaylandı.' : 'Silme talebi reddedildi.',
-            ),
-          ),
+        DialogUtils.showSuccess(
+          context,
+          approved ? 'Silme talebi onaylandı.' : 'Silme talebi reddedildi.',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+        DialogUtils.showError(context, 'Hata: $e');
       }
     } finally {
       if (mounted) {
@@ -337,9 +328,7 @@ class _NotificationCardState extends State<_NotificationCard> {
 
     final debtDoc = await _firestoreService.debtsRef.doc(debtId).get();
     if (!debtDoc.exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İlgili işlem artık mevcut değil.')),
-      );
+      DialogUtils.showWarning(context, 'İlgili işlem artık mevcut değil.');
       return;
     }
 

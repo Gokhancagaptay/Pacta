@@ -1,10 +1,12 @@
 // lib/auth_wrapper.dart
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:pacta/screens/auth/giris_ekrani.dart'; // Proje adını kontrol et
 import 'package:pacta/screens/dashboard/dashboard_screen.dart'; // Proje adını kontrol et
 import 'package:pacta/services/auth_service.dart'; // Proje adını kontrol et
+import 'package:pacta/firebase_options.dart';
 
 /// Authentication durumunu kontrol eden wrapper widget
 ///
@@ -19,22 +21,39 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService();
+    Future<void> ensureFirebaseInitialized() async {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+    }
 
-    return StreamBuilder<User?>(
-      stream: authService.authStateChanges,
-      builder: (context, snapshot) {
-        // Handle connection states
-        switch (snapshot.connectionState) {
-          case ConnectionState.waiting:
-            return _buildLoadingScreen();
-          case ConnectionState.active:
-            return _buildAuthenticatedContent(snapshot);
-          case ConnectionState.done:
-          case ConnectionState.none:
-            // Connection closed or no connection - redirect to login
-            return const GirisEkrani();
+    return FutureBuilder<void>(
+      future: ensureFirebaseInitialized(),
+      builder: (context, initSnapshot) {
+        if (initSnapshot.connectionState != ConnectionState.done) {
+          return _buildLoadingScreen();
         }
+
+        final authService = AuthService();
+
+        return StreamBuilder<User?>(
+          stream: authService.authStateChanges,
+          builder: (context, snapshot) {
+            // Handle connection states
+            switch (snapshot.connectionState) {
+              case ConnectionState.waiting:
+                return _buildLoadingScreen();
+              case ConnectionState.active:
+                return _buildAuthenticatedContent(snapshot);
+              case ConnectionState.done:
+              case ConnectionState.none:
+                // Connection closed or no connection - redirect to login
+                return const GirisEkrani();
+            }
+          },
+        );
       },
     );
   }

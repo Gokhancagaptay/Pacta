@@ -4,6 +4,7 @@ import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class TransactionDetailScreen extends StatefulWidget {
@@ -39,21 +40,14 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     try {
       await _firestoreService.updateDebtStatus(widget.debt.debtId!, newStatus);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus == 'approved'
-                  ? 'İşlem onaylandı.'
-                  : 'İşlem reddedildi.',
-            ),
-          ),
+        DialogUtils.showSuccess(
+          context,
+          newStatus == 'approved' ? 'İşlem onaylandı.' : 'İşlem reddedildi.',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hata oluştu: $e')));
+        DialogUtils.showError(context, 'Hata oluştu: $e');
       }
     } finally {
       if (mounted) {
@@ -68,16 +62,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     try {
       await _firestoreService.deleteDebt(widget.debt.debtId!);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('İşlem başarıyla silindi.')),
-        );
+        DialogUtils.showSuccess(context, 'İşlem başarıyla silindi.');
         Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Silinirken bir hata oluştu: $e')),
-        );
+        DialogUtils.showError(context, 'Silinirken bir hata oluştu: $e');
       }
     } finally {
       if (mounted) {
@@ -96,12 +86,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         FirebaseAuth.instance.currentUser!.uid,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              approved ? 'Silme talebi onaylandı.' : 'Silme talebi reddedildi.',
-            ),
-          ),
+        DialogUtils.showSuccess(
+          context,
+          approved ? 'Silme talebi onaylandı.' : 'Silme talebi reddedildi.',
         );
         if (approved && mounted) {
           Navigator.of(context).pop();
@@ -109,9 +96,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+        DialogUtils.showError(context, 'Bir hata oluştu: $e');
       }
     } finally {
       if (mounted) {

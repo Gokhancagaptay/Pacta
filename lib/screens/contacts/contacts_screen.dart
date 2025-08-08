@@ -6,6 +6,7 @@ import 'package:pacta/models/user_model.dart';
 import 'package:rxdart/rxdart.dart';
 import 'contact_analysis_screen.dart';
 import '../../services/firestore_service.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({Key? key}) : super(key: key);
@@ -16,17 +17,18 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  // Kullanıcı ID'sini her kullanımda taze alacağız; başlangıçta null olabilir
   bool _showOnlyFavorites = false;
 
   Stream<Map<String, List<SavedContactModel>>> _getContactsStream() {
-    if (currentUserId == null) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
       return Stream.value({'favorites': [], 'others': []});
     }
 
     final savedContactsStream = FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUserId)
+        .doc(uid)
         .collection('savedContacts')
         .snapshots()
         .map(
@@ -37,7 +39,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     final userFavoritesStream = FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUserId)
+        .doc(uid)
         .snapshots()
         .map(
           (doc) =>
@@ -65,6 +67,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
     });
   }
 
+  void _showAddContactSheet() {
+    final size = MediaQuery.of(context).size;
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (modalContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(modalContext).viewInsets.bottom,
+        ),
+        child: const _AddContactSheet(),
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(size.width * 0.05),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -75,24 +97,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         theme.textTheme.titleLarge?.color ??
         (isDark ? Colors.white : const Color(0xFF1A202C));
     final iconMain = isDark ? Colors.white : const Color(0xFF1A202C);
-
-    void showAddContactSheet() {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (_) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: const _AddContactSheet(),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(size.width * 0.05),
-          ),
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -133,7 +137,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           IconButton(
             icon: Icon(Icons.add, color: iconMain, size: size.width * 0.07),
             tooltip: 'Kişi Ekle',
-            onPressed: showAddContactSheet,
+            onPressed: _showAddContactSheet,
           ),
         ],
       ),
@@ -278,9 +282,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
               tooltip: isFavorite ? 'Favorilerden Kaldır' : 'Favorilere Ekle',
               onPressed: () {
-                if (currentUserId != null) {
-                  _firestoreService.toggleFavoriteContact(contact.id!);
-                }
+                _firestoreService.toggleFavoriteContact(contact.id!);
               },
             ),
             IconButton(
@@ -330,13 +332,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ],
                   ),
                 );
-                if (confirm == true && currentUserId != null) {
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                if (confirm == true && uid != null) {
                   await FirebaseFirestore.instance
                       .collection('users')
-                      .doc(currentUserId)
+                      .doc(uid)
                       .collection('savedContacts')
                       .doc(contact.id!)
                       .delete();
+                  DialogUtils.showSuccess(context, 'Kişi silindi.');
                 }
               },
             ),

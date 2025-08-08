@@ -6,6 +6,7 @@ import 'package:pacta/services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:pacta/utils/dialog_utils.dart';
 
 class SavedContactsScreen extends StatefulWidget {
   final String title;
@@ -95,9 +96,10 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => Padding(
+      useRootNavigator: true,
+      builder: (modalContext) => Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.of(modalContext).viewInsets.bottom,
         ),
         child: _AddContactSheet(isNoteMode: widget.isNoteModeFlow),
       ),
@@ -286,12 +288,9 @@ class _SavedContactsScreenState extends State<SavedContactsScreen> {
         ),
         onTap: () {
           if (contact.adSoyad.isEmpty || contact.email.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Kullanıcı bilgisi eksik! Lütfen tekrar deneyin.',
-                ),
-              ),
+            DialogUtils.showError(
+              context,
+              'Kullanıcı bilgisi eksik! Lütfen tekrar deneyin.',
             );
             return;
           }
@@ -365,17 +364,14 @@ class __AddContactSheetState extends State<_AddContactSheet> {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     if (name.isEmpty || email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen tüm alanları doldurun.')),
-      );
+      DialogUtils.showWarning(context, 'Lütfen tüm alanları doldurun.');
       return;
     }
 
     if (!_isNoteMode && !_userExists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Devam etmek için kayıtlı bir kullanıcı girmelisiniz.'),
-        ),
+      DialogUtils.showWarning(
+        context,
+        'Devam etmek için kayıtlı bir kullanıcı girmelisiniz.',
       );
       return;
     }
@@ -388,9 +384,7 @@ class __AddContactSheetState extends State<_AddContactSheet> {
     );
 
     Navigator.pop(context, true);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$name kişilere eklendi.')));
+    DialogUtils.showSuccess(context, '$name kişilere eklendi.');
   }
 
   @override
@@ -463,19 +457,33 @@ class __AddContactSheetState extends State<_AddContactSheet> {
                   secondary: const Icon(Icons.note_alt_outlined),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('İptal'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: canAdd ? _addContact : null,
-                      child: const Text('Ekle'),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('İptal'),
+                      ),
+                      const SizedBox(width: 12),
+                      IntrinsicWidth(
+                        child: ElevatedButton(
+                          onPressed: canAdd ? _addContact : null,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(64, 48),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: const Text('Ekle'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

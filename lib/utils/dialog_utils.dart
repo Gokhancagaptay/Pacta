@@ -7,6 +7,48 @@ import 'package:pacta/constants/app_constants.dart';
 class DialogUtils {
   DialogUtils._(); // Private constructor
 
+  static SnackBar _buildSnackBar(
+    BuildContext context,
+    String message,
+    IconData icon,
+    Color accent, {
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final Color textColor = isDark
+        ? const Color(0xFFE6E8EB)
+        : const Color(0xFF1A202C);
+
+    return SnackBar(
+      content: Row(
+        children: [
+          Icon(icon, color: accent, size: 20),
+          const SizedBox(width: AppConstants.smallPadding),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: textColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: bgColor,
+      elevation: 6,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      duration: duration,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppConstants.defaultBorderRadius),
+        side: BorderSide(color: accent.withValues(alpha: 0.35), width: 1),
+      ),
+    );
+  }
+
   /// Loading dialog göster
   static void showLoading(BuildContext context, {String? message}) {
     showDialog(
@@ -40,20 +82,14 @@ class DialogUtils {
     String message, {
     Duration duration = const Duration(seconds: 3),
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: AppColors.success),
-            const SizedBox(width: AppConstants.smallPadding),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.success.withOpacity(0.1),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
+    final bar = _buildSnackBar(
+      context,
+      message,
+      Icons.check_circle_rounded,
+      AppColors.success,
+      duration: duration,
     );
+    ScaffoldMessenger.of(context).showSnackBar(bar);
   }
 
   /// Hata mesajı göster
@@ -62,20 +98,14 @@ class DialogUtils {
     String message, {
     Duration duration = const Duration(seconds: 4),
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.error, color: AppColors.error),
-            const SizedBox(width: AppConstants.smallPadding),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.error.withOpacity(0.1),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
+    final bar = _buildSnackBar(
+      context,
+      message,
+      Icons.error_outline,
+      AppColors.error,
+      duration: duration,
     );
+    ScaffoldMessenger.of(context).showSnackBar(bar);
   }
 
   /// Uyarı mesajı göster
@@ -84,20 +114,14 @@ class DialogUtils {
     String message, {
     Duration duration = const Duration(seconds: 3),
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.warning, color: AppColors.warning),
-            const SizedBox(width: AppConstants.smallPadding),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.warning.withOpacity(0.1),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
+    final bar = _buildSnackBar(
+      context,
+      message,
+      Icons.warning_amber_rounded,
+      AppColors.warning,
+      duration: duration,
     );
+    ScaffoldMessenger.of(context).showSnackBar(bar);
   }
 
   /// Bilgi mesajı göster
@@ -106,20 +130,14 @@ class DialogUtils {
     String message, {
     Duration duration = const Duration(seconds: 3),
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.info, color: AppColors.info),
-            const SizedBox(width: AppConstants.smallPadding),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.info.withOpacity(0.1),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
+    final bar = _buildSnackBar(
+      context,
+      message,
+      Icons.info_outline,
+      AppColors.info,
+      duration: duration,
     );
+    ScaffoldMessenger.of(context).showSnackBar(bar);
   }
 
   /// Onay dialog'u göster
