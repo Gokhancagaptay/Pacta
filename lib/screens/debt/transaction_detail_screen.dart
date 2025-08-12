@@ -367,11 +367,24 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                           _modernRow(
                             context,
                             Icons.calendar_today,
-                            'Tarih',
+                            'Oluşturulma',
                             DateFormat(
                               'd MMM y, HH:mm',
                               'tr_TR',
                             ).format(debt.islemTarihi),
+                            textMain,
+                          ),
+                          SizedBox(height: size.height * 0.015),
+                          _modernRow(
+                            context,
+                            Icons.event_available,
+                            'Tahmini Ödeme',
+                            debt.tahminiOdemeTarihi != null
+                                ? DateFormat(
+                                    'd MMM y',
+                                    'tr_TR',
+                                  ).format(debt.tahminiOdemeTarihi!)
+                                : 'Ödeme tarihi girilmedi',
                             textMain,
                           ),
                           SizedBox(height: size.height * 0.015),

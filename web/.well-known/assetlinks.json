@@ -1,0 +1,14 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.pacta",
+      "sha256_cert_fingerprints": [
+        "DE:98:30:99:47:54:23:6C:19:38:D5:58:E2:AD:8A:09:3C:91:0B:DF:57:83:A1:8A:3E:58:72:85:0A:83:4E:0D"
+      ]
+    }
+  }
+]
+
+

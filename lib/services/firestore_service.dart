@@ -106,6 +106,23 @@ class FirestoreService {
     }
   }
 
+  /// E-postayı küçük harfe çevirip `aramaAnahtarlari` üzerinden arar (case-insensitive)
+  Future<UserModel?> getUserByEmailInsensitive(String email) async {
+    if (email.isEmpty) return null;
+    try {
+      final lower = email.toLowerCase();
+      final querySnapshot = await usersRef
+          .where('aramaAnahtarlari', arrayContains: lower)
+          .limit(1)
+          .get();
+      if (querySnapshot.docs.isNotEmpty) return querySnapshot.docs.first.data();
+      return await getUserByEmail(email); // son çare eşitlik kontrolü
+    } catch (e) {
+      print('Error getting user by email insensitive: $e');
+      return null;
+    }
+  }
+
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
     if (uid.isEmpty || data.isEmpty) return;
 
@@ -120,7 +137,11 @@ class FirestoreService {
   // DEBT METHODS
   Future<String> addDebt(DebtModel debt) async {
     try {
-      final docRef = await debtsRef.add(debt);
+      // createdAt server timestamp olacak şekilde ek alanlarla yaz
+      final docRef = await _db.collection(_debtsCollection).add({
+        ...debt.toMap(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
       final newDebtId = docRef.id;
 
       if (debt.requiresApproval && debt.status == statusPending) {
@@ -184,6 +205,81 @@ class FirestoreService {
           amount: debt.miktar,
         );
       }
+    }
+  }
+
+  /// Kullanıcı kendi adına bir borcu onaylar (ör: borçlu kişi ödemeyi kabul eder)
+  /// Mevcut `updateDebtStatus`i kullanır; UI'dan tek çağrı yeterlidir.
+  Future<String?> approveDebtByUser(String debtId) async {
+    try {
+      await updateDebtStatus(debtId, statusApproved);
+      return null;
+    } catch (e) {
+      return 'İşlem onaylanırken hata oluştu.';
+    }
+  }
+
+  /// Anında onaylı borç/ödeme kaydı oluşturur (karşı tarafla arada onay gerektirmez)
+  /// iAmDebtor=true ise currentUser borçludur; aksi halde alacaklıdır.
+  Future<String?> createInstantApprovedDebt({
+    required String otherUserId,
+    required double amount,
+    required bool iAmDebtor,
+    String? aciklama,
+    DateTime? islemTarihi,
+  }) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return 'Kullanıcı oturumu bulunamadı.';
+    try {
+      final debt = DebtModel(
+        borcluId: iAmDebtor ? currentUser.uid : otherUserId,
+        alacakliId: iAmDebtor ? otherUserId : currentUser.uid,
+        miktar: amount,
+        aciklama: aciklama,
+        islemTarihi: islemTarihi ?? DateTime.now(),
+        tahminiOdemeTarihi: null,
+        createdAt: DateTime.now(),
+        dueReminderSent: false,
+        status: statusApproved,
+        isShared: true,
+        requiresApproval: false,
+        visibleto: [currentUser.uid, otherUserId],
+        createdBy: currentUser.uid,
+      );
+      final newId = await addDebt(debt);
+      if (newId.isEmpty) return 'Kayıt oluşturulamadı.';
+      return null;
+    } catch (e) {
+      print('createInstantApprovedDebt error: $e');
+      return 'Kayıt oluşturulurken hata oluştu.';
+    }
+  }
+
+  /// Karşı taraftan ödeme talebi bildirimi gönderir (in-app notification)
+  Future<String?> requestPayment(String debtId, String requesterId) async {
+    try {
+      final snap = await debtsRef.doc(debtId).get();
+      final debt = snap.data();
+      if (debt == null) return 'Kayıt bulunamadı.';
+      final toUserId = requesterId == debt.alacakliId
+          ? debt.borcluId
+          : debt.alacakliId;
+      final requesterName = await getUserNameById(requesterId);
+      await sendNotification(
+        toUserId: toUserId,
+        createdById: requesterId,
+        type: 'payment_request',
+        relatedDebtId: debtId,
+        message:
+            '$requesterName, ${debt.miktar.toStringAsFixed(2)}₺ tutarındaki borç için ödeme talep ediyor.',
+        debtorId: debt.borcluId,
+        creditorId: debt.alacakliId,
+        amount: debt.miktar,
+      );
+      return null;
+    } catch (e) {
+      print('requestPayment error: $e');
+      return 'Ödeme talebi gönderilemedi.';
     }
   }
 

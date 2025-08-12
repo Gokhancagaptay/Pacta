@@ -218,9 +218,13 @@ class _UserProfileHeader extends StatelessWidget {
             radius: size.width * 0.075,
             backgroundColor: theme.colorScheme.primary.withOpacity(0.13),
             child: Text(
-              user.adSoyad?.isNotEmpty ?? false
-                  ? user.adSoyad![0].toUpperCase()
-                  : (user.email[0].toUpperCase()),
+              (() {
+                final name = (user.adSoyad ?? '').trim();
+                if (name.isNotEmpty) return name.substring(0, 1).toUpperCase();
+                final mail = (user.email).trim();
+                if (mail.isNotEmpty) return mail.substring(0, 1).toUpperCase();
+                return '?';
+              })(),
               style: TextStyle(
                 color: theme.colorScheme.primary,
                 fontSize: size.width * 0.06,
@@ -234,14 +238,19 @@ class _UserProfileHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  user.adSoyad ?? 'İsim Belirtilmemiş',
+                  (user.adSoyad == null ||
+                          (user.adSoyad?.trim().isEmpty ?? true))
+                      ? 'İsim Belirtilmemiş'
+                      : user.adSoyad!,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     fontSize: size.width * 0.05,
                   ),
                 ),
                 Text(
-                  user.email,
+                  user.email.trim().isEmpty
+                      ? 'E-posta belirtilmemiş'
+                      : user.email,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontSize: size.width * 0.038,

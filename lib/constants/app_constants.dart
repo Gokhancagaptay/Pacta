@@ -102,6 +102,13 @@ class AppConstants {
   static const String themePreferenceKey = 'theme_mode';
   static const String languagePreferenceKey = 'language_code';
   static const String notificationPreferenceKey = 'notifications_enabled';
+
+  // Email verification & Dynamic Links (özelleştirilebilir)
+  static const String emailActionContinueUrl =
+      'https://pacta-76686.web.app/auth/continue';
+  // Android paket adı ve iOS bundle id (projeye göre güncel tutun)
+  static const String androidPackageName = 'com.example.pacta';
+  static const String iosBundleId = 'com.example.pacta';
 }
 
 /// Uygulama renklerini içeren sınıf

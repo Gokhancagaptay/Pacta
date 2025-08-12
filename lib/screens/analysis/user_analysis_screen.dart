@@ -901,14 +901,6 @@ class _UserAnalysisScreenState extends State<UserAnalysisScreen> {
           ),
         ),
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: iconMain,
-            size: size.width * 0.05,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
         actions: [
           IconButton(
             icon: Icon(

@@ -1,6 +1,7 @@
 // lib/services/auth_service.dart
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pacta/constants/app_constants.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
@@ -18,6 +19,57 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreService _firestoreService = FirestoreService();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  AuthService() {
+    // E-posta şablonlarının dilini Türkçe yap
+    try {
+      _auth.setLanguageCode('tr');
+    } catch (_) {}
+  }
+
+  /// E-posta doğrulaması tamamlanmış kullanıcılar için şifre sıfırlama maili gönderir
+  /// - Firestore'da kullanıcı dokümanı yoksa (muhtemelen doğrulanmamış) göndermez
+  Future<String?> sendPasswordResetEmailIfVerified(String email) async {
+    if (email.isEmpty) return 'Lütfen e-posta adresinizi girin.';
+    try {
+      // Firestore'da kullanıcı dokümanı var mı? (Biz doğrulamadan sonra oluşturuyoruz)
+      final normalized = email.trim().toLowerCase();
+      final userDoc = await _firestoreService.getUserByEmailInsensitive(
+        normalized,
+      );
+      if (userDoc == null) {
+        return 'Bu e-posta için doğrulama tamamlanmamış. Lütfen önce e-postanızı doğrulayın.';
+      }
+
+      try {
+        final settings = ActionCodeSettings(
+          url: AppConstants.emailActionContinueUrl,
+          handleCodeInApp: false,
+          iOSBundleId: AppConstants.iosBundleId,
+          androidPackageName: AppConstants.androidPackageName,
+          androidInstallApp: true,
+          androidMinimumVersion: '21',
+        );
+        await _auth.sendPasswordResetEmail(
+          email: normalized,
+          actionCodeSettings: settings,
+        );
+      } on FirebaseAuthException catch (e) {
+        // Domain/continueUrl yetkisi yoksa varsayılan mail gönderimine düş
+        if (e.code == 'invalid-continue-uri' ||
+            e.code == 'unauthorized-continue-uri') {
+          await _auth.sendPasswordResetEmail(email: normalized);
+        } else {
+          rethrow;
+        }
+      }
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return _handleAuthError(e);
+    } catch (_) {
+      return 'Şifre sıfırlama e-postası gönderilirken hata oluştu.';
+    }
+  }
 
   // Kullanıcı oturum durumunu dinleyen stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -45,21 +97,12 @@ class AuthService {
         email: email,
         password: password,
       );
+      // Profil ismi güncelle ve doğrulama maili gönder (özelleştirilmiş linklerle)
+      await userCredential.user?.updateDisplayName(adSoyad);
+      await _sendVerificationWithSettings(userCredential.user);
 
-      // Create user document in Firestore
-      if (userCredential.user != null) {
-        final userModel = UserModel(
-          uid: userCredential.user!.uid,
-          email: email,
-          adSoyad: adSoyad,
-          telefon: telefon,
-          etiket: null,
-          aramaAnahtarlari: [adSoyad.toLowerCase(), email.toLowerCase()],
-        );
-        await _firestoreService.createUser(userModel);
-      }
-
-      return null; // Success
+      // Not: Firestore kullanıcı dokümanı e-posta doğrulandıktan sonra oluşturulacak
+      return null; // Success (doğrulama bekleniyor)
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
@@ -79,7 +122,21 @@ class AuthService {
     }
 
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      if (!(credential.user?.emailVerified ?? false)) {
+        // Doğrulanmamış hesapla girişe izin verme
+        await _sendVerificationWithSettings(credential.user);
+        await _auth.signOut();
+        return 'E-posta adresinizi doğrulamalısınız. Doğrulama maili tekrar gönderildi.';
+      }
+      // Doğrulanmış hesabın Firestore dokümanı yoksa oluştur
+      final user = _auth.currentUser;
+      if (user != null) {
+        await _createUserIfNotExists(user);
+      }
       return null; // Success
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
@@ -87,6 +144,71 @@ class AuthService {
       print('Unexpected error during sign in: $e');
       return 'Beklenmeyen bir hata oluştu.';
     }
+  }
+
+  /// Doğrulama e-postasını tekrar gönderir
+  Future<void> sendVerificationEmail() async {
+    final user = _auth.currentUser;
+    if (user != null && !(user.emailVerified)) {
+      await _sendVerificationWithSettings(user);
+    }
+  }
+
+  // Email doğrulama linkine continueUrl ekler (Dynamic Links olmadan)
+  Future<void> _sendVerificationWithSettings(User? user) async {
+    if (user == null) return;
+    try {
+      final settings = ActionCodeSettings(
+        url: AppConstants.emailActionContinueUrl,
+        handleCodeInApp: false,
+        iOSBundleId: AppConstants.iosBundleId,
+        androidPackageName: AppConstants.androidPackageName,
+        androidInstallApp: true,
+        androidMinimumVersion: '21',
+      );
+      await user.sendEmailVerification(settings);
+    } on FirebaseAuthException catch (e) {
+      // Alan adı veya continue URL yetkili değilse, varsayılan doğrulama e-postasını gönder
+      if (e.code == 'invalid-continue-uri' ||
+          e.code == 'unauthorized-continue-uri') {
+        await user.sendEmailVerification();
+        return;
+      }
+      rethrow;
+    } catch (_) {
+      // Her ihtimale karşı sessiz geri dönüş
+      await user.sendEmailVerification();
+    }
+  }
+
+  /// E-posta doğrulandıysa kullanıcı dokümanını oluşturur ve true döner
+  Future<bool> finalizeUserAfterEmailVerification({
+    required String adSoyad,
+    required String telefon,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    if (user.emailVerified) {
+      // Kullanıcı dokümanı yoksa oluştur
+      final userDoc = await _firestoreService.usersRef.doc(user.uid).get();
+      if (!userDoc.exists) {
+        final userModel = UserModel(
+          uid: user.uid,
+          email: user.email ?? '',
+          adSoyad: adSoyad,
+          telefon: telefon,
+          etiket: null,
+          aramaAnahtarlari: [
+            adSoyad.toLowerCase(),
+            (user.email ?? '').toLowerCase(),
+          ],
+        );
+        await _firestoreService.createUser(userModel);
+      }
+      return true;
+    }
+    return false;
   }
 
   /// Firebase Auth hatalarını Türkçe mesajlara çeviren yardımcı metod
@@ -106,6 +228,9 @@ class AuthService {
         return 'Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.';
       case 'network-request-failed':
         return 'İnternet bağlantınızı kontrol edin.';
+      case 'invalid-continue-uri':
+      case 'unauthorized-continue-uri':
+        return 'Doğrulama bağlantısı alanı bu proje için yetkili değil. Firebase Console > Authentication > Settings > Authorized domains bölümünden izin verin.';
       default:
         return e.message ?? 'Bilinmeyen bir hata oluştu.';
     }

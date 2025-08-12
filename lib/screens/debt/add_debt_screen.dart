@@ -36,6 +36,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   final _amountController = TextEditingController();
   final _personController = TextEditingController();
   final _descriptionController = TextEditingController();
+  // Tahmini ödeme tarihi olarak kullanılacak
   DateTime _selectedDate = DateTime.now();
   bool _isSaving = false;
   bool _isPacta = true; // Default to true
@@ -144,11 +145,17 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
           alacakliId: alacakliId,
           miktar: miktar,
           aciklama: _descriptionController.text,
-          islemTarihi: _selectedDate,
+          // islemTarihi artık oluşturulma tarihi değil, ekranda seçtiğimiz alan
+          // talebin gereği olarak tahmini ödeme tarihini temsil eder
+          islemTarihi: DateTime.now(),
+          tahminiOdemeTarihi: _selectedDate,
           status: _isPacta ? 'pending' : 'note',
           isShared: _isPacta,
           requiresApproval: _isPacta,
-          visibleto: [currentUser.uid, otherUser.uid],
+          // Note modunda sadece oluşturan kullanıcı görmeli
+          visibleto: isNoteFlow
+              ? [currentUser.uid]
+              : [currentUser.uid, otherUser.uid],
           createdBy: currentUser.uid,
         );
 
