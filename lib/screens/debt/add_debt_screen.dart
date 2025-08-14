@@ -36,8 +36,8 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   final _amountController = TextEditingController();
   final _personController = TextEditingController();
   final _descriptionController = TextEditingController();
-  // Tahmini ödeme tarihi olarak kullanılacak
-  DateTime _selectedDate = DateTime.now();
+  // Tahmini ödeme tarihi (isteğe bağlı)
+  DateTime? _selectedDate;
   bool _isSaving = false;
   bool _isPacta = true; // Default to true
 
@@ -70,7 +70,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: _selectedDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
     );
@@ -148,7 +148,7 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
           // islemTarihi artık oluşturulma tarihi değil, ekranda seçtiğimiz alan
           // talebin gereği olarak tahmini ödeme tarihini temsil eder
           islemTarihi: DateTime.now(),
-          tahminiOdemeTarihi: _selectedDate,
+          tahminiOdemeTarihi: _selectedDate, // seçilmediyse null gider
           status: _isPacta ? 'pending' : 'note',
           isShared: _isPacta,
           requiresApproval: _isPacta,
@@ -263,7 +263,12 @@ class _AddDebtScreenState extends ConsumerState<AddDebtScreen> {
                   isTappable: true,
                   onTap: () => _selectDate(context),
                   child: Text(
-                    DateFormat('d MMMM y, EEEE', 'tr_TR').format(_selectedDate),
+                    _selectedDate == null
+                        ? 'Tahmini ödeme tarihi seçiniz (isteğe bağlı)'
+                        : DateFormat(
+                            'd MMMM y, EEEE',
+                            'tr_TR',
+                          ).format(_selectedDate!),
                     style: theme.textTheme.titleMedium,
                   ),
                 ),

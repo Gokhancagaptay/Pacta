@@ -73,11 +73,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      builder: (modalContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(modalContext).viewInsets.bottom,
+      builder: (modalContext) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(modalContext).viewInsets.bottom + 16,
+            top: 12,
+          ),
+          child: const _AddContactSheet(),
         ),
-        child: const _AddContactSheet(),
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -464,25 +470,34 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             },
           ),
           SizedBox(height: size.height * 0.025),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('İptal'),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 160, minHeight: 48),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('İptal'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _isChecking ? null : _addContact,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(120, 48),
+                    ),
+                    child: _isChecking
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Ekle'),
+                  ),
+                ],
               ),
-              SizedBox(width: size.width * 0.03),
-              ElevatedButton(
-                onPressed: _isChecking ? null : _addContact,
-                child: _isChecking
-                    ? SizedBox(
-                        width: size.width * 0.05,
-                        height: size.width * 0.05,
-                        child: const CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Ekle'),
-              ),
-            ],
+            ),
           ),
         ],
       ),

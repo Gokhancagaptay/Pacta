@@ -144,27 +144,8 @@ class FirestoreService {
       });
       final newDebtId = docRef.id;
 
-      if (debt.requiresApproval && debt.status == statusPending) {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          final currentUserName = await getUserNameById(currentUser.uid);
-          final toUserId = debt.createdBy == debt.alacakliId
-              ? debt.borcluId
-              : debt.alacakliId;
-
-          await sendNotification(
-            toUserId: toUserId,
-            createdById: currentUser.uid,
-            type: 'approval_request',
-            relatedDebtId: newDebtId,
-            message:
-                '$currentUserName, sizinle arasında ${debt.miktar.toStringAsFixed(2)}₺ tutarında bir işlem oluşturdu.',
-            debtorId: debt.borcluId,
-            creditorId: debt.alacakliId,
-            amount: debt.miktar,
-          );
-        }
-      }
+      // Not: İlk onay bildirimlerini Cloud Functions gönderiyor (onDebtCreate).
+      // Burada tekrarlı bildirim oluşturmamak için client tarafında atlanır.
       return newDebtId;
     } catch (e) {
       print('ERROR adding debt: $e');
