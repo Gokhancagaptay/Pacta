@@ -1,131 +1,73 @@
-Pacta 🤝
-Pacta, kullanıcıların finansal işlemlerini, borç ve alacak durumlarını, kişilerini ve ödeme geçmişlerini güvenli ve modern bir arayüzle yönetmelerini sağlayan, Flutter ile geliştirilmiş çapraz platform (Android & iOS) bir mobil uygulamadır.
+# Pacta 🤝 | Akıllı Borç ve Finans Takip Asistanı
 
-🌟 Özellikler
-Uygulama, kullanıcı deneyimini ön planda tutan aşağıdaki temel özelliklere sahiptir:
+![Flutter](https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/dart-%230175C2.svg?style=for-the-badge&logo=dart&logoColor=white)
+![Firebase](https://img.shields.io/badge/firebase-%23039BE5.svg?style=for-the-badge&logo=firebase)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
-🔐 Güvenli Kimlik Doğrulama:
+**Pacta**, kişisel finansal ilişkilerinizi, borç ve alacak durumlarınızı dijital ortamda güvenle yönetmenizi sağlayan modern bir mobil uygulamadır. Gelişmiş analiz araçları, PDF raporlama ve anlık bildirimlerle finansal hafızanızı güçlendirir.
 
-E-posta ve şifre ile giriş/kayıt işlemleri.
+---
 
-Firebase Authentication altyapısı.
+## 📱 Ekran Görüntüleri
 
-Profil düzenleme ve şifre değiştirme seçenekleri.
+| Giriş Ekranı | Ana Panel | İşlem Detayı | Analizler |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/login.png" width="200"/> | <img src="assets/screenshots/dashboard.png" width="200"/> | <img src="assets/screenshots/detail.png" width="200"/> | <img src="assets/screenshots/analysis.png" width="200"/> |
 
-💰 Borç ve Alacak Yönetimi:
+---
 
-Yeni borç veya alacak kaydı oluşturma.
+## 🌟 Temel Özellikler
 
-İşlem detaylarını görüntüleme.
+### 🔐 Güvenlik ve Kimlik
+* **Firebase Auth:** E-posta ve şifre ile güvenli giriş/kayıt altyapısı.
+* **Profil Yönetimi:** Kullanıcı profili düzenleme ve güvenli şifre değiştirme işlemleri.
 
-Tutar ve tarih bazlı takip.
+### 💰 Finansal Yönetim
+* **Borç/Alacak Takibi:** İşlemleri kişi, tutar, tarih ve açıklama detaylarıyla kaydetme.
+* **Detaylı İşlem Geçmişi:** Tüm finansal hareketlerinizi filtreleyin ve görüntüleyin.
+* **Kişi Bazlı Cüzdan:** Rehberinizdeki veya kaydettiğiniz kişilerle olan bakiyenizi anlık görün.
 
-👥 Kişi Yönetimi (Contacts):
+### 📊 Analiz ve Raporlama
+* **Akıllı Grafikler:** Gelir/Gider dengenizi ve genel durumunuzu görsel grafiklerle analiz edin.
+* **Kişi Analizi:** Özel bir kişiyle olan finansal ilişkinizin derinlemesine analizi (`ContactAnalysisScreen`).
+* **Belge Oluşturma:** Verilerinizi PDF veya Excel formatında dışarı aktarın (`GenerateDocumentScreen`).
 
-Kişileri kaydetme ve yönetme.
+### 🔔 Bildirim Sistemi
+* **Anlık Uyarılar:** Firebase Cloud Messaging (FCM) ile ödeme hatırlatmaları ve işlem bildirimleri.
+* **Özelleştirme:** Bildirim ayarlarını kişisel tercihlerinize göre yapılandırın.
 
-Kişiye özel işlem geçmişi görüntüleme.
+---
 
-Kişi bazlı finansal analizler (ContactAnalysisScreen).
+## 🛠️ Teknik Altyapı
 
-📊 Analiz ve Raporlama:
+Bu proje **Clean Architecture** prensiplerine sadık kalınarak, ölçeklenebilir bir yapıda geliştirilmiştir.
 
-Kullanıcı genel durum analizi.
+* **Frontend:** Flutter (Dart)
+* **Backend:** Firebase (Firestore, Cloud Functions, Storage)
+* **State Management:** Provider
+* **Servisler:** * `AuthService`: Kimlik doğrulama işlemleri.
+  * `FirestoreService`: Veritabanı CRUD operasyonları.
+  * `PushNotificationService`: Bildirim yönetimi.
+* **UI/UX:** Özel tema yapılandırması (`app_theme.dart`) ve yeniden kullanılabilir widget kütüphanesi.
 
-Belge ve rapor oluşturma (GenerateDocumentScreen).
+---
 
-Grafiksel verilerle finansal durumu izleme.
+## 📂 Proje Mimarisi
 
-🔔 Bildirim Sistemi:
-
-Ödeme hatırlatıcıları ve işlem bildirimleri.
-
-Firebase Cloud Messaging (FCM) entegrasyonu.
-
-Özelleştirilebilir bildirim ayarları.
-
-☁️ Bulut Tabanlı Veri:
-
-Firebase Firestore ile gerçek zamanlı veri senkronizasyonu.
-
-Firebase Cloud Functions ile sunucu tarafı mantık işlemleri.
-
-📂 Proje Yapısı
-Proje, temiz mimari prensiplerine uygun olarak modüler bir yapıda geliştirilmiştir:
-
-Plaintext
-
+```text
 lib/
-├── constants/       # Uygulama genelinde kullanılan sabitler ve metinler
-├── models/          # Veri modelleri (Debt, User, Notification vb.)
-├── providers/       # State management (Theme provider vb.)
-├── screens/         # Uygulama ekranları (UI)
-│   ├── analysis/    # Analiz ve rapor ekranları
-│   ├── auth/        # Giriş ve kayıt ekranları
-│   ├── contacts/    # Kişi listesi ve detayları
-│   ├── dashboard/   # Ana kontrol paneli
-│   ├── debt/        # İşlem ekleme ve listeleme
-│   ├── notifications/
-│   └── settings/    # Ayarlar ve profil yönetimi
-├── services/        # Firebase ve diğer servisler (Auth, Firestore, Push Notification)
-├── theme/           # Tema ve renk yapılandırmaları
-├── utils/           # Yardımcı fonksiyonlar (Validasyon, Formatlama, Renkler)
-└── widgets/         # Yeniden kullanılabilir bileşenler
-functions/           # Firebase Cloud Functions (TypeScript)
-🚀 Kurulum ve Çalıştırma
-Projeyi yerel makinenizde çalıştırmak için aşağıdaki adımları izleyin:
-
-Gereksinimler
-Flutter SDK (Son sürüm)
-
-Dart SDK
-
-Android Studio veya VS Code
-
-Adımlar
-Projeyi Klonlayın:
-
-Bash
-
-git clone https://github.com/kullaniciadi/pacta.git
-cd pacta
-Bağımlılıkları Yükleyin:
-
-Bash
-
-flutter pub get
-Firebase Yapılandırması:
-
-Bu proje Firebase kullanmaktadır.
-
-android/app/google-services.json ve ios/Runner/GoogleService-Info.plist dosyalarınızın doğru yerleştirildiğinden emin olun.
-
-Firebase CLI kullanarak yapılandırmayı güncelleyebilirsiniz:
-
-Bash
-
-flutterfire configure
-Uygulamayı Başlatın:
-
-Bash
-
-flutter run
-🛠️ Kullanılan Teknolojiler
-Frontend: Flutter & Dart
-
-Backend: Firebase (Firestore, Authentication, Cloud Functions, Storage)
-
-State Management: Provider (veya kullanılan diğer yapı)
-
-Bildirimler: Firebase Cloud Messaging
-
-🤝 Katkıda Bulunma
-Bu repoyu "Fork"layın.
-
-Yeni bir özellik dalı (branch) oluşturun (git checkout -b ozellik/YeniOzellik).
-
-Değişikliklerinizi "Commit"leyin (git commit -m 'Yeni özellik eklendi').
-
-Dalınızı "Push"layın (git push origin ozellik/YeniOzellik).
-
-Bir "Pull Request" oluşturun.
+├── constants/       # Sabitler (Renkler, Stringler)
+├── models/          # Veri Modelleri (Debt, User, Contact)
+├── providers/       # State Management (Theme Provider)
+├── screens/         # Uygulama Sayfaları
+│   ├── analysis/    # Grafik ve Raporlama
+│   ├── auth/        # Giriş/Kayıt
+│   ├── contacts/    # Kişi Listesi
+│   ├── dashboard/   # Ana Gösterge Paneli
+│   ├── debt/        # İşlem Ekleme/Detay
+│   └── settings/    # Ayarlar
+├── services/        # Firebase Servisleri
+├── theme/           # Tema Ayarları
+├── utils/           # Yardımcı Fonksiyonlar (Format, Validasyon)
+└── widgets/         # Ortak Kullanılan Bileşenler
