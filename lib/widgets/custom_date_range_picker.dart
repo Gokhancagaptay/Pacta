@@ -61,7 +61,6 @@ class _CalendarDateRangePickerState extends State<CalendarDateRangePicker> {
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime _currentMonth = DateTime.now();
-  bool _isSelectingEndDate = false;
 
   @override
   void initState() {
@@ -77,9 +76,6 @@ class _CalendarDateRangePickerState extends State<CalendarDateRangePicker> {
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = Colors.green.shade600;
     final surfaceColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final backgroundColor = isDark
-        ? const Color(0xFF121212)
-        : const Color(0xFFF7F8FC);
 
     return Container(
       decoration: BoxDecoration(
@@ -289,8 +285,6 @@ class _CalendarDateRangePickerState extends State<CalendarDateRangePicker> {
   }
 
   Widget _buildDayCell(DateTime date) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final primaryColor = Colors.green.shade600;
 
     final isCurrentMonth = date.month == _currentMonth.month;
@@ -333,7 +327,6 @@ class _CalendarDateRangePickerState extends State<CalendarDateRangePicker> {
         // İlk seçim veya yeniden başlama
         _startDate = date;
         _endDate = null;
-        _isSelectingEndDate = true;
       } else if (_endDate == null) {
         // İkinci seçim
         if (date.isBefore(_startDate!)) {
@@ -343,7 +336,6 @@ class _CalendarDateRangePickerState extends State<CalendarDateRangePicker> {
         } else {
           _endDate = date;
         }
-        _isSelectingEndDate = false;
       }
     });
   }

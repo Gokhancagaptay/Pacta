@@ -558,7 +558,6 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
         ? const Color(0xFF121212)
         : const Color(0xFFF7F8FC);
     final textColor = isDark ? Colors.white : const Color(0xFF1A202C);
-    final primaryColor = Colors.green.shade600;
 
     return Scaffold(
       backgroundColor: backgroundColor,

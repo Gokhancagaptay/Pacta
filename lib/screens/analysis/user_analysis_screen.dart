@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:pacta/models/debt_model.dart';
-import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
 import 'package:pacta/services/firestore_service.dart';

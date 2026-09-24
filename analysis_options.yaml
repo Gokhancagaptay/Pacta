@@ -17,6 +17,8 @@ analyzer:
     - macos/**
     - linux/**
     - docs/**
+    - functions/**
+    - firestore-tests/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

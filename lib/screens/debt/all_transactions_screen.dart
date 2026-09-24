@@ -252,12 +252,10 @@ class _TransactionCard extends StatelessWidget {
                             runSpacing: 4.0,
                             children: [
                               Text(
-                                d.islemTarihi != null
-                                    ? DateFormat(
-                                        'd MMMM y',
-                                        'tr_TR',
-                                      ).format(d.islemTarihi)
-                                    : '-',
+                                DateFormat(
+                                  'd MMMM y',
+                                  'tr_TR',
+                                ).format(d.islemTarihi),
                                 style: TextStyle(
                                   fontSize: cardWidth * 0.032,
                                   color: textSec,
