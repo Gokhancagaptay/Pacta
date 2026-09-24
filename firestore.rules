@@ -1,0 +1,137 @@
+rules_version = '2';
+
+// Pacta v1 güvenlik kuralları.
+// Testler: firestore-tests/ (npm run emulator:test)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function tokenEmail() {
+      return request.auth.token.get('email', '');
+    }
+
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function userExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    // Profil yalnızca sahibine açıktır. E-posta giriş kimliğidir; değiştirilemez.
+    // Diğer kullanıcılar yalnızca publicProfiles üzerinden adı görür.
+    match /users/{uid} {
+      allow get: if isSelf(uid);
+      allow list: if false;
+      allow create: if isSelf(uid)
+        && (!('email' in request.resource.data) || request.resource.data.email == tokenEmail())
+        && (!('uid' in request.resource.data) || request.resource.data.uid == uid);
+      allow update: if isSelf(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'email']);
+      allow delete: if false;
+
+      match /savedContacts/{contactId} {
+        allow read, write: if isSelf(uid);
+      }
+    }
+
+    match /publicProfiles/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['adSoyad'])
+        && request.resource.data.adSoyad is string
+        && request.resource.data.adSoyad.size() <= 100;
+      allow delete: if false;
+    }
+
+    function isParty(data) {
+      return signedIn() && request.auth.uid in data.visibleto;
+    }
+
+    // Yeni kayıt ya tek taraflı nottur ya da karşı tarafın onayını bekler.
+    // Onaylı ("approved") kayıt doğrudan oluşturulamaz.
+    function validNewDebt(d) {
+      return d.keys().hasOnly([
+          'borcluId', 'alacakliId', 'miktar', 'aciklama', 'islemTarihi',
+          'tahminiOdemeTarihi', 'createdAt', 'dueReminderSent', 'status',
+          'isShared', 'requiresApproval', 'visibleto', 'createdBy',
+          'deletion_requester_id'])
+        && d.createdBy == request.auth.uid
+        && (d.borcluId == request.auth.uid || d.alacakliId == request.auth.uid)
+        && d.borcluId != d.alacakliId
+        && d.miktar is number && d.miktar > 0 && d.miktar <= 1000000000
+        && (d.get('aciklama', null) == null
+          || (d.aciklama is string && d.aciklama.size() <= 500))
+        && d.islemTarihi is timestamp
+        && (d.get('tahminiOdemeTarihi', null) == null
+          || d.tahminiOdemeTarihi is timestamp)
+        && d.createdAt == request.time
+        && d.dueReminderSent == false
+        && d.get('deletion_requester_id', null) == null
+        && (
+          (d.status == 'note'
+            && d.visibleto == [request.auth.uid]
+            && d.isShared == false
+            && d.requiresApproval == false)
+          || (d.status == 'pending'
+            && d.visibleto.size() == 2
+            && d.visibleto.hasAll([d.borcluId, d.alacakliId])
+            && d.isShared == true
+            && d.requiresApproval == true
+            && userExists(d.borcluId)
+            && userExists(d.alacakliId))
+        );
+    }
+
+    match /debts/{debtId} {
+      allow get, list: if isParty(resource.data);
+      allow create: if signedIn() && validNewDebt(request.resource.data);
+
+      allow update: if isParty(resource.data) && (
+        // Bekleyen kaydı yalnızca karşı taraf onaylar veya reddeder.
+        (resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'rejected']
+          && resource.data.createdBy != request.auth.uid
+          && request.resource.data.updatedById == request.auth.uid
+          && onlyChanges(['status', 'updatedById']))
+        // Taraflardan biri onaylı kaydın silinmesini ister.
+        || (resource.data.status == 'approved'
+          && request.resource.data.status == 'pending_deletion'
+          && request.resource.data.deletion_requester_id == request.auth.uid
+          && onlyChanges(['status', 'deletion_requester_id']))
+        // Silme talebini yalnızca karşı taraf reddeder.
+        || (resource.data.status == 'pending_deletion'
+          && resource.data.deletion_requester_id != request.auth.uid
+          && request.resource.data.status == 'approved'
+          && !('deletion_requester_id' in request.resource.data)
+          && onlyChanges(['status', 'deletion_requester_id']))
+      );
+
+      allow delete: if isParty(resource.data) && (
+        (resource.data.status == 'note' && resource.data.createdBy == request.auth.uid)
+        || resource.data.status == 'rejected'
+        // Silme talebini yalnızca karşı taraf onaylar.
+        || (resource.data.status == 'pending_deletion'
+          && resource.data.deletion_requester_id != request.auth.uid)
+      );
+    }
+
+    // Bildirimleri yalnızca Cloud Functions yazar; alıcı yalnızca okundu bilgisini değiştirir.
+    match /notifications/{notificationId} {
+      allow get, list: if signedIn() && resource.data.toUserId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.toUserId == request.auth.uid
+        && onlyChanges(['isRead'])
+        && request.resource.data.isRead is bool;
+      allow create, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "pacta-firestore-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "emulator:test": "firebase emulators:exec --only firestore --project demo-pacta \"npm test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.31.0"
+  }
+}
