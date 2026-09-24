@@ -92,7 +92,10 @@ service cloud.firestore {
     }
 
     match /debts/{debtId} {
-      allow get, list: if isParty(resource.data);
+      // Bildirimden açılan kayıt silinmiş olabilir: olmayan kayıt için izin
+      // hatası yerine "yok" yanıtı döner. Var olan kaydı yalnızca taraflar okur.
+      allow get: if signedIn() && (resource == null || isParty(resource.data));
+      allow list: if isParty(resource.data);
       allow create: if signedIn() && validNewDebt(request.resource.data);
 
       allow update: if isParty(resource.data) && (

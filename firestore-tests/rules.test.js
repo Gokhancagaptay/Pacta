@@ -1,4 +1,5 @@
 // firestore.rules testleri. Çalıştırma: npm run emulator:test (Java 11+ gerekir).
+import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {after, before, beforeEach, describe, it} from "node:test";
 import {
@@ -164,6 +165,12 @@ describe("debts okuma", () => {
   it("taraf olmayan okuyamaz, taraf okur", async () => {
     await assertFails(getDoc(doc(mallory(), "debts/pending1")));
     await assertSucceeds(getDoc(doc(ayse(), "debts/pending1")));
+  });
+
+  it("silinmiş kayıt izin hatası değil 'yok' döner", async () => {
+    const snap = await assertSucceeds(getDoc(doc(ayse(), "debts/silinmis")));
+    assert.equal(snap.exists(), false);
+    await assertFails(getDoc(doc(anon(), "debts/silinmis")));
   });
 
   it("liste yalnızca visibleto filtresiyle", async () => {
