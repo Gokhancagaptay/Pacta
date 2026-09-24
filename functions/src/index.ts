@@ -1,14 +1,63 @@
 // functions/src/index.ts
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
-import { onRequest } from "firebase-functions/v2/https";
-// DÜZELTME: Güvenilirliği en yüksek olan onSchedule metoduna geri dönüldü.
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import {
+  onDocumentCreated,
+  onDocumentDeleted,
+  onDocumentUpdated,
+} from "firebase-functions/v2/firestore";
+import {HttpsError, onCall} from "firebase-functions/v2/https";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 
 admin.initializeApp();
 
 const db = admin.firestore();
+const REGION = "europe-west1";
+
+type DebtData = {
+  alacakliId: string;
+  borcluId: string;
+  miktar: number;
+  status: string;
+  createdBy?: string;
+  updatedById?: string;
+  "deletion_requester_id"?: string;
+  dueReminderSent?: boolean;
+};
+
+const amountFormat = new Intl.NumberFormat("tr-TR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Tutarı "1.234,50₺" biçiminde yazar.
+ * @param {number} amount Tutar.
+ * @return {string} Biçimli tutar.
+ */
+function formatAmount(amount: number): string {
+  return `${amountFormat.format(amount)}₺`;
+}
+
+/**
+ * Kullanıcının görünen adını döndürür.
+ * @param {string} uid Kullanıcı ID'si.
+ * @return {Promise<string>} Ad soyad, yoksa e-posta, yoksa "Bilinmeyen".
+ */
+async function getDisplayName(uid: string): Promise<string> {
+  const snap = await db.collection("users").doc(uid).get();
+  return snap.get("adSoyad") || snap.get("email") || "Bilinmeyen";
+}
+
+/**
+ * Borcun diğer tarafını döndürür.
+ * @param {DebtData} debt Borç kaydı.
+ * @param {string} uid Taraflardan biri.
+ * @return {string} Diğer tarafın ID'si.
+ */
+function otherParty(debt: DebtData, uid: string): string {
+  return uid === debt.alacakliId ? debt.borcluId : debt.alacakliId;
+}
 
 /**
  * Kullanıcıya FCM üzerinden push bildirimi gönderir.
@@ -21,201 +70,247 @@ async function sendPushNotification(
   toUserId: string,
   title: string,
   body: string,
-  data: { [key: string]: string }
+  data: {[key: string]: string}
 ) {
-  logger.info(`[sendPushNotification] Entered for user: ${toUserId}`, data);
   try {
     const userDoc = await db.collection("users").doc(toUserId).get();
-    const fcmToken = userDoc.data()?.fcmToken as string | undefined;
+    const fcmToken = userDoc.get("fcmToken") as string | undefined;
 
-    if (fcmToken) {
-      logger.info(`[sendPushNotification] FCM token found for user ${toUserId}. Sending message.`);
-      await admin.messaging().send({
-        token: fcmToken,
-        notification: { title, body },
-        data,
-        android: {
-          priority: "high",
-        },
-        apns: {
-          payload: {
-            aps: {
-              contentAvailable: true,
-            },
+    if (!fcmToken) {
+      logger.warn(`[push] FCM token yok, atlandı: ${toUserId}`);
+      return;
+    }
+    await admin.messaging().send({
+      token: fcmToken,
+      notification: {title, body},
+      data,
+      android: {
+        priority: "high",
+      },
+      apns: {
+        payload: {
+          aps: {
+            contentAvailable: true,
           },
         },
-      });
-      logger.info(`[sendPushNotification] Push notification sent successfully to ${toUserId}`);
-    } else {
-      logger.warn(`[sendPushNotification] FCM token not found for user ${toUserId}. Skipping push.`);
-    }
-  } catch (error: any) {
-    logger.error(`[sendPushNotification] Failed to send push notification to ${toUserId}`, {
-      errorMessage: error.message,
-      errorCode: error.code, // Hata kodunu logla
-      errorStack: error.stack,
+      },
+    });
+    logger.info(`[push] Gönderildi: ${toUserId}`);
+  } catch (error) {
+    const err = error as {message?: string; code?: string; stack?: string};
+    logger.error(`[push] Gönderilemedi: ${toUserId}`, {
+      errorMessage: err.message,
+      errorCode: err.code,
+      errorStack: err.stack,
     });
   }
+}
+
+type NotificationInput = {
+  toUserId: string;
+  type: string;
+  title: string;
+  message: string;
+  debtId: string;
+  debt: DebtData;
+  createdById: string;
+};
+
+/**
+ * Uygulama içi bildirimi yazar ve push gönderir.
+ * Bildirimleri yalnızca Functions yazar; istemci yazamaz (firestore.rules).
+ * @param {NotificationInput} input Bildirim bilgileri.
+ */
+async function notify(input: NotificationInput): Promise<void> {
+  await db.collection("notifications").add({
+    toUserId: input.toUserId,
+    type: input.type,
+    relatedDebtId: input.debtId,
+    title: input.title,
+    message: input.message,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdById: input.createdById,
+    creditorId: input.debt.alacakliId,
+    debtorId: input.debt.borcluId,
+    amount: input.debt.miktar,
+  });
+  await sendPushNotification(input.toUserId, input.title, input.message, {
+    type: input.type,
+    relatedDebtId: input.debtId,
+  });
 }
 
 export const onDebtCreate = onDocumentCreated(
   {
     document: "debts/{debtId}",
-    region: "europe-west1",
+    region: REGION,
   },
   async (event) => {
-    logger.info(`[onDebtCreate] Function triggered for debtId: ${event.params.debtId}`);
-    const debtId = event.params.debtId;
-    const debtData = event.data?.data();
+    const debt = event.data?.data() as DebtData | undefined;
+    if (!debt || debt.status !== "pending" || !debt.createdBy) return;
 
-    if (!debtData) {
-      logger.warn("[onDebtCreate] debtData is missing. Exiting.");
-      return;
-    }
-    logger.info("[onDebtCreate] debtData exists.", debtData);
-    const {
-      createdBy,
-      alacakliId,
-      borcluId,
-      miktar,
-      status,
-    } = debtData;
+    const creatorName = await getDisplayName(debt.createdBy);
+    const amount = formatAmount(debt.miktar);
+    const creatorIsCreditor = debt.createdBy === debt.alacakliId;
 
-    const notificationPayload = {
-      relatedDebtId: debtId,
-      isRead: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      creditorId: alacakliId,
-      debtorId: borcluId,
-    };
-
-    logger.info("[onDebtCreate] Fetching user documents...");
-    const creditorDoc = await db.collection("users").doc(alacakliId).get();
-    const debtorDoc = await db.collection("users").doc(borcluId).get();
-    logger.info("[onDebtCreate] Fetched user documents successfully.");
-
-    const creditorName =
-      creditorDoc.data()?.adSoyad ?? creditorDoc.data()?.email ?? "Bilinmeyen";
-    const debtorName =
-      debtorDoc.data()?.adSoyad ?? debtorDoc.data()?.email ?? "Bilinmeyen";
-
-    if (status === "note") {
-      logger.info("[onDebtCreate] Status is 'note'. Exiting.");
-      return;
-    }
-
-    let toUserId: string;
-    let notificationMessage: string;
-    let notificationTitle: string;
-
-    if (createdBy === alacakliId) {
-      toUserId = borcluId;
-      notificationTitle = "Yeni Borç Bildirimi";
-      notificationMessage = `${creditorName} size ${miktar}₺ tutarında bir borç bildiriminde bulundu.`;
-    } else if (createdBy === borcluId) {
-      toUserId = alacakliId;
-      notificationTitle = "Yeni Alacak Talebi";
-      notificationMessage = `${debtorName} sizden ${miktar}₺ tutarında bir talepte bulundu.`;
-    } else {
-      logger.warn("[onDebtCreate] createdBy does not match alacakliId or borcluId. Exiting.");
-      return; // Olayla ilgisi olmayan durum
-    }
-
-    logger.info(`[onDebtCreate] Determined notification recipient: ${toUserId}`);
-
-    const notificationData = {
-      ...notificationPayload,
-      toUserId: toUserId,
-      title: notificationTitle,
-      message: notificationMessage,
+    await notify({
+      toUserId: otherParty(debt, debt.createdBy),
       type: "approval_request",
-    };
-
-    logger.info("[onDebtCreate] Notification data prepared. Writing to Firestore...");
-    await db.collection("notifications").add(notificationData);
-    logger.info("[onDebtCreate] Notification written to Firestore successfully.");
-
-    logger.info(`[onDebtCreate] Calling sendPushNotification for user ${toUserId}...`);
-    await sendPushNotification(
-      toUserId,
-      notificationTitle,
-      notificationMessage,
-      { type: "approval_request", relatedDebtId: debtId }
-    );
-    logger.info(`[onDebtCreate] Finished sendPushNotification call for user ${toUserId}.`);
+      title: creatorIsCreditor ? "Yeni Borç Bildirimi" : "Yeni Alacak Talebi",
+      message: creatorIsCreditor ?
+        `${creatorName} size ${amount} tutarında bir borç bildiriminde ` +
+          "bulundu." :
+        `${creatorName} sizden ${amount} tutarında bir talepte bulundu.`,
+      debtId: event.params.debtId,
+      debt,
+      createdById: debt.createdBy,
+    });
   }
 );
 
 export const onDebtStatusUpdate = onDocumentUpdated(
   {
     document: "debts/{debtId}",
-    region: "europe-west1",
+    region: REGION,
   },
   async (event) => {
-    // Bu fonksiyonun içeriği de aynı kalıyor...
-    logger.info("onDebtStatusUpdate tetiklendi", { debtId: event.params.debtId });
-    if (!event.data) { return; }
+    const before = event.data?.before.data() as DebtData | undefined;
+    const after = event.data?.after.data() as DebtData | undefined;
+    if (!before || !after || before.status === after.status) return;
 
-    const before = event.data.before.data();
-    const after = event.data.after.data();
-
-    if (before.status !== "pending" || after.status === "pending") { return; }
-    const { alacakliId, borcluId, miktar, status } = after;
     const debtId = event.params.debtId;
-    const updatedById = after.updatedById;
-    if (!updatedById) { return; }
+    const amount = formatAmount(after.miktar);
 
-    const creditorDoc = await db.collection("users").doc(alacakliId).get();
-    const debtorDoc = await db.collection("users").doc(borcluId).get();
-    const creditorName = creditorDoc.data()?.adSoyad ?? creditorDoc.data()?.email ?? "Bilinmeyen";
-    const debtorName = debtorDoc.data()?.adSoyad ?? debtorDoc.data()?.email ?? "Bilinmeyen";
-
-    let toUserId: string;
-    let title: string;
-    let message: string;
-    let notificationType: string;
-
-    if (status === "approved") {
-      title = "Talep Onaylandı";
-      notificationType = "request_approved";
-      if (updatedById === alacakliId) {
-        toUserId = borcluId;
-        message = `${miktar}₺ tutarındaki alacak talebiniz ${creditorName} tarafından onaylandı.`;
-      } else {
-        toUserId = alacakliId;
-        message = `${miktar}₺ tutarındaki borç bildiriminiz ${debtorName} tarafından onaylandı.`;
-      }
-    } else if (status === "rejected") {
-      title = "Talep Reddedildi";
-      notificationType = "request_rejected";
-      if (updatedById === alacakliId) {
-        toUserId = borcluId;
-        message = `${miktar}₺ tutarındaki alacak talebiniz ${creditorName} tarafından reddedildi.`;
-      } else {
-        toUserId = alacakliId;
-        message = `${miktar}₺ tutarındaki borç bildiriminiz ${debtorName} tarafından reddedildi.`;
-      }
-    } else {
+    // Onay / ret: karşı taraf pending kaydı yanıtladı.
+    if (
+      before.status === "pending" &&
+      (after.status === "approved" || after.status === "rejected")
+    ) {
+      const actorId = after.updatedById;
+      if (!actorId) return;
+      const approved = after.status === "approved";
+      const subject = actorId === after.alacakliId ?
+        "alacak talebiniz" :
+        "borç bildiriminiz";
+      const actorName = await getDisplayName(actorId);
+      await notify({
+        toUserId: otherParty(after, actorId),
+        type: approved ? "request_approved" : "request_rejected",
+        title: approved ? "Talep Onaylandı" : "Talep Reddedildi",
+        message: `${amount} tutarındaki ${subject} ${actorName} ` +
+          `tarafından ${approved ? "onaylandı" : "reddedildi"}.`,
+        debtId,
+        debt: after,
+        createdById: actorId,
+      });
       return;
     }
 
-    const notification = {
-      toUserId: toUserId,
-      relatedDebtId: debtId,
-      title: title,
-      message: message,
-      type: notificationType,
-      isRead: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      creditorId: alacakliId,
-      debtorId: borcluId,
-    };
-    await db.collection("notifications").add(notification);
+    // Silme talebi: onaylı kaydın silinmesi istendi.
+    if (before.status === "approved" && after.status === "pending_deletion") {
+      const requesterId = after["deletion_requester_id"];
+      if (!requesterId) return;
+      const requesterName = await getDisplayName(requesterId);
+      await notify({
+        toUserId: otherParty(after, requesterId),
+        type: "deletion_request",
+        title: "Silme Talebi",
+        message: `${requesterName}, ${amount} tutarındaki işlemi silmek ` +
+          "istiyor.",
+        debtId,
+        debt: after,
+        createdById: requesterId,
+      });
+      return;
+    }
 
-    await sendPushNotification(toUserId, title, message, {
-      type: notificationType,
-      relatedDebtId: debtId,
+    // Silme talebi reddedildi: kayıt onaylı durumuna döndü.
+    if (before.status === "pending_deletion" && after.status === "approved") {
+      const requesterId = before["deletion_requester_id"];
+      if (!requesterId) return;
+      const responderId = otherParty(before, requesterId);
+      const responderName = await getDisplayName(responderId);
+      await notify({
+        toUserId: requesterId,
+        type: "deletion_rejected",
+        title: "Silme Talebi Reddedildi",
+        message: `${responderName}, ${amount} tutarındaki işlemin ` +
+          "silinmesini reddetti.",
+        debtId,
+        debt: after,
+        createdById: responderId,
+      });
+    }
+  }
+);
+
+// Silme talebi onaylandı: kurallar yalnızca karşı tarafın silmesine izin verir.
+export const onDebtDelete = onDocumentDeleted(
+  {
+    document: "debts/{debtId}",
+    region: REGION,
+  },
+  async (event) => {
+    const debt = event.data?.data() as DebtData | undefined;
+    if (!debt || debt.status !== "pending_deletion") return;
+    const requesterId = debt["deletion_requester_id"];
+    if (!requesterId) return;
+
+    const responderId = otherParty(debt, requesterId);
+    const responderName = await getDisplayName(responderId);
+    await notify({
+      toUserId: requesterId,
+      type: "deletion_approved",
+      title: "Silme Talebi Onaylandı",
+      message: `${responderName}, ${formatAmount(debt.miktar)} tutarındaki ` +
+        "işlemin silinmesini onayladı.",
+      debtId: event.params.debtId,
+      debt,
+      createdById: responderId,
     });
+  }
+);
+
+/**
+ * E-postası doğrulanmış ve profili olan kullanıcıyı bulur.
+ *
+ * users koleksiyonu istemciye listelenmez; kişi ekleme ve borç oluşturma
+ * bu fonksiyonla Firebase Auth kaydına göre eşleşir. Profil e-postası
+ * değiştirilerek başka birinin yerine geçilemez.
+ */
+export const lookupUserByEmail = onCall<{email?: unknown}>(
+  {region: REGION},
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Giriş yapmalısınız.");
+    }
+    const raw = request.data?.email;
+    const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+    if (!email || email.length > 254 || !email.includes("@")) {
+      throw new HttpsError("invalid-argument", "Geçerli bir e-posta girin.");
+    }
+
+    let user: admin.auth.UserRecord;
+    try {
+      user = await admin.auth().getUserByEmail(email);
+    } catch (error) {
+      if ((error as {code?: string}).code === "auth/user-not-found") {
+        return {found: false};
+      }
+      throw error;
+    }
+    if (!user.emailVerified) return {found: false};
+
+    const profile = await db.collection("users").doc(user.uid).get();
+    if (!profile.exists) return {found: false};
+
+    return {
+      found: true,
+      uid: user.uid,
+      email: user.email ?? email,
+      adSoyad: profile.get("adSoyad") ?? user.displayName ?? "",
+    };
   }
 );
 
@@ -223,31 +318,27 @@ export const dueDateReminder = onSchedule(
   {
     schedule: "every day 08:00",
     timeZone: "Europe/Istanbul",
-    region: "europe-west1",
+    region: REGION,
   },
-  // The 'event' parameter is removed here, as it's not being used.
   async () => {
     logger.info("dueDateReminder triggered!");
     await processDueReminders();
   }
 );
 
-// Manuel tetikleme (test amaçlı): /runDueReminderNow
-export const runDueReminderNow = onRequest({ region: "europe-west1" }, async (_req, res) => {
-  try {
-    await processDueReminders();
-    res.status(200).send("dueDateReminder executed");
-  } catch (e) {
-    logger.error("Manual trigger failed", e as any);
-    res.status(500).send("error");
-  }
-});
-
+/**
+ * Vadesi bugün olan borçlar için hatırlatma gönderir.
+ */
 async function processDueReminders() {
-  logger.info("processDueReminders started");
   const now = admin.firestore.Timestamp.now();
-  const todayStart = new admin.firestore.Timestamp(now.seconds - (now.seconds % 86400), 0);
-  const todayEnd = new admin.firestore.Timestamp(todayStart.seconds + 86400 - 1, 999);
+  const todayStart = new admin.firestore.Timestamp(
+    now.seconds - (now.seconds % 86400),
+    0
+  );
+  const todayEnd = new admin.firestore.Timestamp(
+    todayStart.seconds + 86400 - 1,
+    999
+  );
 
   const snapshot = await db
     .collection("debts")
@@ -263,53 +354,44 @@ async function processDueReminders() {
   logger.info(`Sending reminders for ${snapshot.size} debts.`);
 
   const batch = db.batch();
-  const pushPromises: Promise<void>[] = []; // Push bildirimleri için promise dizisi
+  const pushPromises: Promise<void>[] = [];
 
   for (const doc of snapshot.docs) {
-    const d = doc.data() as any;
-    const { borcluId, alacakliId, miktar } = d;
+    const d = doc.data() as DebtData;
     if (d.dueReminderSent === true) {
       continue; // daha önce işlenmiş
     }
 
-    const creditorDoc = await db.collection("users").doc(alacakliId).get();
-    const creditorName =
-      creditorDoc.data()?.adSoyad ?? creditorDoc.data()?.email ?? "Unknown";
+    const creditorName = await getDisplayName(d.alacakliId);
+    const amount = formatAmount(d.miktar);
 
-    // Push bildirimini promise dizisine ekle, ama bekleme (await yok)
-    const title = "Ödeme Hatırlatması";
-    const body = `${creditorName} için ${miktar}₺ tutarında ödemeniz bugün vadesinde.`;
     pushPromises.push(
-      sendPushNotification(borcluId, title, body, {
-        type: "due_reminder",
-        relatedDebtId: doc.id,
-      })
+      sendPushNotification(
+        d.borcluId,
+        "Ödeme Hatırlatması",
+        `${creditorName} için ${amount} tutarında ödemeniz bugün vadesinde.`,
+        {type: "due_reminder", relatedDebtId: doc.id}
+      )
     );
 
-    const notificationData = {
-      toUserId: borcluId,
+    batch.set(db.collection("notifications").doc(), {
+      toUserId: d.borcluId,
       type: "due_reminder",
       relatedDebtId: doc.id,
-      message: `${creditorName} için ${miktar}₺ tutarındaki ödemenizin tahmini tarihi bugün.`,
+      message: `${creditorName} için ${amount} tutarındaki ödemenizin ` +
+        "tahmini tarihi bugün.",
       isRead: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdById: alacakliId,
-      creditorId: alacakliId,
-      debtorId: borcluId,
-      amount: miktar,
-    };
+      createdById: d.alacakliId,
+      creditorId: d.alacakliId,
+      debtorId: d.borcluId,
+      amount: d.miktar,
+    });
 
-    const notificationRef = db.collection("notifications").doc();
-    batch.set(notificationRef, notificationData);
-
-    batch.update(doc.ref, { dueReminderSent: true });
+    batch.update(doc.ref, {dueReminderSent: true});
   }
 
-  // Döngü bittikten sonra TÜM işlemleri aynı anda çalıştır.
-  await Promise.all([
-    ...pushPromises, // Tüm push bildirimlerini gönder
-    batch.commit(),    // ve Firestore'a tüm güncellemeleri yaz.
-  ]);
+  await Promise.all([...pushPromises, batch.commit()]);
 
   logger.info("Reminders and updates completed successfully.");
 }
