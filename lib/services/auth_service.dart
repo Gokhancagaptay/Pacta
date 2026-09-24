@@ -27,19 +27,14 @@ class AuthService {
     } catch (_) {}
   }
 
-  /// E-posta doğrulaması tamamlanmış kullanıcılar için şifre sıfırlama maili gönderir
-  /// - Firestore'da kullanıcı dokümanı yoksa (muhtemelen doğrulanmamış) göndermez
-  Future<String?> sendPasswordResetEmailIfVerified(String email) async {
+  /// Şifre sıfırlama maili gönderir.
+  ///
+  /// Giriş yapılmadan kullanıcı listesi sorgulanamaz (firestore.rules); e-postanın
+  /// kayıtlı olup olmadığını Firebase Auth kendisi değerlendirir.
+  Future<String?> sendPasswordResetEmail(String email) async {
     if (email.isEmpty) return 'Lütfen e-posta adresinizi girin.';
     try {
-      // Firestore'da kullanıcı dokümanı var mı? (Biz doğrulamadan sonra oluşturuyoruz)
       final normalized = email.trim().toLowerCase();
-      final userDoc = await _firestoreService.getUserByEmailInsensitive(
-        normalized,
-      );
-      if (userDoc == null) {
-        return 'Bu e-posta için doğrulama tamamlanmamış. Lütfen önce e-postanızı doğrulayın.';
-      }
 
       try {
         final settings = ActionCodeSettings(
@@ -87,12 +82,7 @@ class AuthService {
     }
 
     try {
-      // Check if email is already in use
-      final existingUserByEmail = await _firestoreService.getUserByEmail(email);
-      if (existingUserByEmail != null) {
-        return 'Bu e-posta adresi zaten kullanımda.';
-      }
-
+      // Kullanımdaki e-posta için Firebase Auth `email-already-in-use` döner.
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -286,6 +276,8 @@ class AuthService {
         ],
       );
       await _firestoreService.createUser(userModel);
+    } else {
+      await _firestoreService.ensurePublicProfile(user.uid);
     }
   }
 

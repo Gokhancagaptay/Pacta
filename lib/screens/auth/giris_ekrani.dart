@@ -374,7 +374,7 @@ class _GirisEkraniState extends State<GirisEkrani> {
                           : () async {
                               setSheetState(() => isSending = true);
                               final msg = await _authService
-                                  .sendPasswordResetEmailIfVerified(
+                                  .sendPasswordResetEmail(
                                     _resetEmailController.text.trim(),
                                   );
                               if (!mounted) return;

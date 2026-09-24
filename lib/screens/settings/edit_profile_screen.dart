@@ -40,12 +40,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
+        // E-posta giriş kimliğidir; burada değiştirilemez (firestore.rules).
         final updatedData = <String, dynamic>{};
         if (_nameController.text != widget.user.adSoyad) {
           updatedData['adSoyad'] = _nameController.text;
-        }
-        if (_emailController.text != widget.user.email) {
-          updatedData['email'] = _emailController.text;
         }
 
         if (updatedData.isNotEmpty) {
@@ -215,6 +213,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             controller: _emailController,
             icon: Icons.mail_outline,
             label: 'E-posta',
+            readOnly: true,
           ),
         ],
       ),
@@ -225,6 +224,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required TextEditingController controller,
     required IconData icon,
     required String label,
+    bool readOnly = false,
   }) {
     final size = MediaQuery.of(context).size;
     return ListTile(
@@ -236,6 +236,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       title: TextFormField(
         controller: controller,
+        readOnly: readOnly,
         decoration: InputDecoration(
           labelText: label,
           border: InputBorder.none,

@@ -152,7 +152,6 @@ class _NotificationCardState extends State<_NotificationCard> {
       await _firestoreService.respondToDeleteRequest(
         widget.notification.relatedDebtId!,
         approved,
-        _auth.currentUser!.uid,
       );
 
       if (mounted) {

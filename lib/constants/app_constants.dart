@@ -91,6 +91,10 @@ class AppConstants {
   static const String debtsCollection = 'debts';
   static const String notificationsCollection = 'notifications';
   static const String savedContactsCollection = 'savedContacts';
+  static const String publicProfilesCollection = 'publicProfiles';
+
+  // Cloud Functions bölgesi (functions/src/index.ts ile aynı olmalı)
+  static const String functionsRegion = 'europe-west1';
 
   // Notification Types
   static const String notificationTypeApprovalRequest = 'approval_request';

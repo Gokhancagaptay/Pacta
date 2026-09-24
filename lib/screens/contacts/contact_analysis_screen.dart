@@ -7,6 +7,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:pacta/models/debt_model.dart';
 import 'package:pacta/screens/debt/transaction_detail_screen.dart';
 import 'package:pacta/screens/analysis/generate_document_screen.dart';
+import 'package:pacta/services/firestore_service.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:pacta/utils/dialog_utils.dart';
 
@@ -309,14 +310,12 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
         print(
           'ContactAnalysisScreen: Email ile kullanici araniyor: ${widget.contactId}',
         );
-        final userQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: widget.contactId)
-            .limit(1)
-            .get();
+        final contactUser = await FirestoreService().getUserByEmail(
+          widget.contactId,
+        );
 
-        if (userQuery.docs.isNotEmpty) {
-          actualContactId = userQuery.docs.first.id;
+        if (contactUser != null) {
+          actualContactId = contactUser.uid;
           print(
             'ContactAnalysisScreen: Kullanici ID bulundu: $actualContactId',
           );
@@ -343,7 +342,10 @@ class _ContactAnalysisScreenState extends State<ContactAnalysisScreen> {
       print('DEBUG: ContactAnalysisScreen: debts koleksiyonu alındı');
 
       print('DEBUG: ContactAnalysisScreen: get() cagrılıyor...');
-      final allDebtsSnap = await debtsCollection.get();
+      // Kurallar yalnızca kullanıcının taraf olduğu kayıtları okumaya izin verir.
+      final allDebtsSnap = await debtsCollection
+          .where('visibleto', arrayContains: currentUserId)
+          .get();
       print('DEBUG: ContactAnalysisScreen: get() tamamlandı');
 
       print(

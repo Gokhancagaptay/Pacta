@@ -116,30 +116,36 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
         }
       }
 
-      // 4. Fetch profiles for registered users
+      // 4. Kayıtlı kişilerin adları açık profillerinden okunur
+      //    (users/{uid} yalnızca sahibine açıktır).
       if (registeredContactUids.isNotEmpty) {
-        final usersSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .where(FieldPath.documentId, whereIn: registeredContactUids)
-            .get();
-
-        final Map<String, UserModel> fetchedUsersByUid = {
-          for (var u in usersSnapshot.docs) u.id: UserModel.fromMap(u.data()),
+        final profiles = await Future.wait(
+          registeredContactUids.map(
+            (uid) => FirebaseFirestore.instance
+                .collection(AppConstants.publicProfilesCollection)
+                .doc(uid)
+                .get(),
+          ),
+        );
+        final Map<String, String?> namesByUid = {
+          for (final p in profiles)
+            if (p.exists) p.id: p.data()?['adSoyad'] as String?,
         };
 
         savedContactsData.forEach((docId, savedData) {
           final uid = savedData['uid'] as String?;
-          if (uid != null && fetchedUsersByUid.containsKey(uid)) {
-            final user = fetchedUsersByUid[uid]!;
-            allFetchedContacts.add(
-              UserModel(
-                uid:
-                    docId, // Critically, use the savedContact docId as the identifier
-                adSoyad: user.adSoyad,
-                email: user.email,
-              ),
-            );
-          }
+          if (uid == null) return;
+          final profileName = namesByUid[uid];
+          allFetchedContacts.add(
+            UserModel(
+              uid:
+                  docId, // Critically, use the savedContact docId as the identifier
+              adSoyad: (profileName != null && profileName.isNotEmpty)
+                  ? profileName
+                  : savedData['adSoyad'] as String?,
+              email: savedData['email'] as String? ?? '',
+            ),
+          );
         });
       }
 
@@ -356,36 +362,22 @@ class _GenerateDocumentScreenState extends State<GenerateDocumentScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return [];
 
-    Query query = FirebaseFirestore.instance.collection('debts');
-
-    if (!_isAllUsersSelected) {
-      final filterIds = [..._selectedContactIds, uid];
-      query = query.where(
-        Filter.or(
-          Filter('borcluId', whereIn: filterIds),
-          Filter('alacakliId', whereIn: filterIds),
-        ),
-      );
-    } else {
-      query = query.where(
-        Filter.or(
-          Filter('borcluId', isEqualTo: uid),
-          Filter('alacakliId', isEqualTo: uid),
-        ),
-      );
-    }
+    // Kurallar yalnızca kullanıcının taraf olduğu kayıtları okumaya izin verir;
+    // kişi ve tür filtreleri aşağıda istemcide uygulanır.
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('debts')
+        .where('visibleto', arrayContains: uid)
+        .get();
+    List<Map<String, dynamic>> transactions = querySnapshot.docs
+        .map((doc) => doc.data())
+        .toList();
 
     if (_documentType != DocumentType.all) {
-      query = query.where(
-        'status',
-        isEqualTo: _documentType == DocumentType.approved ? 'approved' : 'note',
-      );
+      final status = _documentType == DocumentType.approved
+          ? 'approved'
+          : 'note';
+      transactions = transactions.where((t) => t['status'] == status).toList();
     }
-
-    final querySnapshot = await query.get();
-    List<Map<String, dynamic>> transactions = querySnapshot.docs
-        .map((doc) => doc.data() as Map<String, dynamic>)
-        .toList();
 
     if (!_isAllUsersSelected) {
       transactions = transactions.where((t) {

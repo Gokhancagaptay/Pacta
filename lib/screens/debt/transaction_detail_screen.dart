@@ -83,7 +83,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       await _firestoreService.respondToDeleteRequest(
         widget.debt.debtId!,
         approved,
-        FirebaseAuth.instance.currentUser!.uid,
       );
       if (mounted) {
         DialogUtils.showSuccess(

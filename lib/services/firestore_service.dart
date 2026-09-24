@@ -1,6 +1,7 @@
 // lib/services/firestore_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/models/debt_model.dart';
@@ -16,11 +17,16 @@ import 'package:pacta/models/user_model.dart';
 /// consistent error handling sağlar.
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: AppConstants.functionsRegion,
+  );
   late final CollectionReference<UserModel> usersRef;
   late final CollectionReference<DebtModel> debtsRef;
 
   // Use constants from AppConstants
   static const String _usersCollection = AppConstants.usersCollection;
+  static const String _publicProfilesCollection =
+      AppConstants.publicProfilesCollection;
   static const String _debtsCollection = AppConstants.debtsCollection;
   static const String _notificationsCollection =
       AppConstants.notificationsCollection;
@@ -58,6 +64,27 @@ class FirestoreService {
   // USER METHODS
   Future<void> createUser(UserModel user) async {
     await usersRef.doc(user.uid).set(user);
+    await syncPublicProfile(user.uid, user.adSoyad);
+  }
+
+  /// `users/{uid}` yalnızca sahibine açıktır; diğer kullanıcıların görebileceği
+  /// tek bilgi olan ad soyad `publicProfiles/{uid}` altında tutulur.
+  Future<void> syncPublicProfile(String uid, String? adSoyad) async {
+    if (uid.isEmpty) return;
+    await _db.collection(_publicProfilesCollection).doc(uid).set({
+      'adSoyad': (adSoyad ?? '').trim(),
+    });
+  }
+
+  /// Açık profili olmayan eski hesaplar için girişte profili oluşturur.
+  Future<void> ensurePublicProfile(String uid) async {
+    final profile = await _db
+        .collection(_publicProfilesCollection)
+        .doc(uid)
+        .get();
+    if (profile.exists) return;
+    final user = await getUser(uid);
+    if (user != null) await syncPublicProfile(uid, user.adSoyad);
   }
 
   Future<UserModel?> getUser(String uid) async {
@@ -78,8 +105,14 @@ class FirestoreService {
     }
 
     try {
-      final user = await getUser(userId);
-      final userName = user?.adSoyad ?? user?.email ?? 'Bilinmeyen Kullanıcı';
+      final profile = await _db
+          .collection(_publicProfilesCollection)
+          .doc(userId)
+          .get();
+      final adSoyad = (profile.data()?['adSoyad'] as String?)?.trim();
+      final userName = (adSoyad == null || adSoyad.isEmpty)
+          ? 'Bilinmeyen Kullanıcı'
+          : adSoyad;
 
       // Cache the result
       _userNameCache[userId] = userName;
@@ -90,35 +123,28 @@ class FirestoreService {
     }
   }
 
+  /// E-postası doğrulanmış kayıtlı kullanıcıyı bulur.
+  ///
+  /// Kullanıcı listesi istemciye kapalıdır; arama `lookupUserByEmail`
+  /// fonksiyonuyla Firebase Auth kaydı üzerinden yapılır. Böylece profildeki
+  /// e-posta alanını değiştirerek başkasının yerine geçmek mümkün olmaz.
   Future<UserModel?> getUserByEmail(String email) async {
-    if (email.isEmpty) return null;
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
 
     try {
-      final querySnapshot = await usersRef
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
-      if (querySnapshot.docs.isNotEmpty) return querySnapshot.docs.first.data();
-      return null;
+      final result = await _functions
+          .httpsCallable('lookupUserByEmail')
+          .call({'email': normalized});
+      final data = Map<String, dynamic>.from(result.data as Map);
+      if (data['found'] != true) return null;
+      return UserModel(
+        uid: data['uid'] as String,
+        email: data['email'] as String? ?? normalized,
+        adSoyad: data['adSoyad'] as String?,
+      );
     } catch (e) {
       print('Error getting user by email: $e');
-      return null;
-    }
-  }
-
-  /// E-postayı küçük harfe çevirip `aramaAnahtarlari` üzerinden arar (case-insensitive)
-  Future<UserModel?> getUserByEmailInsensitive(String email) async {
-    if (email.isEmpty) return null;
-    try {
-      final lower = email.toLowerCase();
-      final querySnapshot = await usersRef
-          .where('aramaAnahtarlari', arrayContains: lower)
-          .limit(1)
-          .get();
-      if (querySnapshot.docs.isNotEmpty) return querySnapshot.docs.first.data();
-      return await getUserByEmail(email); // son çare eşitlik kontrolü
-    } catch (e) {
-      print('Error getting user by email insensitive: $e');
       return null;
     }
   }
@@ -128,6 +154,9 @@ class FirestoreService {
 
     try {
       await usersRef.doc(uid).update(data);
+      if (data.containsKey('adSoyad')) {
+        await syncPublicProfile(uid, data['adSoyad'] as String?);
+      }
     } catch (e) {
       print('Error updating user: $e');
       rethrow;
@@ -153,213 +182,45 @@ class FirestoreService {
     }
   }
 
+  // Durum değişikliklerinin bildirimlerini Cloud Functions gönderir
+  // (onDebtStatusUpdate, onDebtDelete). İstemci bildirim yazamaz; kimin hangi
+  // geçişi yapabileceğini firestore.rules belirler.
+
   Future<void> updateDebtStatus(String debtId, String newStatus) async {
-    final debtRef = debtsRef.doc(debtId);
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final debtSnapshot = await debtRef.get();
-    final debt = debtSnapshot.data();
-    if (debt == null) return;
-
-    await debtRef.update({'status': newStatus, 'updatedById': currentUser.uid});
-
-    if (newStatus == statusApproved || newStatus == statusRejected) {
-      final updatedByName = await getUserNameById(currentUser.uid);
-      final createdBy = debt.createdBy;
-
-      if (createdBy != null && createdBy != currentUser.uid) {
-        final message = newStatus == statusApproved
-            ? '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından onaylandı.'
-            : '${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işleminiz $updatedByName tarafından reddedildi.';
-
-        await sendNotification(
-          toUserId: createdBy,
-          createdById: currentUser.uid,
-          type: newStatus == statusApproved
-              ? 'request_approved'
-              : 'request_rejected',
-          relatedDebtId: debtId,
-          message: message,
-          debtorId: debt.borcluId,
-          creditorId: debt.alacakliId,
-          amount: debt.miktar,
-        );
-      }
-    }
-  }
-
-  /// Kullanıcı kendi adına bir borcu onaylar (ör: borçlu kişi ödemeyi kabul eder)
-  /// Mevcut `updateDebtStatus`i kullanır; UI'dan tek çağrı yeterlidir.
-  Future<String?> approveDebtByUser(String debtId) async {
-    try {
-      await updateDebtStatus(debtId, statusApproved);
-      return null;
-    } catch (e) {
-      return 'İşlem onaylanırken hata oluştu.';
-    }
-  }
-
-  /// Anında onaylı borç/ödeme kaydı oluşturur (karşı tarafla arada onay gerektirmez)
-  /// iAmDebtor=true ise currentUser borçludur; aksi halde alacaklıdır.
-  Future<String?> createInstantApprovedDebt({
-    required String otherUserId,
-    required double amount,
-    required bool iAmDebtor,
-    String? aciklama,
-    DateTime? islemTarihi,
-  }) async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return 'Kullanıcı oturumu bulunamadı.';
-    try {
-      final debt = DebtModel(
-        borcluId: iAmDebtor ? currentUser.uid : otherUserId,
-        alacakliId: iAmDebtor ? otherUserId : currentUser.uid,
-        miktar: amount,
-        aciklama: aciklama,
-        islemTarihi: islemTarihi ?? DateTime.now(),
-        tahminiOdemeTarihi: null,
-        createdAt: DateTime.now(),
-        dueReminderSent: false,
-        status: statusApproved,
-        isShared: true,
-        requiresApproval: false,
-        visibleto: [currentUser.uid, otherUserId],
-        createdBy: currentUser.uid,
-      );
-      final newId = await addDebt(debt);
-      if (newId.isEmpty) return 'Kayıt oluşturulamadı.';
-      return null;
-    } catch (e) {
-      print('createInstantApprovedDebt error: $e');
-      return 'Kayıt oluşturulurken hata oluştu.';
-    }
-  }
-
-  /// Karşı taraftan ödeme talebi bildirimi gönderir (in-app notification)
-  Future<String?> requestPayment(String debtId, String requesterId) async {
-    try {
-      final snap = await debtsRef.doc(debtId).get();
-      final debt = snap.data();
-      if (debt == null) return 'Kayıt bulunamadı.';
-      final toUserId = requesterId == debt.alacakliId
-          ? debt.borcluId
-          : debt.alacakliId;
-      final requesterName = await getUserNameById(requesterId);
-      await sendNotification(
-        toUserId: toUserId,
-        createdById: requesterId,
-        type: 'payment_request',
-        relatedDebtId: debtId,
-        message:
-            '$requesterName, ${debt.miktar.toStringAsFixed(2)}₺ tutarındaki borç için ödeme talep ediyor.',
-        debtorId: debt.borcluId,
-        creditorId: debt.alacakliId,
-        amount: debt.miktar,
-      );
-      return null;
-    } catch (e) {
-      print('requestPayment error: $e');
-      return 'Ödeme talebi gönderilemedi.';
-    }
+    await debtsRef.doc(debtId).update({
+      'status': newStatus,
+      'updatedById': currentUser.uid,
+    });
   }
 
   Future<void> requestDebtDeletion(String debtId, String requesterId) async {
-    final debtRef = debtsRef.doc(debtId);
-    final debtSnapshot = await debtRef.get();
-    if (!debtSnapshot.exists) return;
-    final debt = debtSnapshot.data()!;
-
-    await debtRef.update({
+    await debtsRef.doc(debtId).update({
       'status': statusPendingDeletion,
       'deletion_requester_id': requesterId,
     });
-
-    final otherPartyId = requesterId == debt.alacakliId
-        ? debt.borcluId
-        : debt.alacakliId;
-    final requesterName = await getUserNameById(requesterId);
-
-    await sendNotification(
-      toUserId: otherPartyId,
-      createdById: requesterId,
-      type: 'deletion_request',
-      relatedDebtId: debtId,
-      message:
-          '$requesterName, ${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işlemi silmek istiyor.',
-      debtorId: debt.borcluId,
-      creditorId: debt.alacakliId,
-      amount: debt.miktar,
-    );
   }
 
-  Future<void> respondToDeleteRequest(
-    String debtId,
-    bool approved,
-    String responderId,
-  ) async {
+  Future<void> respondToDeleteRequest(String debtId, bool approved) async {
     final debtRef = debtsRef.doc(debtId);
     final debtSnapshot = await debtRef.get();
     if (!debtSnapshot.exists) return;
-    final debt = debtSnapshot.data()!;
-    final requesterId = debt.deletionRequesterId;
-
-    if (requesterId == null) return;
+    if (debtSnapshot.data()!.deletionRequesterId == null) return;
 
     if (approved) {
       await debtRef.delete();
     } else {
       await debtRef.update({
-        'status': 'approved',
+        'status': statusApproved,
         'deletion_requester_id': FieldValue.delete(),
       });
     }
-
-    final responderName = await getUserNameById(responderId);
-    final message = approved
-        ? '$responderName, ${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işlemin silinmesini onayladı.'
-        : '$responderName, ${debt.miktar.toStringAsFixed(2)}₺ tutarındaki işlemin silinmesini reddetti.';
-
-    await sendNotification(
-      toUserId: requesterId,
-      createdById: responderId,
-      type: approved ? 'deletion_approved' : 'deletion_rejected',
-      relatedDebtId: debtId,
-      message: message,
-      debtorId: debt.borcluId,
-      creditorId: debt.alacakliId,
-      amount: debt.miktar,
-    );
   }
 
   Future<void> deleteDebt(String debtId) async {
     await debtsRef.doc(debtId).delete();
-  }
-
-  // NOTIFICATION METHODS
-  Future<void> sendNotification({
-    required String toUserId,
-    required String type,
-    String? relatedDebtId,
-    required String message,
-    String? createdById,
-    required String debtorId,
-    required String creditorId,
-    required double amount,
-  }) async {
-    await _db.collection(_notificationsCollection).add({
-      'toUserId': toUserId,
-      'type': type,
-      'relatedDebtId': relatedDebtId,
-      'title': '', // Title artık gereksiz, mesajda her şey var.
-      'message': message,
-      'isRead': false,
-      'createdAt': FieldValue.serverTimestamp(),
-      'createdById': createdById,
-      'debtorId': debtorId,
-      'creditorId': creditorId,
-      'amount': amount,
-    });
   }
 
   // Diğer metodlar (getSavedContacts, vs.) değişmeden kalır...
