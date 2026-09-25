@@ -128,6 +128,9 @@ extension PactaThemeX on BuildContext {
 class PactaTheme {
   PactaTheme._();
 
+  /// Testlerde false: yazı tipi internetten indirilmez.
+  static bool useGoogleFonts = true;
+
   /// Yeşil dolgu (#4ADE80) ve üstündeki yazı (#052E16) iki temada aynıdır.
   static const brandFill = Color(0xFF4ADE80);
   static const onBrandFill = Color(0xFF052E16);
@@ -180,7 +183,10 @@ class PactaTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffold,
     );
-    final textTheme = GoogleFonts.poppinsTextTheme(base.textTheme).apply(
+    final fontTheme = useGoogleFonts
+        ? GoogleFonts.poppinsTextTheme(base.textTheme)
+        : base.textTheme;
+    final textTheme = fontTheme.apply(
       bodyColor: onSurface,
       displayColor: onSurface,
     );

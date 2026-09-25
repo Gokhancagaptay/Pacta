@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:pacta/screens/auth/giris_ekrani.dart'; // Proje adını kontrol et
-import 'package:pacta/screens/dashboard/dashboard_screen.dart'; // Proje adını kontrol et
+import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/services/auth_service.dart'; // Proje adını kontrol et
 import 'package:pacta/firebase_options.dart';
 
@@ -99,7 +99,7 @@ class AuthWrapper extends StatelessWidget {
 
     if (snapshot.hasData && snapshot.data != null) {
       // User is authenticated
-      return const DashboardScreen();
+      return const HomeShell();
     } else {
       // User is not authenticated
       return const GirisEkrani();

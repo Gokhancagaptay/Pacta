@@ -7,7 +7,7 @@ import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/firebase_options.dart';
 import 'package:pacta/providers/theme_provider.dart';
 import 'package:pacta/services/push_notification_service.dart';
-import 'package:pacta/theme/app_theme.dart';
+import 'package:pacta/app/theme.dart';
 import 'package:pacta/constants/app_constants.dart';
 
 Future<void> main() async {
@@ -47,14 +47,15 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp(
       title: AppConstants.appName,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: PactaTheme.light,
+      darkTheme: PactaTheme.dark,
       themeMode: themeMode,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      locale: const Locale('tr', 'TR'),
       supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,

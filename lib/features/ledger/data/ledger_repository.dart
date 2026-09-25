@@ -23,12 +23,17 @@ class LedgerException implements Exception {
 /// komutudur (istemci ledgers altına yazamaz, bkz. firestore.rules).
 class LedgerRepository {
   LedgerRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
-    : _db = firestore ?? FirebaseFirestore.instance,
-      _fn = functions ??
-          FirebaseFunctions.instanceFor(region: AppConstants.functionsRegion);
+    : _firestore = firestore,
+      _functions = functions;
 
-  final FirebaseFirestore _db;
-  final FirebaseFunctions _fn;
+  final FirebaseFirestore? _firestore;
+  final FirebaseFunctions? _functions;
+
+  // Firebase'e ilk kullanımda bağlanır; testlerde sahte depo Firebase'siz çalışır.
+  late final FirebaseFirestore _db = _firestore ?? FirebaseFirestore.instance;
+  late final FirebaseFunctions _fn =
+      _functions ??
+      FirebaseFunctions.instanceFor(region: AppConstants.functionsRegion);
 
   CollectionReference<Map<String, dynamic>> get _ledgers =>
       _db.collection('ledgers');
@@ -153,6 +158,14 @@ class LedgerRepository {
   }
 
   Future<void> confirm(LedgerEntry e) => _call('confirmEntry', _key(e));
+
+  /// Gelen kutusundan onay: kullanıcının gördüğü sürümle.
+  Future<void> confirmById(String ledgerId, String entryId, int version) =>
+      _call('confirmEntry', {
+        'ledgerId': ledgerId,
+        'entryId': entryId,
+        'expectedVersion': version,
+      });
 
   Future<void> dispute(
     LedgerEntry e, {
