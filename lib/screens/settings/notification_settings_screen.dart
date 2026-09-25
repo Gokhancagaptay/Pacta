@@ -108,12 +108,14 @@ class _NotificationSettingsScreenState
                           _buildSwitchTile(
                             context: context,
                             icon: Icons.calendar_today_outlined,
-                            title: 'Ödeme Hatırlatıcıları',
+                            title: 'Hatırlatmalar',
                             subtitle:
-                                'Vadesi yaklaşan ödemeler için hatırlatma alın.',
-                            value: settings.paymentReminders,
+                                'Vade günleri ve kişilerin gönderdiği '
+                                'hatırlatmalar. Bir kişiyi defter sayfasından '
+                                'ayrıca sessize alabilirsiniz.',
+                            value: settings.reminders,
                             onChanged: (value) =>
-                                _updateSetting('paymentReminders', value),
+                                _updateSetting('reminders', value),
                           ),
                         ],
                       ),

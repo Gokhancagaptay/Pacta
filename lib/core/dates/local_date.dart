@@ -50,6 +50,9 @@ class LocalDate implements Comparable<LocalDate> {
       ? DateFormat('d MMMM', 'tr_TR').format(toDateTime())
       : format();
 
+  /// "2 Eki" (tablo hücreleri için).
+  String formatCompact() => DateFormat('d MMM', 'tr_TR').format(toDateTime());
+
   /// "Eylül 2026" (liste grupları için).
   String formatMonth() => DateFormat('MMMM y', 'tr_TR').format(toDateTime());
 

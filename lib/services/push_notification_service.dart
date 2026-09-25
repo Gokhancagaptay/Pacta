@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
+import 'notification_routes.dart';
+
 // Uygulama arkaplandayken (ama tamamen kapalı değilken) gelen bildirimleri işlemek için.
 // Bu fonksiyonun sınıf dışında, en üst seviyede bir fonksiyon olması gerekiyor.
 @pragma('vm:entry-point')
@@ -38,7 +40,20 @@ class PushNotificationService {
     const InitializationSettings initSettings = InitializationSettings(
       android: androidInit,
     );
-    await _local.initialize(initSettings);
+    await _local.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (r) => NotificationRoutes.open(r.payload),
+    );
+    // Uygulamayı bildirim açtıysa (yerel ya da FCM) ilgili kayda git.
+    final launch = await _local.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      NotificationRoutes.open(launch!.notificationResponse?.payload);
+    }
+    final initial = await _fcm.getInitialMessage();
+    if (initial != null) NotificationRoutes.open(initial.data['route'] as String?);
+    FirebaseMessaging.onMessageOpenedApp.listen(
+      (m) => NotificationRoutes.open(m.data['route'] as String?),
+    );
     // 1. Bildirim İzinlerini İste
     await _fcm.requestPermission(
       alert: true,
@@ -98,6 +113,7 @@ class PushNotificationService {
               priority: Priority.high,
             ),
           ),
+          payload: message.data['route'] as String?,
         );
       }
 

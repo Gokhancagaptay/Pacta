@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../services/notification_routes.dart';
 import '../../profile/profile_page.dart';
 import '../application/providers.dart';
+import 'activity_page.dart';
+import 'common.dart';
 import 'entry_composer_page.dart';
 import 'home_page.dart';
-import 'inbox_page.dart';
 import 'people_page.dart';
 
 /// Giriş sonrası ana kabuk: dört sekme ve ortada "Kayıt ekle".
@@ -19,6 +23,28 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+  StreamSubscription<String>? _routes;
+
+  @override
+  void initState() {
+    super.initState();
+    // Bildirime dokunulunca ilgili kayıt ya da defter açılır.
+    _routes = NotificationRoutes.stream.listen(_openRoute);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = NotificationRoutes.takePending();
+      if (pending != null) _openRoute(pending);
+    });
+  }
+
+  @override
+  void dispose() {
+    _routes?.cancel();
+    super.dispose();
+  }
+
+  void _openRoute(String route) {
+    if (mounted) openRoute(context, route);
+  }
 
   void _go(int index) => setState(() => _index = index);
 
@@ -35,11 +61,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         children: [
           HomePage(
             onSeeAllPeople: () => _go(1),
-            onOpenInbox: () => _go(2),
+            onOpenActivity: () => _go(2),
             onAddEntry: _addEntry,
           ),
           const PeoplePage(),
-          const InboxPage(),
+          const ActivityPage(),
           const ProfilePage(),
         ],
       ),
@@ -148,7 +174,7 @@ class _NavBar extends StatelessWidget {
                   ),
                 ),
               ),
-              item(2, Icons.inbox_rounded, 'Gelen kutusu', badge: pending),
+              item(2, Icons.event_note_rounded, 'Hareketler', badge: pending),
               item(3, Icons.person_rounded, 'Profil'),
             ],
           ),

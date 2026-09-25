@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/dates/local_date.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/widgets.dart';
+import '../../../services/notification_routes.dart';
 import '../application/providers.dart';
 import '../data/ledger_repository.dart';
 import '../domain/entry_text.dart';
 import '../domain/models.dart';
+import '../domain/summary.dart';
 import 'entry_detail_page.dart';
 import 'ledger_page.dart';
 
@@ -54,7 +57,18 @@ void openEntry(BuildContext context, String ledgerId, String entryId) =>
       ),
     );
 
-/// Kişi listesi satırı: ad, bekleyen sayısı ve onaylı TL bakiyesi.
+/// Bildirim rotasını açar: `/l/<defter>` ya da `/l/<defter>/e/<kayıt>`.
+void openRoute(BuildContext context, String route) {
+  final target = NotificationRoutes.parse(route);
+  if (target == null) return;
+  if (target.entryId != null) {
+    openEntry(context, target.ledgerId, target.entryId!);
+  } else {
+    openLedger(context, target.ledgerId);
+  }
+}
+
+/// Kişi listesi satırı: ad, durum (bekleyen / vade) ve onaylı TL bakiyesi.
 class LedgerTile extends ConsumerWidget {
   const LedgerTile({super.key, required this.ledger, this.showDivider = true});
 
@@ -64,12 +78,24 @@ class LedgerTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
+    final today = ref.watch(todayProvider);
     final other = ledger.other(uid);
     final balance = ledger.balanceFor(uid);
     final c = context.pacta;
-    final subtitle = ledger.pendingCount > 0
-        ? '${ledger.pendingCount} kayıt onay bekliyor'
-        : (ledger.isPrivate ? 'Özel defter' : null);
+    final due = ledger.dueItems.isEmpty ? null : ledger.dueItems.first.dueOn;
+    String? subtitle;
+    var subtitleColor = c.muted;
+    if (ledger.pendingCount > 0) {
+      subtitle = '${ledger.pendingCount} kayıt onay bekliyor';
+      subtitleColor = c.pending;
+    } else if (due != null && due < today) {
+      subtitle = 'Vadesi geçti · ${due.formatShort()}';
+      subtitleColor = c.debt;
+    } else if (due != null) {
+      subtitle = 'Vade: ${due.formatShort()}';
+    } else if (ledger.isPrivate) {
+      subtitle = 'Özel defter';
+    }
 
     return InkWell(
       onTap: () => openLedger(context, ledger.id),
@@ -97,10 +123,7 @@ class LedgerTile extends ConsumerWidget {
                   if (subtitle != null)
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: ledger.pendingCount > 0 ? c.pending : c.muted,
-                      ),
+                      style: TextStyle(fontSize: 12, color: subtitleColor),
                     ),
                 ],
               ),
@@ -193,6 +216,108 @@ class EntryTile extends StatelessWidget {
               colorBySign: counted && entry.reversedBy == null,
               color: counted && entry.reversedBy == null ? null : c.muted,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Açık vade satırı: tarih rozeti, kişi, ne kadar kaldığı, kalan tutar.
+class DueTile extends StatelessWidget {
+  const DueTile({
+    super.key,
+    required this.row,
+    required this.today,
+    this.showName = true,
+    this.showDivider = true,
+  });
+
+  final DueRow row;
+  final LocalDate today;
+  final bool showName;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final item = row.item;
+    final overdue = item.dueOn < today;
+    final soon = !overdue && item.dueOn < today.addDays(4);
+    final (fg, bg) = overdue
+        ? (c.debt, c.debtSoft)
+        : soon
+        ? (c.pending, c.pendingSoft)
+        : (c.muted, c.line);
+    final what = row.iOwe ? 'Ödeyeceğiniz' : 'Alacağınız';
+    final title = showName
+        ? row.name
+        : (item.description.isEmpty ? what : item.description);
+    final details = [
+      if (showName) what,
+      if (showName && item.description.isNotEmpty) item.description,
+      relativeDue(item.dueOn, today),
+    ].join(' · ');
+
+    return InkWell(
+      onTap: () => openEntry(context, row.ledger.id, item.entryId),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          border: showDivider ? Border(bottom: BorderSide(color: c.line)) : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '${item.dueOn.day}',
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                  Text(
+                    item.dueOn.formatCompact().split(' ').last,
+                    style: TextStyle(color: fg, fontSize: 10, height: 1.1),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    details,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: overdue ? c.debt : c.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            AmountText(row.amount, signed: true, colorBySign: true),
           ],
         ),
       ),

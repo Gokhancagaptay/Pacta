@@ -35,6 +35,38 @@ class LedgerSide {
   final String displayName;
 }
 
+/// Vadesi olan, henüz kapanmamış borç parçası. Sunucu hesaplar: ödemeler
+/// önce en eski borcu kapatır (functions/src/ledger/due.ts).
+class DueItem {
+  const DueItem({
+    required this.entryId,
+    required this.debtorSide,
+    required this.open,
+    required this.dueOn,
+    required this.description,
+  });
+
+  factory DueItem.fromMap(Map<String, dynamic> m) => DueItem(
+    entryId: m['entryId'] as String,
+    debtorSide: _enum(Side.values, m['debtorSide'], Side.b),
+    open: Money(
+      (m['openMinor'] as num?)?.toInt() ?? 0,
+      Asset.fromCode((m['asset'] as String?) ?? 'TRY'),
+    ),
+    dueOn: LocalDate.parse(m['dueOn'] as String),
+    description: (m['description'] as String?) ?? '',
+  );
+
+  final String entryId;
+  final Side debtorSide;
+  final Money open;
+  final LocalDate dueOn;
+  final String description;
+
+  /// Kullanıcının bakış açısından tutar: pozitif = karşı taraf size borçlu.
+  Money signedFor(Side me) => debtorSide == me ? -open : open;
+}
+
 class Ledger {
   const Ledger({
     required this.id,
@@ -44,11 +76,14 @@ class Ledger {
     required this.balances,
     required this.pendingCount,
     this.lastEntryAt,
+    this.dueItems = const [],
+    this.lastReminderOn = const {},
   });
 
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
     final sides = (m['sides'] as Map?)?.cast<String, dynamic>() ?? const {};
     final raw = (m['balances'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final reminders = (m['reminders'] as Map?)?.cast<String, dynamic>() ?? const {};
     return Ledger(
       id: id,
       isPrivate: m['mode'] == 'private',
@@ -59,6 +94,18 @@ class Ledger {
       },
       pendingCount: (m['pendingCount'] as num?)?.toInt() ?? 0,
       lastEntryAt: _time(m['lastEntryAt']),
+      dueItems: [
+        for (final item in (m['dueItems'] as List?) ?? const [])
+          DueItem.fromMap((item as Map).cast<String, dynamic>()),
+      ],
+      lastReminderOn: {
+        for (final side in Side.values)
+          if (LocalDate.tryParse(
+                (reminders[side.name] as Map?)?['lastOn'] as String?,
+              )
+              case final day?)
+            side: day,
+      },
     );
   }
 
@@ -71,6 +118,12 @@ class Ledger {
   final Map<String, int> balances;
   final int pendingCount;
   final DateTime? lastEntryAt;
+
+  /// Açık vadeler, vadeye göre sıralı.
+  final List<DueItem> dueItems;
+
+  /// Tarafın karşı tarafa en son hatırlatma gönderdiği gün.
+  final Map<Side, LocalDate> lastReminderOn;
 
   Side? sideOf(String uid) =>
       a.uid == uid ? Side.a : (b.uid == uid ? Side.b : null);
@@ -136,6 +189,7 @@ class LedgerEntry {
     required this.reversalPendingId,
     required this.dispute,
     this.createdAt,
+    this.updatedAt,
   });
 
   factory LedgerEntry.fromMap(String id, Map<String, dynamic> m) {
@@ -163,6 +217,7 @@ class LedgerEntry {
       reversalPendingId: m['reversalPendingId'] as String?,
       dispute: dispute == null ? null : EntryDispute.fromMap(dispute),
       createdAt: _time(m['createdAt']),
+      updatedAt: _time(m['updatedAt']),
     );
   }
 
@@ -187,6 +242,9 @@ class LedgerEntry {
   final String? reversalPendingId;
   final EntryDispute? dispute;
   final DateTime? createdAt;
+
+  /// Son durum değişikliği (Hareketler > Geçmiş sırası).
+  final DateTime? updatedAt;
 
   Money get amount => Money(amountMinor, asset);
 

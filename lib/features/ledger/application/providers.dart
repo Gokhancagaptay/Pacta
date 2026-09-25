@@ -1,10 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/dates/local_date.dart';
 import '../../../core/money/asset.dart';
 import '../../../core/money/money.dart';
 import '../data/ledger_repository.dart';
 import '../domain/models.dart';
+import '../domain/summary.dart';
 
 final ledgerRepositoryProvider = Provider<LedgerRepository>(
   (ref) => LedgerRepository(),
@@ -125,3 +127,43 @@ final totalsProvider = Provider.autoDispose<AsyncValue<Totals>>((ref) {
   final uid = ref.watch(currentUidProvider);
   return ref.watch(ledgersProvider).whenData((l) => Totals.from(l, uid));
 });
+
+/// Bugün (testlerde sabitlenebilir).
+final todayProvider = Provider<LocalDate>((ref) => LocalDate.today());
+
+/// Tüm defterlerdeki son kayıtlar (Hareketler > Geçmiş).
+final recentEntriesProvider = StreamProvider.autoDispose<List<LedgerEntry>>((
+  ref,
+) {
+  final uid = ref.watch(currentUidProvider);
+  return ref.watch(ledgerRepositoryProvider).watchRecentEntries(uid);
+});
+
+/// Açık vadeler: gecikmiş, 30 gün içinde, sonrası.
+final dueScheduleProvider = Provider.autoDispose<AsyncValue<DueSchedule>>((ref) {
+  final uid = ref.watch(currentUidProvider);
+  final today = ref.watch(todayProvider);
+  return ref
+      .watch(ledgersProvider)
+      .whenData((l) => DueSchedule.of(l, uid, today));
+});
+
+/// Kişi tablosunun satırları (süzülmemiş).
+final personRowsProvider = Provider.autoDispose<AsyncValue<List<PersonRow>>>((
+  ref,
+) {
+  final uid = ref.watch(currentUidProvider);
+  final today = ref.watch(todayProvider);
+  return ref
+      .watch(ledgersProvider)
+      .whenData((l) => [for (final x in l) PersonRow.of(x, uid, today)]);
+});
+
+final peopleFilterProvider = StateProvider<PeopleFilter>(
+  (ref) => PeopleFilter.all,
+);
+final peopleSortProvider = StateProvider<PeopleSort>((ref) => PeopleSort.recent);
+final peopleQueryProvider = StateProvider<String>((ref) => '');
+
+/// Kişiler ekranı tablo görünümünde mi.
+final peopleTableViewProvider = StateProvider<bool>((ref) => false);

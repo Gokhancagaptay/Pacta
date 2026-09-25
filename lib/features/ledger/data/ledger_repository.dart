@@ -5,6 +5,7 @@ import '../../../constants/app_constants.dart';
 import '../../../core/dates/local_date.dart';
 import '../../../core/money/money.dart';
 import '../domain/models.dart';
+import '../domain/reminder.dart';
 
 /// Komut hatası; mesaj sunucudan Türkçe gelir.
 class LedgerException implements Exception {
@@ -67,6 +68,20 @@ class LedgerRepository {
             ],
           );
 
+  /// Tüm defterlerdeki kayıtlar, son değişene göre (Hareketler > Geçmiş).
+  Stream<List<LedgerEntry>> watchRecentEntries(String uid, {int limit = 40}) =>
+      _db
+          .collectionGroup('entries')
+          .where('memberUids', arrayContains: uid)
+          .orderBy('updatedAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map(
+            (s) => [
+              for (final d in s.docs) LedgerEntry.fromMap(d.id, d.data()),
+            ],
+          );
+
   Stream<LedgerEntry?> watchEntry(String ledgerId, String entryId) => _ledgers
       .doc(ledgerId)
       .collection('entries')
@@ -117,6 +132,14 @@ class LedgerRepository {
       .collection('notifications')
       .doc(notificationId)
       .update({'isRead': true});
+
+  /// Bu kişinin hatırlatmaları push olarak gelmez; bildirim listesinde kalır.
+  Future<void> setReminderMuted(String uid, String ledgerId, bool muted) => _db
+      .collection('users')
+      .doc(uid)
+      .set({
+        'reminderMutes': {ledgerId: muted ? true : FieldValue.delete()},
+      }, SetOptions(merge: true));
 
   // --- Komutlar ----------------------------------------------------------
 
@@ -207,6 +230,16 @@ class LedgerRepository {
       'note': note,
     },
   );
+
+  /// Karşı tarafa nazik bir uygulama içi hatırlatma; metni sunucu seçer.
+  Future<ReminderResult> sendReminder(String ledgerId) async {
+    final r = await _call('sendReminder', {'ledgerId': ledgerId});
+    return ReminderResult(
+      kind: ReminderKind.values.byName(r['kind'] as String),
+      queued: r['queued'] == true,
+      nextOn: LocalDate.parse(r['nextOn'] as String),
+    );
+  }
 
   Map<String, Object?> _key(LedgerEntry e) => {
     'ledgerId': e.ledgerId,

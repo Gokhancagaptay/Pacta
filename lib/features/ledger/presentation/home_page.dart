@@ -8,19 +8,23 @@ import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
 import 'common.dart';
+import 'notifications_page.dart';
 
-/// Ana sayfa: onaylı bakiye, onayınızı bekleyenler, kişiler.
+/// Ana sayfa: onaylı bakiye, onayınızı bekleyenler, yaklaşan vadeler, kişiler.
 class HomePage extends ConsumerWidget {
   const HomePage({
     super.key,
     required this.onSeeAllPeople,
-    required this.onOpenInbox,
+    required this.onOpenActivity,
     required this.onAddEntry,
   });
 
   final VoidCallback onSeeAllPeople;
-  final VoidCallback onOpenInbox;
+  final VoidCallback onOpenActivity;
   final VoidCallback onAddEntry;
+
+  /// Ana sayfada gösterilen vade ufku (gün); tamamı Hareketler'de.
+  static const dueHorizonDays = 7;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,7 +33,18 @@ class HomePage extends ConsumerWidget {
     final firstName = (name == null || name.isEmpty) ? null : name.split(' ').first;
     final totals = ref.watch(totalsProvider);
     final inbox = ref.watch(inboxProvider).valueOrNull ?? const [];
+    final unread = (ref.watch(notificationsProvider).valueOrNull ?? const [])
+        .where((n) => !n.isRead)
+        .length;
     final ledgers = ref.watch(ledgersProvider);
+    final today = ref.watch(todayProvider);
+    final schedule = ref.watch(dueScheduleProvider).valueOrNull;
+    final soon = [
+      ...?schedule?.overdue,
+      ...?schedule?.upcoming.where(
+        (r) => r.item.dueOn < today.addDays(dueHorizonDays + 1),
+      ),
+    ];
 
     return SafeArea(
       child: RefreshIndicator(
@@ -59,10 +74,12 @@ class HomePage extends ConsumerWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Gelen kutusu',
-                    onPressed: onOpenInbox,
+                    tooltip: 'Bildirimler',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
+                    ),
                     icon: Badge(
-                      isLabelVisible: inbox.isNotEmpty,
+                      isLabelVisible: unread > 0,
                       backgroundColor: c.pendingDot,
                       smallSize: 9,
                       child: const Icon(Icons.notifications_none_rounded),
@@ -114,10 +131,31 @@ class HomePage extends ConsumerWidget {
               if (inbox.length > 3)
                 Center(
                   child: TextButton(
-                    onPressed: onOpenInbox,
+                    onPressed: onOpenActivity,
                     child: Text('Tümünü gör (${inbox.length})'),
                   ),
                 ),
+            ],
+            if (soon.isNotEmpty) ...[
+              SectionHeader(
+                title: 'Yaklaşan vadeler',
+                trailing: TextButton(
+                  onPressed: onOpenActivity,
+                  child: const Text('Tümü'),
+                ),
+              ),
+              SurfaceCard(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < soon.length && i < 3; i++)
+                      DueTile(
+                        row: soon[i],
+                        today: today,
+                        showDivider: i < soon.length - 1 && i < 2,
+                      ),
+                  ],
+                ),
+              ),
             ],
             ...ledgers.when(
               loading: () => const <Widget>[],

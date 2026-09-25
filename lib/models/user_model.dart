@@ -6,11 +6,15 @@ class NotificationSettings {
   final bool paymentReminders;
   final bool promotionsAndNews;
 
+  /// v2 hatırlatmalar (kişi hatırlatmaları ve vade bildirimleri); varsayılan açık.
+  final bool reminders;
+
   NotificationSettings({
     this.newDebtRequests = true,
     this.statusChanges = true,
     this.paymentReminders = false, // Varsayılan olarak kapalı
     this.promotionsAndNews = true,
+    this.reminders = true,
   });
 
   Map<String, dynamic> toMap() {
@@ -19,6 +23,7 @@ class NotificationSettings {
       'statusChanges': statusChanges,
       'paymentReminders': paymentReminders,
       'promotionsAndNews': promotionsAndNews,
+      'reminders': reminders,
     };
   }
 
@@ -31,6 +36,7 @@ class NotificationSettings {
       statusChanges: map['statusChanges'] ?? true,
       paymentReminders: map['paymentReminders'] ?? false,
       promotionsAndNews: map['promotionsAndNews'] ?? true,
+      reminders: map['reminders'] ?? true,
     );
   }
 }
@@ -45,6 +51,9 @@ class UserModel {
   final List<String>? favoriteContacts;
   final NotificationSettings notificationSettings; // YENİ: Bildirim ayarları
 
+  /// Hatırlatmaları sessize alınan defterler (push gelmez, bildirim listesi kalır).
+  final Set<String> reminderMutes;
+
   UserModel({
     required this.uid,
     required this.email,
@@ -54,6 +63,7 @@ class UserModel {
     this.aramaAnahtarlari,
     this.favoriteContacts,
     NotificationSettings? notificationSettings,
+    this.reminderMutes = const {},
   }) : notificationSettings = notificationSettings ?? NotificationSettings();
 
   Map<String, dynamic> toMap() {
@@ -83,6 +93,10 @@ class UserModel {
       notificationSettings: NotificationSettings.fromMap(
         map['notificationSettings'],
       ), // YENİ
+      reminderMutes: {
+        for (final e in ((map['reminderMutes'] as Map?) ?? const {}).entries)
+          if (e.value == true) e.key as String,
+      },
     );
   }
 }

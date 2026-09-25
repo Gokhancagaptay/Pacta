@@ -9,8 +9,10 @@ import 'package:pacta/core/money/money.dart';
 import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/features/ledger/data/ledger_repository.dart';
 import 'package:pacta/features/ledger/domain/models.dart';
+import 'package:pacta/features/ledger/domain/reminder.dart';
 import 'package:pacta/features/ledger/presentation/entry_composer_page.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
+import 'package:pacta/features/ledger/presentation/ledger_page.dart';
 import 'package:pacta/features/profile/profile_providers.dart';
 import 'package:pacta/models/user_model.dart';
 
@@ -25,6 +27,16 @@ class FakeRepo extends LedgerRepository {
   @override
   Future<void> confirmById(String ledgerId, String entryId, int version) async {
     calls.add('confirm $ledgerId/$entryId v$version');
+  }
+
+  @override
+  Future<ReminderResult> sendReminder(String ledgerId) async {
+    calls.add('remind $ledgerId');
+    return const ReminderResult(
+      kind: ReminderKind.overdue,
+      queued: false,
+      nextOn: LocalDate(2026, 9, 28),
+    );
   }
 
   @override
@@ -52,21 +64,65 @@ class FakeRepo extends LedgerRepository {
   }
 }
 
-Ledger ledger(String id, String otherUid, String otherName, int tryBalance) =>
-    Ledger.fromMap(id, {
-      'mode': 'shared',
-      'sides': {
-        'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
-        'b': {'uid': otherUid, 'displayName': otherName},
-      },
-      'balances': {'TRY': tryBalance},
-      'pendingCount': 0,
-    });
+const today = LocalDate(2026, 9, 25);
 
+Ledger ledger(
+  String id,
+  String otherUid,
+  String otherName,
+  int tryBalance, {
+  List<Map<String, Object?>> due = const [],
+}) => Ledger.fromMap(id, {
+  'mode': 'shared',
+  'sides': {
+    'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+    'b': {'uid': otherUid, 'displayName': otherName},
+  },
+  'balances': {'TRY': tryBalance},
+  'pendingCount': 0,
+  'dueItems': due,
+});
+
+// Ayşe'nin vadesi 5 gün geçmiş 500 ₺'si var; Gökhan, Deniz'e 3 gün sonra
+// 750 ₺ ödeyecek.
 final ledgers = [
-  ledger('p_ayse', 'ayse', 'Ayşe Yılmaz', 120000),
+  ledger('p_ayse', 'ayse', 'Ayşe Yılmaz', 120000, due: [
+    {
+      'entryId': 'e-ayse',
+      'asset': 'TRY',
+      'debtorSide': 'b',
+      'openMinor': 50000,
+      'dueOn': '2026-09-20',
+      'description': 'Kira payı',
+    },
+  ]),
   ledger('p_can', 'can', 'Can Demir', 200000),
-  ledger('p_deniz', 'deniz', 'Deniz Aksoy', -75000),
+  ledger('p_deniz', 'deniz', 'Deniz Aksoy', -75000, due: [
+    {
+      'entryId': 'e-deniz',
+      'asset': 'TRY',
+      'debtorSide': 'a',
+      'openMinor': 75000,
+      'dueOn': '2026-09-28',
+      'description': 'Tatil',
+    },
+  ]),
+];
+
+final recent = [
+  LedgerEntry.fromMap('e-can', {
+    'ledgerId': 'p_can',
+    'kind': 'debt',
+    'direction': 'aToB',
+    'asset': 'TRY',
+    'amountMinor': 200000,
+    'deltaMinor': 200000,
+    'occurredOn': '2026-09-24',
+    'description': 'Telefon',
+    'state': 'confirmed',
+    'version': 1,
+    'proposedBy': 'a',
+  }),
 ];
 
 final inbox = [
@@ -92,9 +148,12 @@ Widget app(Widget home, FakeRepo repo) => ProviderScope(
     ledgersProvider.overrideWith((ref) => Stream.value(ledgers)),
     inboxProvider.overrideWith((ref) => Stream.value(inbox)),
     notificationsProvider.overrideWith((ref) => Stream.value(const [])),
+    recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
+    todayProvider.overrideWithValue(today),
     ledgerProvider.overrideWith(
       (ref, id) => Stream.value(ledgers.firstWhere((l) => l.id == id)),
     ),
+    entriesProvider.overrideWith((ref, id) => Stream.value(const [])),
     userProfileProvider.overrideWith(
       (ref) => Stream.value(
         UserModel(uid: 'gokhan', email: 'g@example.com', adSoyad: 'Gökhan Ç'),
@@ -127,7 +186,9 @@ void main() {
     await initializeDateFormatting('tr_TR');
   });
 
-  testWidgets('ana sayfa onaylı bakiyeyi ve bekleyen onayı gösterir', (tester) async {
+  testWidgets('ana sayfa onaylı bakiyeyi, bekleyen onayı ve vadeleri gösterir', (
+    tester,
+  ) async {
     phoneSize(tester);
     final repo = FakeRepo();
     await tester.pumpWidget(app(const HomeShell(), repo));
@@ -137,23 +198,92 @@ void main() {
     expect(find.text('+2.450,00 ₺'), findsOneWidget);
     expect(find.text('3.200,00 ₺'), findsOneWidget);
     expect(find.text('Mert Kaya size borç yazdı'), findsOneWidget);
-    expect(find.text('Ayşe Yılmaz'), findsOneWidget);
-    expect(find.text('−750,00 ₺'), findsOneWidget);
+    expect(find.text('Yaklaşan vadeler'), findsOneWidget);
+    expect(find.text('Alacağınız · Kira payı · 5 gün geçti'), findsOneWidget);
+    expect(find.text('Ödeyeceğiniz · Tatil · 3 gün sonra'), findsOneWidget);
+    // Kişi listesinde vade durumu satır altında.
+    expect(find.text('Vadesi geçti · 20 Eylül'), findsOneWidget);
   });
 
-  testWidgets('gelen kutusunda onay doğru sürümle gönderilir', (tester) async {
+  testWidgets('Hareketler: onay doğru sürümle gönderilir', (tester) async {
     phoneSize(tester);
     final repo = FakeRepo();
     await tester.pumpWidget(app(const HomeShell(), repo));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Gelen kutusu').last);
+    await tester.tap(find.text('Hareketler').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Onayla'));
     await tester.pumpAndSettle();
 
     expect(repo.calls, ['confirm p_mert/e-mert v2']);
     expect(find.text('Onaylandı. Bakiyenize işlendi.'), findsOneWidget);
+  });
+
+  testWidgets('Hareketler: vadeler ayrılır, geçmiş tüm defterlerden gelir', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    await tester.pumpWidget(app(const HomeShell(), FakeRepo()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hareketler').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vadesi geçenler'), findsOneWidget);
+    expect(find.text('Önümüzdeki 30 gün'), findsOneWidget);
+    expect(find.text('Tahsil edilecek'), findsOneWidget);
+
+    await tester.tap(find.text('Geçmiş'));
+    await tester.pumpAndSettle();
+    expect(find.text('Borç verdiniz · Telefon'), findsOneWidget);
+    expect(find.text('Can Demir'), findsWidgets);
+  });
+
+  testWidgets('Kişiler: tablo, toplam ve vadesi geçen süzgeci', (tester) async {
+    phoneSize(tester);
+    await tester.pumpWidget(app(const HomeShell(), FakeRepo()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kişiler').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Tablo görünümü'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bakiye'), findsOneWidget);
+    expect(find.text('Toplam'), findsOneWidget);
+    expect(find.text('+2.450,00 ₺'), findsNWidgets(2)); // özet kartı + toplam satırı
+    expect(find.text('20 Eyl'), findsOneWidget);
+
+    await tester.tap(find.text('Vadesi geçen (1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ayşe Yılmaz'), findsOneWidget);
+    expect(find.text('Can Demir'), findsNothing);
+  });
+
+  testWidgets('Hatırlat: tutarsız önizleme gösterir ve sunucuya gönderir', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_ayse'), repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vadeler'), findsOneWidget);
+    await tester.tap(find.text('Hatırlat'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vadesi geçmiş kayıt'), findsOneWidget);
+    expect(
+      find.text(
+        'Gökhan ile hesabınızda vadesi geçmiş bir kayıt görünüyor. '
+        'Uygun olduğunuzda göz atabilirsiniz.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Aynı kişiye 3 günde bir hatırlatma gönderebilirsiniz.'), findsOneWidget);
+
+    await tester.tap(find.text('Hatırlatma gönder'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['remind p_ayse']);
+    expect(find.text('Hatırlatma gönderildi.'), findsOneWidget);
   });
 
   testWidgets('kayıt ekle Türkçe tutarı kuruşa çevirip gönderir', (tester) async {
