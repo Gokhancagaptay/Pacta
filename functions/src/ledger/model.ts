@@ -16,6 +16,8 @@ export type EntryState =
 export interface LedgerSide {
   uid: string | null;
   displayName: string;
+  /** Ortak defterde giriş e-postası (karşı taraf kişiyi tanısın diye). */
+  email?: string | null;
 }
 
 /** Vadesi olan ve henüz kapanmamış borç parçası (bkz. due.ts). */

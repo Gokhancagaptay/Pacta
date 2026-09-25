@@ -54,6 +54,22 @@ function useEmulator() {
       `http://${host}/emulator/v1/projects/demo-pacta/databases/(default)/documents`,
       {method: "DELETE"},
     );
+    const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    if (authHost) {
+      await fetch(
+        `http://${authHost}/emulator/v1/projects/demo-pacta/accounts`,
+        {method: "DELETE"},
+      );
+      const auth = require("firebase-admin").auth();
+      await Promise.all([
+        auth.createUser(
+          {uid: "ali", email: "ali@example.com", emailVerified: true}),
+        auth.createUser(
+          {uid: "ayse", email: "ayse@example.com", emailVerified: true}),
+        auth.createUser(
+          {uid: "mallory", email: "m@example.com", emailVerified: false}),
+      ]);
+    }
     await Promise.all([
       db.collection("users").doc("ali").set({adSoyad: "Ali Veli"}),
       db.collection("users").doc("ayse").set({adSoyad: "Ayşe Yılmaz"}),

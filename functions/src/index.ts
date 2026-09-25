@@ -16,5 +16,10 @@ export {
   reverseEntry,
   reviseEntry,
 } from "./ledger/commands";
+export {
+  deletePrivateLedger,
+  myPactaCode,
+  previewCode,
+} from "./ledger/contacts";
 export {onLedgerEntryWritten} from "./ledger/due";
 export {dailyReminders, sendReminder} from "./ledger/reminders";

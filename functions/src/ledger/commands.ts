@@ -9,6 +9,7 @@ import {z} from "zod";
 import {db} from "../common/firebase";
 import {ASSET_CODES, MAX_MINOR, formatMinor} from "./assets";
 import {OPTS, Id, fail, parse, readLedger, requireUid} from "./callable";
+import {authEmail, uidForCode, uidForEmail} from "./contacts";
 import {
   Entry,
   EntryContent,
@@ -37,6 +38,11 @@ const EntryKey = {ledgerId: Id, entryId: Id, expectedVersion: z.number().int()};
 
 const CreateLedgerInput = z.union([
   z.object({counterpartyUid: z.string().min(1).max(128)}).strict(),
+  z.object({
+    counterpartyEmail: z.string().trim().min(3).max(254)
+      .refine((v) => v.includes("@"), "Geçerli bir e-posta girin."),
+  }).strict(),
+  z.object({counterpartyCode: z.string().min(1).max(200)}).strict(),
   z.object({privateName: z.string().trim().min(1).max(80)}).strict(),
 ]);
 
@@ -427,46 +433,69 @@ function writeNewEntry(
 
 /**
  * Kayıt kişiyle ortak defter ya da uygulaması olmayan biri için özel defter
- * açar. Aynı iki kişi için her zaman aynı defter döner.
+ * açar. Kişi e-postası, Pacta kodu (QR, davet linki) ya da kimliğiyle
+ * bulunur. Aynı iki kişi için her zaman aynı defter döner. Ortak defterde
+ * iki tarafın giriş e-postası görünür; kişiler birbirini tanır.
  */
 export const createLedger = onCall<unknown>(OPTS, async (req) => {
   const uid = requireUid(req);
   const input = parse(CreateLedgerInput, req.data);
   const me = await db.collection("users").doc(uid).get();
-  const mySide = {uid, displayName: displayNameOf(me)};
 
   if ("privateName" in input) {
     const autoId = db.collection("ledgers").doc().id;
     const ref = db.collection("ledgers").doc(`v_${autoId}`);
     await ref.set(newLedger(
       "private",
-      mySide,
+      {uid, displayName: displayNameOf(me)},
       {uid: null, displayName: input.privateName},
       [uid]
     ));
     return {ledgerId: ref.id, created: true};
   }
 
-  const otherUid = input.counterpartyUid;
+  let otherUid: string;
+  if ("counterpartyEmail" in input) {
+    otherUid = await uidForEmail(input.counterpartyEmail);
+  } else if ("counterpartyCode" in input) {
+    otherUid = await uidForCode(uid, input.counterpartyCode);
+  } else {
+    otherUid = input.counterpartyUid;
+  }
   if (otherUid === uid) {
-    fail("invalid-argument", "Kendinizle defter açamazsınız.");
+    fail("invalid-argument",
+      "Bu sizin hesabınız. Kendinizle defter açamazsınız.");
   }
   const other = await db.collection("users").doc(otherUid).get();
   if (!other.exists) fail("not-found", "Kullanıcı bulunamadı.");
+  const [myEmail, otherEmail] =
+    await Promise.all([authEmail(uid), authEmail(otherUid)]);
 
   const ledgerId = `p_${[uid, otherUid].sort().join("_")}`;
   const ref = db.collection("ledgers").doc(ledgerId);
-  const created = await db.runTransaction(async (tx) => {
-    if ((await tx.get(ref)).exists) return false;
+  const result = await db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) {
+      // Eski defterlerde e-posta yoktu; tamamlanır.
+      const sides = (existing.data() as Ledger).sides;
+      const emailOf = (s: LedgerSide) => s.uid === uid ? myEmail : otherEmail;
+      if (!sides.a.email || !sides.b.email) {
+        tx.update(ref, {
+          "sides.a.email": emailOf(sides.a),
+          "sides.b.email": emailOf(sides.b),
+        });
+      }
+      return {created: false, name: displayNameOf(other)};
+    }
     tx.set(ref, newLedger(
       "shared",
-      mySide,
-      {uid: otherUid, displayName: displayNameOf(other)},
+      {uid, displayName: displayNameOf(me), email: myEmail},
+      {uid: otherUid, displayName: displayNameOf(other), email: otherEmail},
       [uid, otherUid]
     ));
-    return true;
+    return {created: true, name: displayNameOf(other)};
   });
-  return {ledgerId, created};
+  return {ledgerId, created: result.created, displayName: result.name};
 });
 
 /**

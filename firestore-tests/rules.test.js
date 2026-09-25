@@ -403,6 +403,20 @@ describe("v2 defterler", () => {
       {"reminderMutes.p_ali_ayse": false}));
   });
 
+  it("Pacta kodu istemciden yazılamaz, kod tablosu kapalı", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/ali"),
+        {email: "ali@example.com", pactaCode: "K7Q3XM"}));
+    await assertFails(updateDoc(doc(ali(), "users/ali"),
+      {pactaCode: "AAAAAA"}));
+    await assertSucceeds(updateDoc(doc(ali(), "users/ali"),
+      {"favoriteLedgers.p_ali_ayse": true}));
+    await assertFails(setDoc(doc(ayse(), "users/ayse"),
+      {email: "ayse@example.com", pactaCode: "K7Q3XM"}));
+    await assertFails(getDoc(doc(ali(), "codes/K7Q3XM")));
+    await assertFails(setDoc(doc(ali(), "codes/AAAAAA"), {uid: "ali"}));
+  });
+
   it("hatırlatma kuyruğu ve sınırları istemciye kapalı", async () => {
     await assertFails(getDocs(collection(ali(), "pushQueue")));
     await assertFails(getDoc(doc(ali(), "rateLimits/reminders_ali")));
