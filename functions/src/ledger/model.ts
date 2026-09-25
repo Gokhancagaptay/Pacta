@@ -18,6 +18,17 @@ export interface LedgerSide {
   displayName: string;
 }
 
+/** Vadesi olan ve henüz kapanmamış borç parçası (bkz. due.ts). */
+export interface DueItem {
+  entryId: string;
+  asset: string;
+  /** Borçlu taraf. */
+  debtorSide: Side;
+  openMinor: number;
+  dueOn: string;
+  description: string;
+}
+
 export interface Ledger {
   mode: "shared" | "private";
   status: "active" | "closed";
@@ -26,6 +37,13 @@ export interface Ledger {
   balances: {[asset: string]: number};
   pendingCount: number;
   head: {seq: number; chainHash: string};
+  /** Sunucunun hesapladığı açık vadeler, vadeye göre sıralı. */
+  dueItems?: DueItem[];
+  dueDates?: string[];
+  /** Günlük vade hatırlatmasının en son gönderildiği gün. */
+  dueRemindedOn?: string;
+  /** Tarafın karşı tarafa gönderdiği son hatırlatma. */
+  reminders?: {[side in Side]?: {lastOn: string; kind: string}};
 }
 
 export interface EntryContent {
@@ -173,11 +191,35 @@ function sha256(text: string): string {
 
 /**
  * İstanbul saatine göre bugünün tarihi.
+ * @param {Date} now An.
  * @return {string} YYYY-MM-DD.
  */
-export function todayIstanbul(): string {
+export function todayIstanbul(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {timeZone: "Europe/Istanbul"})
-    .format(new Date());
+    .format(now);
+}
+
+/**
+ * İstanbul saatine göre saat (0-23).
+ * @param {Date} now An.
+ * @return {number} Saat.
+ */
+export function hourIstanbul(now: Date): number {
+  return Number(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Istanbul",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(now));
+}
+
+/**
+ * @param {string} day YYYY-MM-DD.
+ * @param {number} days Eklenecek gün (negatif olabilir).
+ * @return {string} YYYY-MM-DD.
+ */
+export function addDays(day: string, days: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
 /**

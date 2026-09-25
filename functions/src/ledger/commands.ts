@@ -4,15 +4,11 @@ import {
   FieldValue,
   Transaction,
 } from "firebase-admin/firestore";
-import {
-  CallableRequest,
-  HttpsError,
-  FunctionsErrorCode,
-  onCall,
-} from "firebase-functions/v2/https";
+import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
-import {db, REGION} from "../common/firebase";
+import {db} from "../common/firebase";
 import {ASSET_CODES, MAX_MINOR, formatMinor} from "./assets";
+import {OPTS, Id, fail, parse, readLedger, requireUid} from "./callable";
 import {
   Entry,
   EntryContent,
@@ -27,17 +23,13 @@ import {
   isAgainstProposer,
   isValidDate,
   otherSide,
-  sideOf,
   todayIstanbul,
 } from "./model";
 import {Notice, deliver} from "./notify";
 
 // Durum geçişleri yalnızca bu komutlarla yapılır; istemci ledgers altına
 // yazamaz (firestore.rules). Her komut tek transaction'dır.
-// App Check uygulamalar kaydedilince açılacak (plan §9).
-const OPTS = {region: REGION, enforceAppCheck: false};
 
-const Id = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 const DateStr = z.string().refine(isValidDate, "Geçersiz tarih.");
 const Amount = z.number().int().positive().max(MAX_MINOR);
 const Text = z.string().trim().max(280);
@@ -106,39 +98,6 @@ type StoredEntry = Entry & {
 };
 
 /**
- * @param {FunctionsErrorCode} code Hata kodu.
- * @param {string} message Kullanıcıya gösterilebilir mesaj.
- */
-function fail(code: FunctionsErrorCode, message: string): never {
-  throw new HttpsError(code, message);
-}
-
-/**
- * @param {CallableRequest<unknown>} req İstek.
- * @return {string} Oturumdaki kullanıcı.
- */
-function requireUid(req: CallableRequest<unknown>): string {
-  if (!req.auth) fail("unauthenticated", "Giriş yapmalısınız.");
-  return req.auth.uid;
-}
-
-/**
- * @param {z.ZodTypeAny} schema Şema.
- * @param {unknown} data Girdi.
- * @return {unknown} Doğrulanmış girdi.
- */
-function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer<T> {
-  const result = schema.safeParse(data);
-  if (!result.success) {
-    const detail = result.error.issues
-      .map((i) => `${i.path.join(".") || "girdi"}: ${i.message}`)
-      .join("; ");
-    fail("invalid-argument", detail);
-  }
-  return result.data;
-}
-
-/**
  * @param {string} ledgerId Defter.
  * @param {string} entryId Kayıt.
  * @return {object} Referanslar.
@@ -155,29 +114,6 @@ function refsFor(ledgerId: string, entryId: string) {
  */
 function inboxRef(uid: string, entryId: string): DocumentReference {
   return db.collection("users").doc(uid).collection("inbox").doc(entryId);
-}
-
-/**
- * Defteri okur; üyelik ve durum kontrolü yapar.
- * @param {Transaction} tx Transaction.
- * @param {DocumentReference} ref Defter.
- * @param {string} uid Kullanıcı.
- * @return {Promise<object>} Defter ve kullanıcının tarafı.
- */
-async function readLedger(
-  tx: Transaction,
-  ref: DocumentReference,
-  uid: string
-): Promise<{ledger: Ledger; side: Side}> {
-  const snap = await tx.get(ref);
-  if (!snap.exists) fail("not-found", "Defter bulunamadı.");
-  const ledger = snap.data() as Ledger;
-  const side = sideOf(ledger, uid);
-  if (!side) fail("permission-denied", "Bu defterin tarafı değilsiniz.");
-  if (ledger.status !== "active") {
-    fail("failed-precondition", "Defter kapalı.");
-  }
-  return {ledger, side};
 }
 
 /**

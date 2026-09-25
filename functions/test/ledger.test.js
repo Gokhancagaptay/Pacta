@@ -1,34 +1,28 @@
 // v2 defter komutları, Firestore emulator üzerinde uçtan uca.
 // Çalıştırma: cd firestore-tests && npm run functions:test (Java 11+ gerekir).
-const {after, before, beforeEach, describe, it} = require("node:test");
+const {describe, it} = require("node:test");
 const assert = require("node:assert/strict");
 const {randomUUID} = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const fft = require("firebase-functions-test")({projectId: "demo-pacta"});
-const fns = require("../lib/index.js");
-const {db} = require("../lib/common/firebase.js");
 const model = require("../lib/ledger/model.js");
 const {ASSETS} = require("../lib/ledger/assets.js");
+const {
+  call,
+  db,
+  entryDoc,
+  fns,
+  inboxDoc,
+  lend,
+  ledgerDoc,
+  rejectsWith,
+  sharedLedger,
+  today,
+  useEmulator,
+} = require("./helpers.js");
 
-const call = (fn, uid, data) =>
-  fft.wrap(fn)({data, auth: uid ? {uid, token: {}} : undefined});
-
-const rejectsWith = (promise, code, text) =>
-  assert.rejects(promise, (e) => {
-    assert.equal(e.code, code, e.message);
-    if (text) assert.match(e.message, text);
-    return true;
-  });
-
-const today = "2026-09-25";
-const ledgerDoc = (id) => db.collection("ledgers").doc(id).get();
-const entryDoc = (ledgerId, entryId) =>
-  db.collection("ledgers").doc(ledgerId)
-    .collection("entries").doc(entryId).get();
-const inboxDoc = (uid, entryId) =>
-  db.collection("users").doc(uid).collection("inbox").doc(entryId).get();
+useEmulator();
 
 /** Onaylı kayıtların toplamı defterdeki bakiyeye eşit olmalı. */
 async function assertBalanceInvariant(ledgerId) {
@@ -46,39 +40,6 @@ async function assertBalanceInvariant(ledgerId) {
   }
   assert.equal(ledger.get("head.seq"), entries.size, "zincir uzunluğu");
 }
-
-async function sharedLedger() {
-  const res = await call(fns.createLedger, "ali", {counterpartyUid: "ayse"});
-  return res.ledgerId;
-}
-
-async function lend(ledgerId, uid, amountMinor, extra = {}) {
-  const entryId = randomUUID();
-  const res = await call(fns.createEntry, uid, {
-    ledgerId, entryId, kind: "debt", iGave: true, asset: "TRY",
-    amountMinor, occurredOn: today, description: "Yemek", ...extra,
-  });
-  return {entryId, ...res};
-}
-
-before(() => {
-  assert.ok(process.env.FIRESTORE_EMULATOR_HOST, "Emulator gerekli");
-});
-
-beforeEach(async () => {
-  const host = process.env.FIRESTORE_EMULATOR_HOST;
-  await fetch(
-    `http://${host}/emulator/v1/projects/demo-pacta/databases/(default)/documents`,
-    {method: "DELETE"},
-  );
-  await Promise.all([
-    db.collection("users").doc("ali").set({adSoyad: "Ali Veli"}),
-    db.collection("users").doc("ayse").set({adSoyad: "Ayşe Yılmaz"}),
-    db.collection("users").doc("mallory").set({adSoyad: "Mallory"}),
-  ]);
-});
-
-after(() => fft.cleanup());
 
 describe("sözleşmeler", () => {
   it("birimler contracts/assets.json ile aynı", () => {

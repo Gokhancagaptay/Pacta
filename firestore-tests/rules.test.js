@@ -10,11 +10,13 @@ import {
 import {
   addDoc,
   collection,
+  collectionGroup,
   deleteDoc,
   deleteField,
   doc,
   getDoc,
   getDocs,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -378,6 +380,34 @@ describe("v2 defterler", () => {
       {message: "Değişti"}));
     await assertFails(setDoc(doc(ali(), "users/ayse/notifications/n2"),
       {message: "Sahte", isRead: false}));
+  });
+
+  it("tüm defterlerdeki kayıtlar yalnızca üyelik filtresiyle listelenir",
+    async () => {
+      const recent = (db, uid) => getDocs(query(
+        collectionGroup(db, "entries"),
+        where("memberUids", "array-contains", uid),
+        orderBy("updatedAt", "desc")));
+      await assertSucceeds(recent(ali(), "ali"));
+      await assertFails(recent(mallory(), "ali"));
+      await assertFails(getDocs(collectionGroup(mallory(), "entries")));
+    });
+
+  it("hatırlatma sessize alma yalnızca sahibinin profilinde", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/ayse"),
+        {email: "ayse@example.com", adSoyad: "Ayşe"}));
+    await assertSucceeds(updateDoc(doc(ayse(), "users/ayse"),
+      {"reminderMutes.p_ali_ayse": true}));
+    await assertFails(updateDoc(doc(ali(), "users/ayse"),
+      {"reminderMutes.p_ali_ayse": false}));
+  });
+
+  it("hatırlatma kuyruğu ve sınırları istemciye kapalı", async () => {
+    await assertFails(getDocs(collection(ali(), "pushQueue")));
+    await assertFails(getDoc(doc(ali(), "rateLimits/reminders_ali")));
+    await assertFails(setDoc(doc(ali(), "rateLimits/reminders_ali"),
+      {day: "2026-09-25", count: 0}));
   });
 });
 

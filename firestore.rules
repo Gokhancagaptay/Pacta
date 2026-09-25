@@ -167,6 +167,15 @@ service cloud.firestore {
       }
     }
 
+    // Hareketler ekranı: kullanıcının tüm defterlerindeki son kayıtlar
+    // (collection group). Sorgu memberUids filtresi içermek zorundadır.
+    match /{path=**}/entries/{entryId} {
+      allow list: if isMember(resource.data);
+    }
+
+    // pushQueue ve rateLimits yalnızca Cloud Functions içindir; eşleşen kural
+    // olmadığı için istemciye kapalıdır.
+
     // Bildirimleri yalnızca Cloud Functions yazar; alıcı yalnızca okundu bilgisini değiştirir.
     match /notifications/{notificationId} {
       allow get, list: if signedIn() && resource.data.toUserId == request.auth.uid;

@@ -1,0 +1,81 @@
+// Emulator testlerinin ortak parçaları. Dosyalar aynı veritabanını
+// sıfırladığı için sırayla çalışır (package.json: --test-concurrency=1).
+const {after, before, beforeEach} = require("node:test");
+const assert = require("node:assert/strict");
+const {randomUUID} = require("node:crypto");
+
+const fft = require("firebase-functions-test")({projectId: "demo-pacta"});
+const fns = require("../lib/index.js");
+const {db} = require("../lib/common/firebase.js");
+
+const call = (fn, uid, data) =>
+  fft.wrap(fn)({data, auth: uid ? {uid, token: {}} : undefined});
+
+const rejectsWith = (promise, code, text) =>
+  assert.rejects(promise, (e) => {
+    assert.equal(e.code, code, e.message);
+    if (text) assert.match(e.message, text);
+    return true;
+  });
+
+const today = "2026-09-25";
+const ledgerDoc = (id) => db.collection("ledgers").doc(id).get();
+const entryDoc = (ledgerId, entryId) =>
+  db.collection("ledgers").doc(ledgerId)
+    .collection("entries").doc(entryId).get();
+const inboxDoc = (uid, entryId) =>
+  db.collection("users").doc(uid).collection("inbox").doc(entryId).get();
+const notifications = (uid) =>
+  db.collection("users").doc(uid).collection("notifications").get();
+
+async function sharedLedger() {
+  const res = await call(fns.createLedger, "ali", {counterpartyUid: "ayse"});
+  return res.ledgerId;
+}
+
+async function lend(ledgerId, uid, amountMinor, extra = {}) {
+  const entryId = randomUUID();
+  const res = await call(fns.createEntry, uid, {
+    ledgerId, entryId, kind: "debt", iGave: true, asset: "TRY",
+    amountMinor, occurredOn: today, description: "Yemek", ...extra,
+  });
+  return {entryId, ...res};
+}
+
+/** Her testten önce veritabanını boşaltır, üç kullanıcı ekler. */
+function useEmulator() {
+  before(() => {
+    assert.ok(process.env.FIRESTORE_EMULATOR_HOST, "Emulator gerekli");
+  });
+
+  beforeEach(async () => {
+    const host = process.env.FIRESTORE_EMULATOR_HOST;
+    await fetch(
+      `http://${host}/emulator/v1/projects/demo-pacta/databases/(default)/documents`,
+      {method: "DELETE"},
+    );
+    await Promise.all([
+      db.collection("users").doc("ali").set({adSoyad: "Ali Veli"}),
+      db.collection("users").doc("ayse").set({adSoyad: "Ayşe Yılmaz"}),
+      db.collection("users").doc("mallory").set({adSoyad: "Mallory"}),
+    ]);
+  });
+
+  after(() => fft.cleanup());
+}
+
+module.exports = {
+  call,
+  db,
+  entryDoc,
+  fft,
+  fns,
+  inboxDoc,
+  lend,
+  ledgerDoc,
+  notifications,
+  rejectsWith,
+  sharedLedger,
+  today,
+  useEmulator,
+};
