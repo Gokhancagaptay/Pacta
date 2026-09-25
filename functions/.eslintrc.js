@@ -30,4 +30,16 @@ module.exports = {
     "import/no-unresolved": 0,
     "indent": ["error", 2],
   },
+  overrides: [
+    {
+      // Emulator testleri CommonJS; küçük yardımcılar için JSDoc gerekmez.
+      files: ["test/**/*.js"],
+      rules: {
+        "require-jsdoc": 0,
+        "valid-jsdoc": 0,
+        "@typescript-eslint/no-var-requires": 0,
+        "@typescript-eslint/no-require-imports": 0,
+      },
+    },
+  ],
 };

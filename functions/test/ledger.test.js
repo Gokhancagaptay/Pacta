@@ -103,8 +103,10 @@ describe("sözleşmeler", () => {
 
 describe("createLedger", () => {
   it("iki kişi için tek ortak defter", async () => {
-    const first = await call(fns.createLedger, "ali", {counterpartyUid: "ayse"});
-    const second = await call(fns.createLedger, "ayse", {counterpartyUid: "ali"});
+    const first = await call(
+      fns.createLedger, "ali", {counterpartyUid: "ayse"});
+    const second = await call(
+      fns.createLedger, "ayse", {counterpartyUid: "ali"});
     assert.equal(first.ledgerId, second.ledgerId);
     assert.equal(first.created, true);
     assert.equal(second.created, false);
@@ -115,11 +117,13 @@ describe("createLedger", () => {
 
   it("kendisi, bilinmeyen kişi ve oturumsuz istek reddedilir", async () => {
     await rejectsWith(
-      call(fns.createLedger, "ali", {counterpartyUid: "ali"}), "invalid-argument");
+      call(fns.createLedger, "ali", {counterpartyUid: "ali"}),
+      "invalid-argument");
     await rejectsWith(
       call(fns.createLedger, "ali", {counterpartyUid: "yok"}), "not-found");
     await rejectsWith(
-      call(fns.createLedger, null, {counterpartyUid: "ayse"}), "unauthenticated");
+      call(fns.createLedger, null, {counterpartyUid: "ayse"}),
+      "unauthenticated");
   });
 });
 
@@ -129,11 +133,14 @@ describe("onay akışı", () => {
     const e = await lend(ledgerId, "ali", 50000);
     assert.equal(e.state, "pending");
     assert.equal((await ledgerDoc(ledgerId)).get("pendingCount"), 1);
-    assert.equal((await inboxDoc("ayse", e.entryId)).get("myDeltaMinor"), -50000);
+    const inbox = await inboxDoc("ayse", e.entryId);
+    assert.equal(inbox.get("myDeltaMinor"), -50000);
 
     const key = {ledgerId, entryId: e.entryId, expectedVersion: 1};
-    await rejectsWith(call(fns.confirmEntry, "ali", key), "failed-precondition");
-    await rejectsWith(call(fns.confirmEntry, "mallory", key), "permission-denied");
+    await rejectsWith(
+      call(fns.confirmEntry, "ali", key), "failed-precondition");
+    await rejectsWith(
+      call(fns.confirmEntry, "mallory", key), "permission-denied");
 
     await call(fns.confirmEntry, "ayse", key);
     const ledger = await ledgerDoc(ledgerId);
