@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "emulator:test": "firebase emulators:exec --only firestore --project demo-pacta \"npm test\""
+    "emulator:test": "firebase emulators:exec --only firestore --project demo-pacta \"npm test\"",
+    "functions:test": "npm --prefix ../functions run build && firebase emulators:exec --only firestore,auth --project demo-pacta \"npm --prefix ../functions test\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
