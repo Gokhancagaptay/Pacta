@@ -3,8 +3,6 @@ import {
   onDocumentDeleted,
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
-import {onSchedule} from "firebase-functions/v2/scheduler";
-import * as logger from "firebase-functions/logger";
 import {admin, db, REGION} from "../common/firebase";
 import {sendPushNotification} from "../common/push";
 
@@ -221,84 +219,5 @@ export const onDebtDelete = onDocumentDeleted(
   }
 );
 
-export const dueDateReminder = onSchedule(
-  {
-    schedule: "every day 08:00",
-    timeZone: "Europe/Istanbul",
-    region: REGION,
-  },
-  async () => {
-    logger.info("dueDateReminder triggered!");
-    await processDueReminders();
-  }
-);
-
-/**
- * Vadesi bugün olan borçlar için hatırlatma gönderir.
- */
-async function processDueReminders() {
-  const now = admin.firestore.Timestamp.now();
-  const todayStart = new admin.firestore.Timestamp(
-    now.seconds - (now.seconds % 86400),
-    0
-  );
-  const todayEnd = new admin.firestore.Timestamp(
-    todayStart.seconds + 86400 - 1,
-    999
-  );
-
-  const snapshot = await db
-    .collection("debts")
-    .where("tahminiOdemeTarihi", ">=", todayStart)
-    .where("tahminiOdemeTarihi", "<=", todayEnd)
-    .get();
-
-  if (snapshot.empty) {
-    logger.info("No due debts found to send reminders for.");
-    return;
-  }
-
-  logger.info(`Sending reminders for ${snapshot.size} debts.`);
-
-  const batch = db.batch();
-  const pushPromises: Promise<void>[] = [];
-
-  for (const doc of snapshot.docs) {
-    const d = doc.data() as DebtData;
-    if (d.dueReminderSent === true) {
-      continue; // daha önce işlenmiş
-    }
-
-    const creditorName = await getDisplayName(d.alacakliId);
-    const amount = formatAmount(d.miktar);
-
-    pushPromises.push(
-      sendPushNotification(
-        d.borcluId,
-        "Ödeme Hatırlatması",
-        `${creditorName} için ${amount} tutarında ödemeniz bugün vadesinde.`,
-        {type: "due_reminder", relatedDebtId: doc.id}
-      )
-    );
-
-    batch.set(db.collection("notifications").doc(), {
-      toUserId: d.borcluId,
-      type: "due_reminder",
-      relatedDebtId: doc.id,
-      message: `${creditorName} için ${amount} tutarındaki ödemenizin ` +
-        "tahmini tarihi bugün.",
-      isRead: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdById: d.alacakliId,
-      creditorId: d.alacakliId,
-      debtorId: d.borcluId,
-      amount: d.miktar,
-    });
-
-    batch.update(doc.ref, {dueReminderSent: true});
-  }
-
-  await Promise.all([...pushPromises, batch.commit()]);
-
-  logger.info("Reminders and updates completed successfully.");
-}
+// v1 vade hatırlatması (dueDateReminder) kaldırıldı; vade bildirimleri
+// v2 defterlerinde dailyReminders ile gönderilir (ledger/reminders.ts).
