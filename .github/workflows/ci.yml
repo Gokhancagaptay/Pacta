@@ -41,7 +41,7 @@ jobs:
       - run: npm run build
 
   firestore-rules:
-    name: Firestore kural testleri
+    name: Emulator testleri (kurallar + defter komutları)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,10 +52,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: firestore-tests/package-lock.json
+          cache-dependency-path: |
+            firestore-tests/package-lock.json
+            functions/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - run: npm ci
+        working-directory: functions
       - run: npm run emulator:test
+      - run: npm run functions:test
