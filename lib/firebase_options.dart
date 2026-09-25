@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAEa38-G-X1BXzKsa4kVSuAJm-wNkj6ABI',
-    appId: '1:842011786529:android:9b09be7e99928fe8d65260',
+    appId: '1:842011786529:android:93df48a567a4f208d65260',
     messagingSenderId: '842011786529',
     projectId: 'pacta-76686',
     storageBucket: 'pacta-76686.firebasestorage.app',
@@ -60,11 +60,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBMmgZjpS2C0vZWgE_298HtwxqcEOu9uZY',
-    appId: '1:842011786529:ios:d2665bbbcd58d39ed65260',
+    appId: '1:842011786529:ios:f9b46fc96d705ea9d65260',
     messagingSenderId: '842011786529',
     projectId: 'pacta-76686',
     storageBucket: 'pacta-76686.firebasestorage.app',
-    iosBundleId: 'com.example.pacta',
+    iosBundleId: 'app.pacta.mobile',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

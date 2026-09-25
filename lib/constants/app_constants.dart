@@ -111,8 +111,8 @@ class AppConstants {
   static const String emailActionContinueUrl =
       'https://pacta-76686.web.app/auth/continue';
   // Android paket adı ve iOS bundle id (projeye göre güncel tutun)
-  static const String androidPackageName = 'com.example.pacta';
-  static const String iosBundleId = 'com.example.pacta';
+  static const String androidPackageName = 'app.pacta.mobile';
+  static const String iosBundleId = 'app.pacta.mobile';
 }
 
 /// Uygulama renklerini içeren sınıf

@@ -7,6 +7,58 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:842011786529:android:93df48a567a4f208d65260",
+        "android_client_info": {
+          "package_name": "app.pacta.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "842011786529-9g43069kp2j5smogknv8bf3r1dira27g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.pacta.mobile",
+            "certificate_hash": "a7e378613d902490ecb3975c0b874992e7ada15b"
+          }
+        },
+        {
+          "client_id": "842011786529-hf97mg1ooflpjvap1667hmt6fvcoc69m.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.pacta.mobile",
+            "certificate_hash": "0438a8a807e358d997ed41e45435841f08e94afd"
+          }
+        },
+        {
+          "client_id": "842011786529-pkbajrjrmvulpbb19386oimssgpp11kr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEa38-G-X1BXzKsa4kVSuAJm-wNkj6ABI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "842011786529-pkbajrjrmvulpbb19386oimssgpp11kr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "842011786529-0jinkestn95iemigeep459dvfo0m01s9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pacta"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:842011786529:android:9b09be7e99928fe8d65260",
         "android_client_info": {
           "package_name": "com.example.pacta"

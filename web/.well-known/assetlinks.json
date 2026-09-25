@@ -3,12 +3,11 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.example.pacta",
+      "package_name": "app.pacta.mobile",
       "sha256_cert_fingerprints": [
+        "3F:3A:06:18:37:0B:FF:F8:79:50:93:2F:47:04:FA:16:E7:F8:98:2D:67:8F:45:A4:9B:F0:34:BB:D2:E0:B3:4E",
         "DE:98:30:99:47:54:23:6C:19:38:D5:58:E2:AD:8A:09:3C:91:0B:DF:57:83:A1:8A:3E:58:72:85:0A:83:4E:0D"
       ]
     }
   }
 ]
-
-

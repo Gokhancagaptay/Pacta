@@ -1,4 +1,4 @@
-package com.example.pacta
+package app.pacta.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 
