@@ -1,0 +1,61 @@
+{
+  "note": "contentHash = sha256(JSON.stringify([\"pacta.entry.v1\", ledgerId, entryId, kind, direction, asset, amountMinor, occurredOn, dueOn ?? \"\", description.normalize(\"NFC\"), linkedEntryId ?? \"\", version])); chainHash = sha256(JSON.stringify([previous, contentHash, seq]))",
+  "contentHash": [
+    {
+      "ledgerId": "p_uidA_uidB",
+      "entryId": "0f8c2a9e-5b1d-4c3e-9a7f-2d6e8b1c4a90",
+      "version": 1,
+      "content": {
+        "kind": "debt",
+        "direction": "aToB",
+        "asset": "TRY",
+        "amountMinor": 40000,
+        "occurredOn": "2026-09-22",
+        "dueOn": "2026-10-05",
+        "description": "Konser bileti (2 kişi)",
+        "linkedEntryId": null
+      },
+      "expected": "2b1c33184460d0429192b677b12900b023fc64986d0cf567bbd89d0d35fa7b1b"
+    },
+    {
+      "ledgerId": "p_uidA_uidB",
+      "entryId": "0f8c2a9e-5b1d-4c3e-9a7f-2d6e8b1c4a90",
+      "version": 2,
+      "content": {
+        "kind": "debt",
+        "direction": "aToB",
+        "asset": "TRY",
+        "amountMinor": 45000,
+        "occurredOn": "2026-09-22",
+        "dueOn": null,
+        "description": "Çay, şeker ve İstanbul",
+        "linkedEntryId": null
+      },
+      "expected": "bc27c3b623b061566ad7061993207b8c02d9dafe41a8642d0737debfbd640be7"
+    },
+    {
+      "ledgerId": "v_Xy12Ab34Cd56Ef78Gh90",
+      "entryId": "a1b2c3d4-e5f6-4789-8abc-def012345678",
+      "version": 1,
+      "content": {
+        "kind": "reversal",
+        "direction": "bToA",
+        "asset": "GAU",
+        "amountMinor": 2125,
+        "occurredOn": "2026-09-25",
+        "dueOn": null,
+        "description": "Düzeltme: altın",
+        "linkedEntryId": "0f8c2a9e-5b1d-4c3e-9a7f-2d6e8b1c4a90"
+      },
+      "expected": "aad961bc5c2cfa6c40ebac4f18245e61895b76fde188e9e0abca6a14091b81a1"
+    }
+  ],
+  "chainHash": [
+    {
+      "previous": "",
+      "content": "x",
+      "seq": 1,
+      "expected": "ad8b597bf4436d2bc4513563e5bab1820a5a2ce1461c968f92fb55fefdb3c1ec"
+    }
+  ]
+}
