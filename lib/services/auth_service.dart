@@ -2,6 +2,7 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/constants/app_constants.dart';
+import 'package:pacta/constants/strings.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
@@ -204,10 +205,21 @@ class AuthService {
   /// Firebase Auth hatalarını Türkçe mesajlara çeviren yardımcı metod
   String _handleAuthError(FirebaseAuthException e) {
     switch (e.code) {
+      // E-posta numaralandırma koruması açıkken Firebase "kullanıcı yok",
+      // "şifre yanlış" ve "hesabın şifresi yok (Google ile açılmış)"
+      // durumlarını tek kodla bildirir.
+      case 'invalid-credential':
+      case 'INVALID_LOGIN_CREDENTIALS':
       case 'user-not-found':
-        return 'Bu e-posta adresi ile kayıtlı kullanıcı bulunamadı.';
       case 'wrong-password':
-        return 'Hatalı şifre girdiniz.';
+        return 'E-posta ya da şifre hatalı. Bu hesabı Google ile açtıysanız '
+            '"${AppStrings.loginWithGoogle}" düğmesini kullanın. Şifrenizi '
+            'unuttuysanız "${AppStrings.forgotPassword}" bağlantısına dokunun.';
+      case 'account-exists-with-different-credential':
+        return 'Bu e-posta adresi başka bir giriş yöntemiyle kayıtlı. E-posta '
+            've şifrenizle giriş yapın.';
+      case 'user-disabled':
+        return 'Bu hesap devre dışı bırakılmış.';
       case 'email-already-in-use':
         return 'Bu e-posta adresi zaten kullanımda.';
       case 'weak-password':
