@@ -40,6 +40,19 @@ service cloud.firestore {
       match /savedContacts/{contactId} {
         allow read, write: if isSelf(uid);
       }
+
+      // v2: onay bekleyenler ve bildirimler Cloud Functions tarafından yazılır.
+      match /inbox/{itemId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+      match /notifications/{notificationId} {
+        allow read: if isSelf(uid);
+        allow update: if isSelf(uid)
+          && onlyChanges(['isRead'])
+          && request.resource.data.isRead is bool;
+        allow create, delete: if false;
+      }
     }
 
     match /publicProfiles/{uid} {
@@ -125,6 +138,33 @@ service cloud.firestore {
         || (resource.data.status == 'pending_deletion'
           && resource.data.deletion_requester_id != request.auth.uid)
       );
+    }
+
+    // v2 defterler: istemci yalnızca taraf olduğu defteri okur. Tüm yazmalar
+    // (kayıt, onay, itiraz, bakiye) Cloud Functions komutlarıyla yapılır.
+    function isMember(data) {
+      return signedIn() && request.auth.uid in data.memberUids;
+    }
+
+    match /ledgers/{ledgerId} {
+      allow get: if signedIn() && (resource == null || isMember(resource.data));
+      allow list: if isMember(resource.data);
+      allow write: if false;
+
+      match /entries/{entryId} {
+        allow read: if isMember(resource.data);
+        allow write: if false;
+
+        match /revisions/{version} {
+          allow read: if isMember(resource.data);
+          allow write: if false;
+        }
+      }
+
+      match /events/{eventId} {
+        allow read: if isMember(resource.data);
+        allow write: if false;
+      }
     }
 
     // Bildirimleri yalnızca Cloud Functions yazar; alıcı yalnızca okundu bilgisini değiştirir.

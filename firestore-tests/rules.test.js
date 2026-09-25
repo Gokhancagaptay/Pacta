@@ -303,6 +303,84 @@ describe("debts durum geçişleri", () => {
   });
 });
 
+describe("v2 defterler", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const members = {memberUids: ["ali", "ayse"]};
+      await setDoc(doc(db, "ledgers/p_ali_ayse"), {
+        ...members,
+        mode: "shared",
+        balances: {TRY: 50000},
+        lastEntryAt: Timestamp.now(),
+      });
+      await setDoc(doc(db, "ledgers/p_ali_ayse/entries/e1"), {
+        ...members, state: "pending", amountMinor: 50000,
+      });
+      await setDoc(doc(db, "ledgers/p_ali_ayse/entries/e1/revisions/1"), {
+        ...members, version: 1,
+      });
+      await setDoc(doc(db, "ledgers/p_ali_ayse/events/ev1"), {
+        ...members, type: "created",
+      });
+      await setDoc(doc(db, "users/ayse/inbox/e1"), {type: "confirmEntry"});
+      await setDoc(doc(db, "users/ayse/notifications/n1"), {
+        message: "Onayınız bekleniyor", isRead: false,
+      });
+    });
+  });
+
+  it("taraflar defteri okur ve listeler, yabancı okuyamaz", async () => {
+    await assertSucceeds(getDoc(doc(ayse(), "ledgers/p_ali_ayse")));
+    await assertSucceeds(getDocs(query(
+      collection(ali(), "ledgers"),
+      where("memberUids", "array-contains", "ali"))));
+    await assertFails(getDoc(doc(mallory(), "ledgers/p_ali_ayse")));
+    await assertFails(getDocs(collection(mallory(), "ledgers")));
+    await assertFails(getDoc(doc(anon(), "ledgers/p_ali_ayse")));
+  });
+
+  it("olmayan defter izin hatası değil 'yok' döner", async () => {
+    const snap = await assertSucceeds(getDoc(doc(mallory(), "ledgers/p_x_y")));
+    assert.equal(snap.exists(), false);
+  });
+
+  it("kayıt, sürüm ve olayları yalnızca taraflar okur", async () => {
+    for (const path of [
+      "ledgers/p_ali_ayse/entries/e1",
+      "ledgers/p_ali_ayse/entries/e1/revisions/1",
+      "ledgers/p_ali_ayse/events/ev1",
+    ]) {
+      await assertSucceeds(getDoc(doc(ali(), path)));
+      await assertFails(getDoc(doc(mallory(), path)));
+    }
+  });
+
+  it("istemci deftere, kayda ve bakiyeye yazamaz", async () => {
+    await assertFails(updateDoc(doc(ali(), "ledgers/p_ali_ayse"),
+      {"balances.TRY": 999999}));
+    await assertFails(setDoc(doc(ali(), "ledgers/p_ali_yeni"),
+      {memberUids: ["ali"]}));
+    await assertFails(updateDoc(doc(ayse(), "ledgers/p_ali_ayse/entries/e1"),
+      {state: "confirmed"}));
+    await assertFails(setDoc(doc(ali(), "ledgers/p_ali_ayse/entries/e2"),
+      {memberUids: ["ali", "ayse"], state: "confirmed"}));
+    await assertFails(deleteDoc(doc(ali(), "ledgers/p_ali_ayse/events/ev1")));
+  });
+
+  it("gelen kutusu ve bildirimler yalnızca sahibine açık", async () => {
+    await assertSucceeds(getDoc(doc(ayse(), "users/ayse/inbox/e1")));
+    await assertFails(getDoc(doc(ali(), "users/ayse/inbox/e1")));
+    await assertFails(setDoc(doc(ayse(), "users/ayse/inbox/e9"), {x: 1}));
+    await assertSucceeds(updateDoc(doc(ayse(), "users/ayse/notifications/n1"),
+      {isRead: true}));
+    await assertFails(updateDoc(doc(ayse(), "users/ayse/notifications/n1"),
+      {message: "Değişti"}));
+    await assertFails(setDoc(doc(ali(), "users/ayse/notifications/n2"),
+      {message: "Sahte", isRead: false}));
+  });
+});
+
 describe("notifications", () => {
   it("istemci bildirim oluşturamaz", async () => {
     await assertFails(

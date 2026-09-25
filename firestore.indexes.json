@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "ledgers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "memberUids", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastEntryAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "debts",
       "queryScope": "COLLECTION",
       "fields": [
