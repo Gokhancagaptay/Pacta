@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pacta daveti</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           background: #F7F8FC; color: #111827; }
+    main { max-width: 440px; margin: 0 auto; padding: 32px 20px; }
+    .card { background: #fff; border-radius: 20px; padding: 24px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: #4B5563; line-height: 1.5; }
+    .code { font-size: 32px; font-weight: 700; letter-spacing: 4px; text-align: center;
+            padding: 16px; margin: 16px 0; border-radius: 14px; background: #DCFCE7; color: #052E16; }
+    button, a.btn { display: block; width: 100%; box-sizing: border-box; min-height: 48px;
+                    border: 0; border-radius: 14px; font-size: 16px; font-weight: 600;
+                    text-align: center; text-decoration: none; padding: 14px; margin-top: 10px;
+                    cursor: pointer; }
+    .primary { background: #4ADE80; color: #052E16; }
+    .secondary { background: #F1F2F6; color: #111827; }
+    ol { padding-left: 20px; color: #4B5563; line-height: 1.6; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #181A20; color: #F3F4F6; }
+      .card { background: #23262F; }
+      p, ol { color: #9CA3AF; }
+      .secondary { background: #2E323C; color: #F3F4F6; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Pacta'ya davet edildiniz</h1>
+    <p>Pacta, borç ve alacakları iki tarafın onayıyla tutan bir uygulama.
+       Sizi davet eden kişiyi eklemek için bu kodu kullanın:</p>
+    <div class="code" id="code">—</div>
+    <button class="secondary" id="copy" type="button">Kodu kopyala</button>
+    <a class="btn primary" id="open" href="#">Uygulamada aç</a>
+    <ol>
+      <li>Pacta'yı yükleyin ve giriş yapın.</li>
+      <li><b>Kişiler &gt; Kişi ekle</b> ekranına girin.</li>
+      <li>Kodu yazın ya da bu linke tekrar dokunun.</li>
+    </ol>
+  </div>
+</main>
+<script>
+  // /u/K7Q3XM → "K7Q-3XM". Kod dışında hiçbir bilgi gösterilmez.
+  var raw = (location.pathname.split('/u/')[1] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  var valid = /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(raw);
+  var pretty = valid ? raw.slice(0, 3) + '-' + raw.slice(3) : 'Geçersiz kod';
+  document.getElementById('code').textContent = pretty;
+  document.getElementById('copy').onclick = function () {
+    if (!valid) return;
+    navigator.clipboard && navigator.clipboard.writeText(pretty);
+    this.textContent = 'Kopyalandı';
+  };
+  // Android: uygulama yüklüyse açar, değilse bu sayfada kalır.
+  document.getElementById('open').href = valid
+    ? 'intent://pacta-76686.web.app/u/' + raw + '#Intent;scheme=https;package=app.pacta.mobile;end'
+    : '#';
+</script>
+</body>
+</html>

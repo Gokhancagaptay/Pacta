@@ -7,9 +7,35 @@ import 'models.dart';
 // Hesap özeti (kişi tablosu) ve vade takvimi. Hepsi defter belgelerinden
 // hesaplanır; ek okuma yapmaz.
 
+/// Listeden kaldırılmış mı: kaldırıldıktan sonra yeni hareket olduysa
+/// defter yeniden görünür.
+bool isHiddenLedger(Ledger ledger, Map<String, DateTime> hidden) {
+  final at = hidden[ledger.id];
+  if (at == null) return false;
+  final last = ledger.lastEntryAt;
+  return last == null || !last.isAfter(at);
+}
+
+/// Listelerde gösterilecek defterler: kaldırılanlar çıkar, favoriler başa.
+List<Ledger> visibleLedgers(
+  List<Ledger> ledgers, {
+  Set<String> favorites = const {},
+  Map<String, DateTime> hidden = const {},
+}) {
+  final shown = [
+    for (final l in ledgers)
+      if (!isHiddenLedger(l, hidden)) l,
+  ];
+  return [
+    ...shown.where((l) => favorites.contains(l.id)),
+    ...shown.where((l) => !favorites.contains(l.id)),
+  ];
+}
+
 /// Kişiler ekranındaki süzgeçler.
 enum PeopleFilter {
   all('Tümü'),
+  favorites('Favoriler'),
   owesMe('Bana borçlu'),
   iOwe('Borçlu olduğum'),
   overdue('Vadesi geçen'),
@@ -38,14 +64,23 @@ class PersonRow {
     required this.others,
     required this.nextDue,
     required this.overdue,
+    this.email,
+    this.favorite = false,
   });
 
-  factory PersonRow.of(Ledger ledger, String uid, LocalDate today) {
+  factory PersonRow.of(
+    Ledger ledger,
+    String uid,
+    LocalDate today, {
+    bool favorite = false,
+  }) {
     final me = ledger.sideOf(uid) ?? Side.a;
     final due = ledger.dueItems;
     return PersonRow(
       ledger: ledger,
       name: ledger.other(uid).displayName,
+      email: ledger.other(uid).email,
+      favorite: favorite,
       balance: ledger.balanceFor(uid),
       others: [
         for (final m in ledger.balancesFor(uid))
@@ -58,6 +93,8 @@ class PersonRow {
 
   final Ledger ledger;
   final String name;
+  final String? email;
+  final bool favorite;
 
   /// TL bakiyesi (pozitif = size borçlu).
   final Money balance;
@@ -78,6 +115,7 @@ class PersonRow {
 
   bool matches(PeopleFilter filter) => switch (filter) {
     PeopleFilter.all => true,
+    PeopleFilter.favorites => favorite,
     PeopleFilter.owesMe => owesMe,
     PeopleFilter.iOwe => iOwe,
     PeopleFilter.overdue => hasOverdue,
@@ -85,7 +123,7 @@ class PersonRow {
   };
 }
 
-/// Satırları arar, süzer ve sıralar.
+/// Satırları arar (ad ya da e-posta), süzer ve sıralar; favoriler başta.
 List<PersonRow> selectRows(
   List<PersonRow> rows, {
   PeopleFilter filter = PeopleFilter.all,
@@ -93,9 +131,13 @@ List<PersonRow> selectRows(
   String query = '',
 }) {
   final q = trLower(query.trim());
+  bool found(PersonRow r) =>
+      q.isEmpty ||
+      trLower(r.name).contains(q) ||
+      (r.email?.toLowerCase().contains(q) ?? false);
   final list = [
     for (final r in rows)
-      if (r.matches(filter) && (q.isEmpty || trLower(r.name).contains(q))) r,
+      if (r.matches(filter) && found(r)) r,
   ];
   int byName(PersonRow x, PersonRow y) => trLower(x.name).compareTo(trLower(y.name));
   switch (sort) {
@@ -119,7 +161,7 @@ List<PersonRow> selectRows(
     case PeopleSort.name:
       list.sort(byName);
   }
-  return list;
+  return [...list.where((r) => r.favorite), ...list.where((r) => !r.favorite)];
 }
 
 /// Görünen satırların TL toplamları.

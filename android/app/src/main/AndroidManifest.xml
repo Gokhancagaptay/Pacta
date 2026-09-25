@@ -26,7 +26,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Android App Links: pacta-76686.web.app/auth/* -->
+            <!-- Android App Links: pacta-76686.web.app/auth/* ve davetler /u/* -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -35,7 +35,15 @@
                     android:scheme="https"
                     android:host="pacta-76686.web.app"
                     android:pathPrefix="/auth" />
+                <data
+                    android:scheme="https"
+                    android:host="pacta-76686.web.app"
+                    android:pathPrefix="/u/" />
             </intent-filter>
+            <!-- Linkleri app_links işler; Flutter'ın rota olarak açması kapalı. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

@@ -49,6 +49,7 @@
       }
     ],
     "rewrites": [
+      { "source": "/u/**", "destination": "/u/index.html" },
       { "source": "**", "destination": "/index.html" }
     ]
   },

@@ -406,7 +406,9 @@ class _PersonPickerSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
-    final ledgers = ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[];
+    final ledgers =
+        ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[];
+    final favorites = ref.watch(favoriteLedgersProvider);
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
@@ -425,7 +427,12 @@ class _PersonPickerSheet extends ConsumerWidget {
               ListTile(
                 leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
                 title: Text(l.other(uid).displayName),
-                subtitle: l.isPrivate ? const Text('Özel defter') : null,
+                subtitle: l.isPrivate
+                    ? const Text('Özel defter')
+                    : (l.other(uid).email == null ? null : Text(l.other(uid).email!)),
+                trailing: favorites.contains(l.id)
+                    ? Icon(Icons.star_rounded, color: context.pacta.pendingDot)
+                    : null,
                 onTap: () => Navigator.of(context).pop(l.id),
               ),
           ],

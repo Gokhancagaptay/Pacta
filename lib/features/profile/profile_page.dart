@@ -9,6 +9,7 @@ import '../../screens/settings/edit_profile_screen.dart';
 import '../../screens/settings/notification_settings_screen.dart';
 import '../../services/auth_service.dart';
 import '../ledger/application/providers.dart';
+import '../ledger/presentation/contacts_ui.dart';
 import 'profile_providers.dart';
 
 class ProfilePage extends ConsumerWidget {
@@ -62,6 +63,14 @@ class ProfilePage extends ConsumerWidget {
                     child: const Text('Düzenle'),
                   ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          SurfaceCard(
+            child: link(
+              Icons.qr_code_2_rounded,
+              'Pacta kodum',
+              () => openPactaCodePage(context),
             ),
           ),
           const SectionHeader(title: 'Tercihler'),

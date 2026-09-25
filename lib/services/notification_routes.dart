@@ -1,8 +1,8 @@
 import 'dart:async';
 
-/// Bildirime dokunulunca açılacak uygulama içi rota (`/l/<defter>` ya da
-/// `/l/<defter>/e/<kayıt>`). Uygulama kapalıyken gelen rota, ana ekran
-/// hazır olunca [takePending] ile alınır.
+/// Bildirimden ya da linkten açılacak uygulama içi rota: `/l/<defter>`,
+/// `/l/<defter>/e/<kayıt>` ya da davet `/u/<kod>`. Uygulama kapalıyken gelen
+/// rota, ana ekran hazır olunca [takePending] ile alınır.
 class NotificationRoutes {
   NotificationRoutes._();
 
@@ -12,7 +12,8 @@ class NotificationRoutes {
   static Stream<String> get stream => _controller.stream;
 
   static void open(String? route) {
-    if (route == null || !route.startsWith('/l/')) return;
+    if (route == null) return;
+    if (!route.startsWith('/l/') && !route.startsWith('/u/')) return;
     if (_controller.hasListener) {
       _controller.add(route);
     } else {

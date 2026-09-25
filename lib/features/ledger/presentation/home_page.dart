@@ -36,7 +36,7 @@ class HomePage extends ConsumerWidget {
     final unread = (ref.watch(notificationsProvider).valueOrNull ?? const [])
         .where((n) => !n.isRead)
         .length;
-    final ledgers = ref.watch(ledgersProvider);
+    final ledgers = ref.watch(visibleLedgersProvider);
     final today = ref.watch(todayProvider);
     final schedule = ref.watch(dueScheduleProvider).valueOrNull;
     final soon = [

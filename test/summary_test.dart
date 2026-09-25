@@ -1,7 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/core/dates/local_date.dart';
+import 'package:pacta/core/money/asset.dart';
+import 'package:pacta/core/money/money.dart';
 import 'package:pacta/features/ledger/domain/models.dart';
+import 'package:pacta/features/ledger/domain/pacta_code.dart';
 import 'package:pacta/features/ledger/domain/reminder.dart';
 import 'package:pacta/features/ledger/domain/summary.dart';
 import 'package:pacta/services/notification_routes.dart';
@@ -172,6 +176,58 @@ void main() {
       expect(relativeDue(const LocalDate(2026, 9, 26), today), 'Yarın');
       expect(relativeDue(const LocalDate(2026, 9, 28), today), '3 gün sonra');
     });
+  });
+
+  group('Kişi listesi', () {
+    test('favoriler başta, e-postayla aranır', () {
+      final rows = [
+        PersonRow.of(ledger('a', 'Ayşe', 100), 'me', today),
+        PersonRow.of(ledger('c', 'Can', 300), 'me', today, favorite: true),
+      ];
+      expect([for (final r in selectRows(rows, sort: PeopleSort.name)) r.name], ['Can', 'Ayşe']);
+      expect(
+        [for (final r in selectRows(rows, filter: PeopleFilter.favorites)) r.name],
+        ['Can'],
+      );
+      final withEmail = PersonRow(
+        ledger: ledger('e', 'Ece', 0),
+        name: 'Ece',
+        email: 'ece@ornek.com',
+        balance: const Money(0, Asset.tryLira),
+        others: const [],
+        nextDue: null,
+        overdue: const [],
+      );
+      expect(selectRows([withEmail], query: 'ORNEK').single.name, 'Ece');
+    });
+
+    test('kaldırılan kişi yeni hareketle geri gelir', () {
+      final l = Ledger.fromMap('x', {
+        'mode': 'shared',
+        'sides': {
+          'a': {'uid': 'me', 'displayName': 'Gökhan'},
+          'b': {'uid': 'u', 'displayName': 'Ayşe'},
+        },
+        'lastEntryAt': Timestamp.fromDate(DateTime(2026, 9, 20)),
+      });
+      expect(isHiddenLedger(l, {'x': DateTime(2026, 9, 21)}), isTrue);
+      expect(isHiddenLedger(l, {'x': DateTime(2026, 9, 19)}), isFalse);
+      final other = ledger('y', 'Can', 0);
+      expect(
+        [for (final v in visibleLedgers([l, other], favorites: {'y'})) v.id],
+        ['y', 'x'],
+      );
+    });
+  });
+
+  test('Pacta kodu ayrıştırılır', () {
+    expect(parsePactaCode('k7q-3xm'), 'K7Q3XM');
+    expect(parsePactaCode('https://pacta-76686.web.app/u/K7Q3XM'), 'K7Q3XM');
+    expect(parsePactaCode('/u/K7Q3XM'), 'K7Q3XM');
+    expect(parsePactaCode('K7Q3X0'), isNull);
+    expect(parsePactaCode('ali@ornek.com'), isNull);
+    expect(formatPactaCode('K7Q3XM'), 'K7Q-3XM');
+    expect(inviteText('K7Q3XM'), contains('https://pacta-76686.web.app/u/K7Q3XM'));
   });
 
   test('bildirim rotası çözülür', () {

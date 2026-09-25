@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/firebase_options.dart';
 import 'package:pacta/providers/theme_provider.dart';
+import 'package:pacta/services/app_link_service.dart';
 import 'package:pacta/services/push_notification_service.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/constants/app_constants.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     await PushNotificationService().initialize();
+    await AppLinkService.initialize();
 
     // Setup global error handling
     FlutterError.onError = (FlutterErrorDetails details) {

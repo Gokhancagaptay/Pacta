@@ -11,6 +11,7 @@ import '../data/ledger_repository.dart';
 import '../domain/entry_text.dart';
 import '../domain/models.dart';
 import '../domain/summary.dart';
+import 'contacts_ui.dart';
 import 'entry_detail_page.dart';
 import 'ledger_page.dart';
 
@@ -96,9 +97,11 @@ class LedgerTile extends ConsumerWidget {
     } else if (ledger.isPrivate) {
       subtitle = 'Özel defter';
     }
+    final favorite = ref.watch(favoriteLedgersProvider).contains(ledger.id);
 
     return InkWell(
       onTap: () => openLedger(context, ledger.id),
+      onLongPress: () => showPersonActions(context, ref, ledger),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
@@ -116,10 +119,34 @@ class LedgerTile extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    other.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          other.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      if (favorite) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.star_rounded,
+                          size: 16,
+                          color: c.pendingDot,
+                          semanticLabel: 'Favori',
+                        ),
+                      ],
+                    ],
                   ),
+                  if (other.email != null)
+                    Text(
+                      other.email!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.muted),
+                    ),
                   if (subtitle != null)
                     Text(
                       subtitle,

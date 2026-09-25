@@ -1,5 +1,7 @@
 // lib/models/user_model.dart
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class NotificationSettings {
   final bool newDebtRequests;
   final bool statusChanges;
@@ -54,6 +56,16 @@ class UserModel {
   /// Hatırlatmaları sessize alınan defterler (push gelmez, bildirim listesi kalır).
   final Set<String> reminderMutes;
 
+  /// Favori kişiler (defter kimliği); listelerde başta durur.
+  final Set<String> favoriteLedgers;
+
+  /// Listeden kaldırılan defterler ve kaldırılma anı. Sonra yeni hareket
+  /// olursa defter yeniden görünür.
+  final Map<String, DateTime> hiddenLedgers;
+
+  /// Kişinin Pacta kodu (QR ve davet linki bunu taşır); sunucu üretir.
+  final String? pactaCode;
+
   UserModel({
     required this.uid,
     required this.email,
@@ -64,6 +76,9 @@ class UserModel {
     this.favoriteContacts,
     NotificationSettings? notificationSettings,
     this.reminderMutes = const {},
+    this.favoriteLedgers = const {},
+    this.hiddenLedgers = const {},
+    this.pactaCode,
   }) : notificationSettings = notificationSettings ?? NotificationSettings();
 
   Map<String, dynamic> toMap() {
@@ -97,6 +112,18 @@ class UserModel {
         for (final e in ((map['reminderMutes'] as Map?) ?? const {}).entries)
           if (e.value == true) e.key as String,
       },
+      favoriteLedgers: {
+        for (final e in ((map['favoriteLedgers'] as Map?) ?? const {}).entries)
+          if (e.value == true) e.key as String,
+      },
+      hiddenLedgers: {
+        for (final e in ((map['hiddenLedgers'] as Map?) ?? const {}).entries)
+          // Sunucu zamanı henüz yazılmadıysa (yerel önbellek) "şimdi".
+          e.key as String: e.value is Timestamp
+              ? (e.value as Timestamp).toDate()
+              : DateTime.now(),
+      },
+      pactaCode: map['pactaCode'] as String?,
     );
   }
 }

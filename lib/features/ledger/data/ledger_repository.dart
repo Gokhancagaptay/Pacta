@@ -20,6 +20,25 @@ class LedgerException implements Exception {
   String toString() => message;
 }
 
+/// Eklenen kişi: açılan (ya da zaten olan) defter.
+class AddedPerson {
+  const AddedPerson({
+    required this.ledgerId,
+    required this.name,
+    required this.created,
+  });
+
+  factory AddedPerson.fromMap(Map<String, dynamic> m) => AddedPerson(
+    ledgerId: m['ledgerId'] as String,
+    name: (m['displayName'] as String?) ?? 'Kişi',
+    created: m['created'] == true,
+  );
+
+  final String ledgerId;
+  final String name;
+  final bool created;
+}
+
 /// v2 defter verisi. Okumalar Firestore akışı, tüm yazmalar Cloud Functions
 /// komutudur (istemci ledgers altına yazamaz, bkz. firestore.rules).
 class LedgerRepository {
@@ -148,10 +167,51 @@ class LedgerRepository {
     return r['ledgerId'] as String;
   }
 
+  /// E-postası doğrulanmış kişiyle ortak defter. Bulunamazsa sunucu nedenini
+  /// söyler (kayıtlı değil, doğrulanmamış...).
+  Future<AddedPerson> addByEmail(String email) async => AddedPerson.fromMap(
+    await _call('createLedger', {'counterpartyEmail': email.trim()}),
+  );
+
+  /// Pacta koduyla (elle, QR ya da davet linkinden) ortak defter.
+  Future<AddedPerson> addByCode(String code) async => AddedPerson.fromMap(
+    await _call('createLedger', {'counterpartyCode': code.trim()}),
+  );
+
+  /// Kodun sahibinin adı; eklemeden önce onay için.
+  Future<({bool self, String name})> previewCode(String code) async {
+    final r = await _call('previewCode', {'code': code.trim()});
+    return (self: r['self'] == true, name: r['displayName'] as String);
+  }
+
+  /// Kullanıcının Pacta kodu; yoksa sunucu üretir.
+  Future<String> myPactaCode() async =>
+      (await _call('myPactaCode', {}))['code'] as String;
+
   Future<String> openPrivateLedger(String name) async {
     final r = await _call('createLedger', {'privateName': name});
     return r['ledgerId'] as String;
   }
+
+  /// Özel defteri kayıtlarıyla birlikte siler (ortak defter silinmez).
+  Future<void> deletePrivateLedger(String ledgerId) =>
+      _call('deletePrivateLedger', {'ledgerId': ledgerId});
+
+  Future<void> setFavorite(String uid, String ledgerId, bool favorite) =>
+      _setPref(uid, 'favoriteLedgers', ledgerId, favorite ? true : null);
+
+  /// Listeden kaldırır; defter silinmez, yeni hareket olursa geri gelir.
+  Future<void> setHidden(String uid, String ledgerId, bool hidden) => _setPref(
+    uid,
+    'hiddenLedgers',
+    ledgerId,
+    hidden ? FieldValue.serverTimestamp() : null,
+  );
+
+  Future<void> _setPref(String uid, String field, String key, Object? value) =>
+      _db.collection('users').doc(uid).set({
+        field: {key: value ?? FieldValue.delete()},
+      }, SetOptions(merge: true));
 
   /// [iGave]: değer sizden çıktı mı (borç verdim / ödeme yaptım).
   Future<EntryState> createEntry({

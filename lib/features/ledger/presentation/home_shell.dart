@@ -9,6 +9,7 @@ import '../../profile/profile_page.dart';
 import '../application/providers.dart';
 import 'activity_page.dart';
 import 'common.dart';
+import 'contacts_ui.dart';
 import 'entry_composer_page.dart';
 import 'home_page.dart';
 import 'people_page.dart';
@@ -43,7 +44,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   void _openRoute(String route) {
-    if (mounted) openRoute(context, route);
+    if (!mounted) return;
+    if (route.startsWith('/u/')) {
+      // Davet linki: kişiyi göster, onaylanırsa ortak defter aç.
+      confirmAddByCode(context, ref, route);
+    } else {
+      openRoute(context, route);
+    }
   }
 
   void _go(int index) => setState(() => _index = index);

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/dates/local_date.dart';
 import '../../../core/money/asset.dart';
 import '../../../core/money/money.dart';
+import '../../profile/profile_providers.dart';
 import '../data/ledger_repository.dart';
 import '../domain/models.dart';
 import '../domain/summary.dart';
@@ -148,15 +149,55 @@ final dueScheduleProvider = Provider.autoDispose<AsyncValue<DueSchedule>>((ref) 
       .whenData((l) => DueSchedule.of(l, uid, today));
 });
 
-/// Kişi tablosunun satırları (süzülmemiş).
+/// Favori defterler (kullanıcı profilinden).
+final favoriteLedgersProvider = Provider.autoDispose<Set<String>>(
+  (ref) =>
+      ref.watch(userProfileProvider).valueOrNull?.favoriteLedgers ?? const {},
+);
+
+final _hiddenMapProvider = Provider.autoDispose<Map<String, DateTime>>(
+  (ref) => ref.watch(userProfileProvider).valueOrNull?.hiddenLedgers ?? const {},
+);
+
+/// Listelerde görünen defterler: kaldırılanlar çıkar, favoriler başta.
+/// Bakiye toplamları kaldırılanları da kapsar ([totalsProvider]).
+final visibleLedgersProvider = Provider.autoDispose<AsyncValue<List<Ledger>>>((
+  ref,
+) {
+  final favorites = ref.watch(favoriteLedgersProvider);
+  final hidden = ref.watch(_hiddenMapProvider);
+  return ref
+      .watch(ledgersProvider)
+      .whenData(
+        (l) => visibleLedgers(l, favorites: favorites, hidden: hidden),
+      );
+});
+
+/// Listeden kaldırılmış defterler (geri getirmek için).
+final hiddenLedgersProvider = Provider.autoDispose<List<Ledger>>((ref) {
+  final hidden = ref.watch(_hiddenMapProvider);
+  final all = ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[];
+  return [
+    for (final l in all)
+      if (isHiddenLedger(l, hidden)) l,
+  ];
+});
+
+/// Kişi tablosunun satırları (süzülmemiş, kaldırılanlar hariç).
 final personRowsProvider = Provider.autoDispose<AsyncValue<List<PersonRow>>>((
   ref,
 ) {
   final uid = ref.watch(currentUidProvider);
   final today = ref.watch(todayProvider);
+  final favorites = ref.watch(favoriteLedgersProvider);
   return ref
-      .watch(ledgersProvider)
-      .whenData((l) => [for (final x in l) PersonRow.of(x, uid, today)]);
+      .watch(visibleLedgersProvider)
+      .whenData(
+        (l) => [
+          for (final x in l)
+            PersonRow.of(x, uid, today, favorite: favorites.contains(x.id)),
+        ],
+      );
 });
 
 final peopleFilterProvider = StateProvider<PeopleFilter>(

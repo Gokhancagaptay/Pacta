@@ -30,6 +30,31 @@ class FakeRepo extends LedgerRepository {
   }
 
   @override
+  Future<AddedPerson> addByEmail(String email) async {
+    calls.add('addByEmail $email');
+    throw const LedgerException(
+      'Bu kişi hesabını açmış ama e-posta adresini henüz doğrulamamış.',
+    );
+  }
+
+  @override
+  Future<({bool self, String name})> previewCode(String code) async {
+    calls.add('preview $code');
+    return (self: false, name: 'Ece Kaya');
+  }
+
+  @override
+  Future<AddedPerson> addByCode(String code) async {
+    calls.add('addByCode $code');
+    return const AddedPerson(ledgerId: 'p_ece', name: 'Ece Kaya', created: true);
+  }
+
+  @override
+  Future<void> setFavorite(String uid, String ledgerId, bool favorite) async {
+    calls.add('favorite $ledgerId $favorite');
+  }
+
+  @override
   Future<ReminderResult> sendReminder(String ledgerId) async {
     calls.add('remind $ledgerId');
     return const ReminderResult(
@@ -75,8 +100,8 @@ Ledger ledger(
 }) => Ledger.fromMap(id, {
   'mode': 'shared',
   'sides': {
-    'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
-    'b': {'uid': otherUid, 'displayName': otherName},
+    'a': {'uid': 'gokhan', 'displayName': 'Gökhan', 'email': 'g@example.com'},
+    'b': {'uid': otherUid, 'displayName': otherName, 'email': '$otherUid@example.com'},
   },
   'balances': {'TRY': tryBalance},
   'pendingCount': 0,
@@ -156,7 +181,12 @@ Widget app(Widget home, FakeRepo repo) => ProviderScope(
     entriesProvider.overrideWith((ref, id) => Stream.value(const [])),
     userProfileProvider.overrideWith(
       (ref) => Stream.value(
-        UserModel(uid: 'gokhan', email: 'g@example.com', adSoyad: 'Gökhan Ç'),
+        UserModel(
+          uid: 'gokhan',
+          email: 'g@example.com',
+          adSoyad: 'Gökhan Ç',
+          favoriteLedgers: const {'p_deniz'},
+        ),
       ),
     ),
   ],
@@ -257,6 +287,84 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ayşe Yılmaz'), findsOneWidget);
     expect(find.text('Can Demir'), findsNothing);
+  });
+
+  Future<FakeRepo> openAddSheet(WidgetTester tester) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    await tester.pumpWidget(app(const HomeShell(), repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kişiler').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kişi ekle'));
+    await tester.pumpAndSettle();
+    return repo;
+  }
+
+  testWidgets('Kişi ekle: e-postayla eklenemezse nedeni panelde yazar', (
+    tester,
+  ) async {
+    final repo = await openAddSheet(tester);
+    expect(find.text('QR okut'), findsOneWidget);
+    expect(find.text('Kodumu göster'), findsOneWidget);
+    expect(find.text('Davet et'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'E-posta ya da Pacta kodu'),
+      'ece@example.com',
+    );
+    await tester.tap(find.text('Bul ve ekle'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['addByEmail ece@example.com']);
+    expect(find.textContaining('doğrulamamış'), findsOneWidget);
+    expect(find.text('Kişi ekle'), findsWidgets); // panel açık kaldı
+  });
+
+  testWidgets('Kişi ekle: kodla bulunan kişi onaylanıp eklenir', (tester) async {
+    final repo = await openAddSheet(tester);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'E-posta ya da Pacta kodu'),
+      'k7q-3xm',
+    );
+    await tester.tap(find.text('Bul ve ekle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ece Kaya'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Ekle'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['preview K7Q3XM', 'addByCode K7Q3XM']);
+    expect(find.text('Ece Kaya eklendi.'), findsOneWidget);
+  });
+
+  testWidgets('Kişiler: e-posta ve favori görünür, basılı tutunca eylemler', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    await tester.pumpWidget(app(const HomeShell(), repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kişiler').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('ayse@example.com'), findsOneWidget);
+    expect(find.byIcon(Icons.star_rounded), findsOneWidget); // Deniz favori
+
+    await tester.longPress(find.text('Can Demir').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Listeden kaldır'), findsOneWidget);
+    await tester.tap(find.text('Favorilere ekle'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['favorite p_can true']);
+
+    // Listeden kaldırma onay ister; açık bakiye uyarısı gösterilir.
+    await tester.longPress(find.text('Can Demir').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Listeden kaldır'));
+    await tester.pumpAndSettle();
+    expect(find.text('Listeden kaldırılsın mı?'), findsOneWidget);
+    expect(find.textContaining('açık bakiye'), findsOneWidget);
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('Hatırlat: tutarsız önizleme gösterir ve sunucuya gönderir', (

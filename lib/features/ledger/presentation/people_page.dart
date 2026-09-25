@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/ui/widgets.dart';
-import '../../../services/firestore_service.dart';
 import '../application/providers.dart';
 import '../domain/summary.dart';
+import 'add_person_sheet.dart';
 import 'common.dart';
+import 'contacts_ui.dart';
+
+export 'add_person_sheet.dart' show showAddPersonSheet;
 
 /// Kişiler: kim size, siz kime ne kadar borçlusunuz. Liste ya da tablo;
 /// süzgeç, sıralama, arama ve görünen satırların toplamı.
@@ -55,18 +58,22 @@ class PeoplePage extends ConsumerWidget {
           onRetry: () => ref.invalidate(ledgersProvider),
         ),
         data: (all) => all.isEmpty
-            ? Center(
-                child: EmptyState(
-                  icon: Icons.people_alt_rounded,
-                  title: 'Henüz kimse yok',
-                  message:
-                      'Borç ya da alacak takip ettiğiniz kişileri ekleyin. '
-                      'Kayıtlar karşı taraf onaylayınca bakiyeye işlenir.',
-                  action: FilledButton(
-                    onPressed: () => _add(context),
-                    child: const Text('Kişi ekle'),
+            ? ListView(
+                children: [
+                  EmptyState(
+                    icon: Icons.people_alt_rounded,
+                    title: 'Henüz kimse yok',
+                    message:
+                        'Borç ya da alacak takip ettiğiniz kişileri ekleyin. '
+                        'QR okutarak, Pacta koduyla ya da e-postayla '
+                        'ekleyebilirsiniz.',
+                    action: FilledButton(
+                      onPressed: () => _add(context),
+                      child: const Text('Kişi ekle'),
+                    ),
                   ),
-                ),
+                  const _HiddenLink(),
+                ],
               )
             : _PeopleBody(all: all, table: table),
       ),
@@ -166,7 +173,36 @@ class _PeopleBody extends ConsumerWidget {
               ],
             ),
           ),
+        if (rows.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: Text(
+              'İpucu: Bir kişiye basılı tutarak favorilere ekleyebilir ya da '
+              'listeden kaldırabilirsiniz.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: c.muted),
+            ),
+          ),
+        const _HiddenLink(),
       ],
+    );
+  }
+}
+
+/// "Listeden kaldırılanlar (2)": varsa gösterilir, geri getirmeyi açar.
+class _HiddenLink extends ConsumerWidget {
+  const _HiddenLink();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(hiddenLedgersProvider).length;
+    if (count == 0) return const SizedBox.shrink();
+    return Center(
+      child: TextButton.icon(
+        onPressed: () => showHiddenPeopleSheet(context),
+        icon: const Icon(Icons.visibility_off_outlined, size: 18),
+        label: Text('Listeden kaldırılanlar ($count)'),
+      ),
     );
   }
 }
@@ -204,7 +240,7 @@ class _TotalsCard extends StatelessWidget {
 }
 
 /// Kişi | Bakiye | Bekleyen | Vade; en altta toplam satırı.
-class _SummaryTable extends StatelessWidget {
+class _SummaryTable extends ConsumerWidget {
   const _SummaryTable({required this.rows, required this.totals});
 
   final List<PersonRow> rows;
@@ -213,13 +249,20 @@ class _SummaryTable extends StatelessWidget {
   static const _flex = [5, 4, 2, 3];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.pacta;
     final small = TextStyle(fontSize: 12, color: c.muted, fontWeight: FontWeight.w600);
 
-    Widget line(List<Widget> cells, {Color? background, VoidCallback? onTap, bool divider = true}) {
+    Widget line(
+      List<Widget> cells, {
+      Color? background,
+      VoidCallback? onTap,
+      VoidCallback? onLongPress,
+      bool divider = true,
+    }) {
       return InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           constraints: const BoxConstraints(minHeight: 44),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -247,12 +290,37 @@ class _SummaryTable extends StatelessWidget {
             Text('Vade', style: small, textAlign: TextAlign.end),
           ]),
           for (final r in rows)
-            line(onTap: () => openLedger(context, r.ledger.id), [
-              Text(
-                r.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w500),
+            line(
+              onTap: () => openLedger(context, r.ledger.id),
+              onLongPress: () => showPersonActions(context, ref, r.ledger),
+              [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (r.favorite) ...[
+                        Icon(Icons.star_rounded, size: 14, color: c.pendingDot),
+                        const SizedBox(width: 2),
+                      ],
+                      Flexible(
+                        child: Text(
+                          r.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (r.email != null)
+                    Text(
+                      r.email!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: c.muted),
+                    ),
+                ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -313,166 +381,3 @@ class _SummaryTable extends StatelessWidget {
   }
 }
 
-/// Kişi ekler; açılan (ya da zaten var olan) defterin kimliğini döner.
-Future<String?> showAddPersonSheet(BuildContext context) =>
-    showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => const _AddPersonSheet(),
-    );
-
-class _AddPersonSheet extends ConsumerStatefulWidget {
-  const _AddPersonSheet();
-
-  @override
-  ConsumerState<_AddPersonSheet> createState() => _AddPersonSheetState();
-}
-
-class _AddPersonSheetState extends ConsumerState<_AddPersonSheet> {
-  final _email = TextEditingController();
-  final _name = TextEditingController();
-  String? _emailError;
-  String? _nameError;
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _name.dispose();
-    super.dispose();
-  }
-
-  Future<void> _findByEmail() async {
-    final email = _email.text.trim();
-    if (!email.contains('@')) {
-      setState(() => _emailError = 'Geçerli bir e-posta adresi girin.');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _emailError = null;
-    });
-    final user = await FirestoreService().getUserByEmail(email);
-    if (!mounted) return;
-    if (user == null) {
-      setState(() {
-        _busy = false;
-        _emailError =
-            'Bu e-postayla kayıtlı bir kullanıcı yok. Aşağıdan özel defter '
-            'açabilirsiniz.';
-      });
-      return;
-    }
-    if (user.uid == ref.read(currentUidProvider)) {
-      setState(() {
-        _busy = false;
-        _emailError = 'Bu sizin hesabınız.';
-      });
-      return;
-    }
-    String? ledgerId;
-    await runCommand(context, () async {
-      ledgerId = await ref.read(ledgerRepositoryProvider).openSharedLedger(user.uid);
-    });
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (ledgerId != null) Navigator.of(context).pop(ledgerId);
-  }
-
-  Future<void> _openPrivate() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) {
-      setState(() => _nameError = 'Bir ad girin.');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _nameError = null;
-    });
-    String? ledgerId;
-    await runCommand(context, () async {
-      ledgerId = await ref.read(ledgerRepositoryProvider).openPrivateLedger(name);
-    });
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (ledgerId != null) Navigator.of(context).pop(ledgerId);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.pacta;
-    final text = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        0,
-        20,
-        20 + MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Kişi ekle', style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(
-              'Pacta kullanan biriyle ortak defter açın; kayıtları o da onaylar.',
-              style: TextStyle(color: c.muted),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              decoration: InputDecoration(
-                labelText: 'E-posta adresi',
-                errorText: _emailError,
-                errorMaxLines: 3,
-              ),
-              onSubmitted: (_) => _findByEmail(),
-            ),
-            const SizedBox(height: 10),
-            FilledButton(
-              onPressed: _busy ? null : _findByEmail,
-              child: const Text('Bul ve ekle'),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('veya', style: TextStyle(color: c.muted)),
-                ),
-                const Expanded(child: Divider()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Uygulaması olmayan biri',
-              style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Özel defteri yalnızca siz görürsünüz; kayıtlar onaysız işlenir.',
-              style: TextStyle(color: c.muted),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _name,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(labelText: 'Ad soyad', errorText: _nameError),
-              onSubmitted: (_) => _openPrivate(),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: _busy ? null : _openPrivate,
-              child: const Text('Özel defter aç'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

@@ -24,15 +24,19 @@ T _enum<T extends Enum>(List<T> values, Object? name, T fallback) {
 DateTime? _time(Object? value) => value is Timestamp ? value.toDate() : null;
 
 class LedgerSide {
-  const LedgerSide({required this.uid, required this.displayName});
+  const LedgerSide({required this.uid, required this.displayName, this.email});
 
   factory LedgerSide.fromMap(Map<String, dynamic>? m) => LedgerSide(
     uid: m?['uid'] as String?,
     displayName: (m?['displayName'] as String?) ?? 'Pacta kullanıcısı',
+    email: m?['email'] as String?,
   );
 
   final String? uid;
   final String displayName;
+
+  /// Ortak defterde giriş e-postası (özel defterde yok).
+  final String? email;
 }
 
 /// Vadesi olan, henüz kapanmamış borç parçası. Sunucu hesaplar: ödemeler

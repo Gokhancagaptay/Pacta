@@ -10,6 +10,7 @@ import '../domain/models.dart';
 import '../domain/reminder.dart';
 import '../domain/summary.dart';
 import 'common.dart';
+import 'contacts_ui.dart';
 import 'entry_composer_page.dart';
 
 /// Tek bir kişiyle olan defter: bakiye, hızlı eylemler, kayıtlar.
@@ -61,6 +62,7 @@ class LedgerPage extends ConsumerWidget {
               ledger.id,
             ) ??
             false;
+        final favorite = ref.watch(favoriteLedgersProvider).contains(ledger.id);
 
         final String sentence;
         if (balance.isZero) {
@@ -91,6 +93,12 @@ class LedgerPage extends ConsumerWidget {
                         Text(
                           'Özel defter · yalnızca siz görürsünüz',
                           style: TextStyle(fontSize: 12, color: c.muted),
+                        )
+                      else if (other.email != null)
+                        Text(
+                          other.email!,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: c.muted),
                         ),
                     ],
                   ),
@@ -98,11 +106,31 @@ class LedgerPage extends ConsumerWidget {
               ],
             ),
             actions: [
-              if (!ledger.isPrivate)
-                PopupMenuButton<String>(
-                  tooltip: 'Diğer',
-                  onSelected: (_) => _toggleMute(context, ref, ledger, muted),
-                  itemBuilder: (_) => [
+              IconButton(
+                tooltip: favorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
+                icon: Icon(
+                  favorite ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: favorite ? c.pendingDot : null,
+                ),
+                onPressed: () => ref
+                    .read(ledgerRepositoryProvider)
+                    .setFavorite(uid, ledger.id, !favorite),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Diğer',
+                onSelected: (value) {
+                  void close() => Navigator.of(context).maybePop();
+                  switch (value) {
+                    case 'mute':
+                      _toggleMute(context, ref, ledger, muted);
+                    case 'person' when ledger.isPrivate:
+                      deletePrivateLedger(context, ref, ledger, onDeleted: close);
+                    case 'person':
+                      hidePerson(context, ref, ledger, onHidden: close);
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (!ledger.isPrivate)
                     PopupMenuItem(
                       value: 'mute',
                       child: Text(
@@ -111,8 +139,16 @@ class LedgerPage extends ConsumerWidget {
                             : 'Hatırlatmaları sessize al',
                       ),
                     ),
-                  ],
-                ),
+                  PopupMenuItem(
+                    value: 'person',
+                    child: Text(
+                      ledger.isPrivate
+                          ? 'Defteri sil'
+                          : 'Listeden kaldır',
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           body: ListView(
@@ -181,6 +217,14 @@ class LedgerPage extends ConsumerWidget {
                               plan: plan,
                               fromName: ledger.me(uid).displayName,
                             ),
+                          ),
+                        ] else if (ledger.isPrivate) ...[
+                          // Karşı taraf uygulamada değil: hatırlatma yerine davet.
+                          const SizedBox(width: 8),
+                          _Action(
+                            icon: Icons.share_rounded,
+                            label: 'Davet et',
+                            onTap: () => shareInvite(context, ref),
                           ),
                         ],
                       ],
