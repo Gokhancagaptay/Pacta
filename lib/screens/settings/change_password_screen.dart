@@ -32,10 +32,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
-        await _authService.changePassword(
+        // Servis hata fırlatmaz, mesaj döner: null ise başarılıdır.
+        final error = await _authService.changePassword(
           _currentPasswordController.text,
           _newPasswordController.text,
         );
+        if (!mounted) return;
+        if (error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Şifreniz başarıyla değiştirildi!')),
         );

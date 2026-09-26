@@ -3,148 +3,126 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:pacta/screens/auth/giris_ekrani.dart'; // Proje adını kontrol et
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
-import 'package:pacta/services/auth_service.dart'; // Proje adını kontrol et
 import 'package:pacta/firebase_options.dart';
+import 'package:pacta/screens/auth/giris_ekrani.dart';
+import 'package:pacta/screens/auth/verify_email_screen.dart';
+import 'package:pacta/services/auth_service.dart';
 
-/// Authentication durumunu kontrol eden wrapper widget
+/// Hangi ekranın açılacağına tek başına karar verir:
+/// - oturum yok → giriş,
+/// - e-posta/şifre hesabı doğrulanmamış → doğrulama ekranı,
+/// - oturum var → ana ekran (profil eksikse arka planda tamamlanır).
 ///
-/// Bu widget kullanıcının giriş durumunu kontrol eder ve
-/// uygun ekranı gösterir:
-/// - Giriş yapmışsa: Dashboard
-/// - Giriş yapmamışsa: Login ekranı
-/// - Bağlantı hatası: Error ekranı
-/// - Yüklenirken: Loading ekranı
-class AuthWrapper extends StatelessWidget {
+/// Giriş ve çıkış ekranları kendileri yönlendirme yapmaz; bu widget
+/// kullanıcı değişikliğini (doğrulama dahil) dinleyip ekranı değiştirir.
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    Future<void> ensureFirebaseInitialized() async {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-      }
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  late Future<void> _init = _ensureFirebase();
+  String? _profileEnsuredFor;
+
+  Future<void> _ensureFirebase() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
+  }
 
+  void _retry() => setState(() => _init = _ensureFirebase());
+
+  /// Profil, bildirim anahtarı yazımından önce ya da sonra fark etmeksizin
+  /// eksik alanlarıyla tamamlanır. Kullanıcı başına bir kez çalışır.
+  void _ensureProfile(User user) {
+    if (_profileEnsuredFor == user.uid) return;
+    _profileEnsuredFor = user.uid;
+    AuthService().ensureProfile(user).catchError((Object e) {
+      debugPrint('Profil tamamlanamadı: $e');
+      _profileEnsuredFor = null; // sonraki açılışta tekrar denenir
+    });
+  }
+
+  static bool _needsVerification(User user) =>
+      !user.emailVerified &&
+      user.providerData.any((p) => p.providerId == 'password');
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<void>(
-      future: ensureFirebaseInitialized(),
-      builder: (context, initSnapshot) {
-        if (initSnapshot.connectionState != ConnectionState.done) {
-          return _buildLoadingScreen();
+      future: _init,
+      builder: (context, init) {
+        if (init.hasError) return _ErrorScreen(onRetry: _retry);
+        if (init.connectionState != ConnectionState.done) {
+          return const _LoadingScreen();
         }
-
-        final authService = AuthService();
-
         return StreamBuilder<User?>(
-          stream: authService.authStateChanges,
+          // userChanges: e-posta doğrulanınca (reload) da yayın yapar.
+          stream: FirebaseAuth.instance.userChanges(),
           builder: (context, snapshot) {
-            // Handle connection states
-            switch (snapshot.connectionState) {
-              case ConnectionState.waiting:
-                return _buildLoadingScreen();
-              case ConnectionState.active:
-                return _buildAuthenticatedContent(snapshot);
-              case ConnectionState.done:
-              case ConnectionState.none:
-                // Connection closed or no connection - redirect to login
-                return const GirisEkrani();
+            if (snapshot.hasError) return _ErrorScreen(onRetry: _retry);
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _LoadingScreen();
             }
+            final user = snapshot.data;
+            if (user == null) {
+              _profileEnsuredFor = null;
+              return const GirisEkrani();
+            }
+            if (_needsVerification(user)) return const VerifyEmailScreen();
+            _ensureProfile(user);
+            return const HomeShell();
           },
         );
       },
     );
   }
+}
 
-  /// Loading screen widget
-  Widget _buildLoadingScreen() {
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: CircularProgressIndicator()));
+}
+
+class _ErrorScreen extends StatelessWidget {
+  const _ErrorScreen({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 60,
-              height: 60,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Colors.deepPurple.shade400,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Giriş kontrol ediliyor...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Build content based on authentication state
-  Widget _buildAuthenticatedContent(AsyncSnapshot<User?> snapshot) {
-    if (snapshot.hasError) {
-      return _buildErrorScreen(snapshot.error.toString());
-    }
-
-    if (snapshot.hasData && snapshot.data != null) {
-      // User is authenticated
-      return const HomeShell();
-    } else {
-      // User is not authenticated
-      return const GirisEkrani();
-    }
-  }
-
-  /// Error screen widget
-  Widget _buildErrorScreen(String error) {
-    return Scaffold(
-      backgroundColor: Colors.white,
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+              Icon(Icons.cloud_off_rounded, size: 56, color: Theme.of(context).colorScheme.error),
               const SizedBox(height: 16),
               Text(
-                'Bağlantı Hatası',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
+                'Bağlantı kurulamadı',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              Text(
-                'Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin.',
+              const Text(
+                'İnternet bağlantınızı kontrol edip tekrar deneyin.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // Restart the app or retry connection
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tekrar Dene'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size(160, 48)),
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Tekrar dene'),
               ),
             ],
           ),

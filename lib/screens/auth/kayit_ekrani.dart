@@ -1,9 +1,7 @@
 // lib/screens/auth/kayit_ekrani.dart
 
 import 'package:flutter/material.dart';
-import 'package:pacta/screens/auth/giris_ekrani.dart';
 import 'package:pacta/services/auth_service.dart';
-import 'package:pacta/constants/strings.dart';
 
 class KayitEkrani extends StatefulWidget {
   const KayitEkrani({super.key});
@@ -238,11 +236,8 @@ class _KayitEkraniState extends State<KayitEkrani> {
           style: TextStyle(fontSize: size.width * 0.042, color: textSec),
         ),
         TextButton(
-          onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const GirisEkrani()),
-            );
-          },
+          // Kayıt ekranı giriş ekranının üstünde açılır; geri dönmek yeterli.
+          onPressed: () => Navigator.of(context).maybePop(),
           child: Text(
             'Giriş Yap',
             style: TextStyle(
@@ -265,199 +260,10 @@ class _KayitEkraniState extends State<KayitEkrani> {
     );
     if (!mounted) return;
     if (errorMessage == null) {
-      // Kayıt oluşturuldu, doğrulama bekleniyor
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (ctx) {
-          final size = MediaQuery.of(ctx).size;
-          final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          final textMain = isDark ? Colors.white : const Color(0xFF111827);
-          final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-          final green = const Color(0xFF4ADE80);
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: size.width * 0.06,
-              right: size.width * 0.06,
-              top: size.height * 0.02,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                SizedBox(height: size.height * 0.02),
-                Text(
-                  AppStrings.verifyEmailSheetTitle,
-                  style: TextStyle(
-                    fontSize: size.width * 0.06,
-                    fontWeight: FontWeight.bold,
-                    color: textMain,
-                  ),
-                ),
-                SizedBox(height: size.height * 0.008),
-                Text(
-                  AppStrings.verifyEmailSheetDesc,
-                  style: TextStyle(fontSize: size.width * 0.04, color: textSec),
-                ),
-                SizedBox(height: size.height * 0.025),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          await _authService.sendVerificationEmail();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Doğrulama e-postası tekrar gönderildi.',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Maili Yeniden Gönder'),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: size.height * 0.02),
-                StatefulBuilder(
-                  builder: (ctx, setSheetState) {
-                    bool isSubmitting = false;
-                    bool autoStarted = false;
-
-                    void startAutoCheck() {
-                      if (autoStarted) return;
-                      autoStarted = true;
-                      Future<void>(() async {
-                        for (int i = 0; i < 8; i++) {
-                          await Future.delayed(const Duration(seconds: 2));
-                          final ok = await _authService
-                              .finalizeUserAfterEmailVerification(
-                                adSoyad: _adSoyadController.text.trim(),
-                                telefon: _telefonController.text.trim(),
-                              );
-                          if (!mounted) return;
-                          if (ok) {
-                            Navigator.of(ctx).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'E-posta doğrulandı. Giriş yapabilirsiniz.',
-                                ),
-                              ),
-                            );
-                            await _authService.signOut();
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(
-                                builder: (context) => const GirisEkrani(),
-                              ),
-                            );
-                            return;
-                          }
-                        }
-                      });
-                    }
-
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      startAutoCheck();
-                    });
-                    Future<void> handleSubmit() async {
-                      if (isSubmitting) return;
-                      setSheetState(() => isSubmitting = true);
-                      FocusScope.of(context).unfocus();
-                      final ok = await _authService
-                          .finalizeUserAfterEmailVerification(
-                            adSoyad: _adSoyadController.text.trim(),
-                            telefon: _telefonController.text.trim(),
-                          );
-                      if (!mounted) return;
-                      if (ok) {
-                        Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'E-posta doğrulandı. Giriş yapabilirsiniz.',
-                            ),
-                          ),
-                        );
-                        await _authService.signOut();
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (context) => const GirisEkrani(),
-                          ),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Doğrulama tespit edilemedi. Lütfen e-postanızı kontrol edin.',
-                            ),
-                          ),
-                        );
-                      }
-                      setSheetState(() => isSubmitting = false);
-                    }
-
-                    return SizedBox(
-                      width: double.infinity,
-                      height: size.height * 0.06,
-                      child: ElevatedButton(
-                        onPressed: isSubmitting ? null : handleSubmit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: green,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              size.width * 0.035,
-                            ),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: isSubmitting
-                            ? SizedBox(
-                                height: size.width * 0.05,
-                                width: size.width * 0.05,
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                AppStrings.iVerified,
-                                style: TextStyle(
-                                  fontSize: size.width * 0.045,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      ),
-                    );
-                  },
-                ),
-                SizedBox(height: size.height * 0.02),
-              ],
-            ),
-          );
-        },
-      );
+      // Oturum açıldı ama e-posta doğrulanmadı: en alttaki sayfaya dönülür,
+      // AuthWrapper doğrulama ekranını gösterir (bağlantı orada yeniden
+      // gönderilebilir, doğrulanınca otomatik devam edilir).
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

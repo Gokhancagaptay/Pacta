@@ -1,10 +1,11 @@
 // lib/services/auth_service.dart
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/constants/strings.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
 
 /// Firebase Authentication işlemleri için servis sınıfı
@@ -88,11 +89,19 @@ class AuthService {
         email: email,
         password: password,
       );
-      // Profil ismi güncelle ve doğrulama maili gönder (özelleştirilmiş linklerle)
-      await userCredential.user?.updateDisplayName(adSoyad);
-      await _sendVerificationWithSettings(userCredential.user);
-
-      // Not: Firestore kullanıcı dokümanı e-posta doğrulandıktan sonra oluşturulacak
+      final user = userCredential.user;
+      await user?.updateDisplayName(adSoyad);
+      // Profil hemen oluşturulur; e-posta doğrulanana kadar uygulama
+      // AuthWrapper'da doğrulama ekranında kalır, sunucu da işlem kabul etmez.
+      if (user != null) {
+        await _firestoreService.ensureProfile(
+          uid: user.uid,
+          email: user.email ?? email,
+          adSoyad: adSoyad,
+          telefon: telefon,
+        );
+      }
+      await _sendVerificationWithSettings(user);
       return null; // Success (doğrulama bekleniyor)
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
@@ -113,21 +122,13 @@ class AuthService {
     }
 
     try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
+      // Doğrulanmamış hesap giriş yapar ama AuthWrapper onu doğrulama
+      // ekranında tutar (oradan bağlantı yeniden gönderilebilir). Profil de
+      // AuthWrapper'da tamamlanır.
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
         password: password,
       );
-      if (!(credential.user?.emailVerified ?? false)) {
-        // Doğrulanmamış hesapla girişe izin verme
-        await _sendVerificationWithSettings(credential.user);
-        await _auth.signOut();
-        return 'E-posta adresinizi doğrulamalısınız. Doğrulama maili tekrar gönderildi.';
-      }
-      // Doğrulanmış hesabın Firestore dokümanı yoksa oluştur
-      final user = _auth.currentUser;
-      if (user != null) {
-        await _createUserIfNotExists(user);
-      }
       return null; // Success
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
@@ -137,13 +138,37 @@ class AuthService {
     }
   }
 
-  /// Doğrulama e-postasını tekrar gönderir
-  Future<void> sendVerificationEmail() async {
+  /// Doğrulama e-postasını tekrar gönderir; hata varsa Türkçe mesaj döner.
+  Future<String?> sendVerificationEmail() async {
     final user = _auth.currentUser;
-    if (user != null && !(user.emailVerified)) {
+    if (user == null || user.emailVerified) return null;
+    try {
       await _sendVerificationWithSettings(user);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return _handleAuthError(e);
     }
   }
+
+  /// E-posta doğrulandı mı? Doğrulandıysa kimlik belirteci yenilenir; sunucu
+  /// "doğrulanmış" bilgisini ancak yeni belirteçte görür.
+  Future<bool> refreshEmailVerified() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    final fresh = _auth.currentUser;
+    if (fresh == null || !fresh.emailVerified) return false;
+    await fresh.getIdToken(true);
+    return true;
+  }
+
+  /// Giriş yapmış kullanıcının profilini oluşturur ya da tamamlar.
+  Future<void> ensureProfile(User user) => _firestoreService.ensureProfile(
+    uid: user.uid,
+    email: user.email ?? '',
+    adSoyad: user.displayName,
+    telefon: user.phoneNumber,
+  );
 
   // Email doğrulama linkine continueUrl ekler (Dynamic Links olmadan)
   Future<void> _sendVerificationWithSettings(User? user) async {
@@ -170,36 +195,6 @@ class AuthService {
       // Her ihtimale karşı sessiz geri dönüş
       await user.sendEmailVerification();
     }
-  }
-
-  /// E-posta doğrulandıysa kullanıcı dokümanını oluşturur ve true döner
-  Future<bool> finalizeUserAfterEmailVerification({
-    required String adSoyad,
-    required String telefon,
-  }) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-    await user.reload();
-    if (user.emailVerified) {
-      // Kullanıcı dokümanı yoksa oluştur
-      final userDoc = await _firestoreService.usersRef.doc(user.uid).get();
-      if (!userDoc.exists) {
-        final userModel = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          adSoyad: adSoyad,
-          telefon: telefon,
-          etiket: null,
-          aramaAnahtarlari: [
-            adSoyad.toLowerCase(),
-            (user.email ?? '').toLowerCase(),
-          ],
-        );
-        await _firestoreService.createUser(userModel);
-      }
-      return true;
-    }
-    return false;
   }
 
   /// Firebase Auth hatalarını Türkçe mesajlara çeviren yardımcı metod
@@ -253,16 +248,8 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(
-        credential,
-      );
-      final User? user = userCredential.user;
-
-      // Create user document if doesn't exist
-      if (user != null) {
-        await _createUserIfNotExists(user);
-      }
-
+      // Profil AuthWrapper'da oluşturulur/tamamlanır.
+      await _auth.signInWithCredential(credential);
       return null; // Success
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
@@ -272,35 +259,29 @@ class AuthService {
     }
   }
 
-  /// Kullanıcı yoksa Firestore'da oluşturan yardımcı metod
-  Future<void> _createUserIfNotExists(User user) async {
-    final userDoc = await _firestoreService.usersRef.doc(user.uid).get();
-    if (!userDoc.exists) {
-      final userModel = UserModel(
-        uid: user.uid,
-        email: user.email ?? '',
-        adSoyad: user.displayName ?? '',
-        telefon: user.phoneNumber ?? '',
-        etiket: null,
-        aramaAnahtarlari: [
-          user.displayName?.toLowerCase() ?? '',
-          user.email?.toLowerCase() ?? '',
-        ],
-      );
-      await _firestoreService.createUser(userModel);
-    } else {
-      await _firestoreService.ensurePublicProfile(user.uid);
-    }
-  }
-
-  // Çıkış yapma metodu
+  /// Çıkış: önce bu cihazın bildirim anahtarı hesaptan silinir ve iptal
+  /// edilir (yoksa çıkan kişinin bildirimleri bu cihaza gelmeye devam eder),
+  /// Google oturumu da kapatılır ki başka hesap seçilebilsin. İnternet yoksa
+  /// çıkış beklemez.
   Future<void> signOut() async {
+    const wait = Duration(seconds: 3);
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update({'fcmToken': FieldValue.delete()})
+            .timeout(wait);
+      } catch (_) {}
+    }
+    try {
+      await FirebaseMessaging.instance.deleteToken().timeout(wait);
+    } catch (_) {}
+    try {
+      await _googleSignIn.signOut().timeout(wait);
+    } catch (_) {}
     await _auth.signOut();
-  }
-
-  // E-posta güncelleme metodu
-  Future<void> updateEmail(String newEmail) async {
-    await _auth.currentUser?.verifyBeforeUpdateEmail(newEmail);
   }
 
   /// Şifre değiştirme metodu

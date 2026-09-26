@@ -76,6 +76,38 @@ class FirestoreService {
     });
   }
 
+  /// Profili oluşturur ya da eksik alanlarını tamamlar. Belgenin var olup
+  /// olmamasına bakmaz: bildirim anahtarı belgeyi profilden önce
+  /// oluşturmuş olabilir. Var olan alanlar (ad, ayarlar) ezilmez.
+  Future<void> ensureProfile({
+    required String uid,
+    required String email,
+    String? adSoyad,
+    String? telefon,
+  }) async {
+    final ref = _db.collection(_usersCollection).doc(uid);
+    final data = (await ref.get()).data() ?? const <String, dynamic>{};
+    final currentName = (data['adSoyad'] as String?)?.trim() ?? '';
+    var name = currentName.isNotEmpty ? currentName : (adSoyad ?? '').trim();
+    if (name.length > 100) name = name.substring(0, 100);
+
+    final update = <String, dynamic>{
+      if (data['uid'] == null) 'uid': uid,
+      if (data['email'] == null && email.isNotEmpty) 'email': email,
+      if (currentName.isEmpty && name.isNotEmpty) 'adSoyad': name,
+      if (data['telefon'] == null && (telefon ?? '').trim().isNotEmpty)
+        'telefon': telefon!.trim(),
+      if (data['notificationSettings'] == null)
+        'notificationSettings': NotificationSettings().toMap(),
+    };
+    if (update.isNotEmpty) await ref.set(update, SetOptions(merge: true));
+
+    final public = await _db.collection(_publicProfilesCollection).doc(uid).get();
+    if (!public.exists || (public.data()?['adSoyad'] ?? '') != name) {
+      await syncPublicProfile(uid, name);
+    }
+  }
+
   /// Açık profili olmayan eski hesaplar için girişte profili oluşturur.
   Future<void> ensurePublicProfile(String uid) async {
     final profile = await _db

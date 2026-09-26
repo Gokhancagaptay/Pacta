@@ -1,20 +1,19 @@
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'notification_routes.dart';
 
-// Uygulama arkaplandayken (ama tamamen kapalı değilken) gelen bildirimleri işlemek için.
-// Bu fonksiyonun sınıf dışında, en üst seviyede bir fonksiyon olması gerekiyor.
+// Uygulama arka plandayken gelen bildirimler için; sınıf dışında olmalı.
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Burada arkaplan bildirimleriyle ilgili bir işlem yapmak isterseniz yapabilirsiniz.
-  // Örneğin, bir loglama veya yerel bir veritabanı güncellemesi.
-  print("Handling a background message: ${message.messageId}");
-}
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
+/// Push bildirimleri: izin, cihaz anahtarı (fcmToken), ön planda gösterim ve
+/// bildirime dokununca ilgili ekranın açılması.
 class PushNotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -22,28 +21,31 @@ class PushNotificationService {
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
 
+  static const _channel = AndroidNotificationChannel(
+    'pacta_default_channel',
+    'Genel Bildirimler',
+    description: 'Pacta uygulaması için yüksek öncelikli bildirim kanalı',
+    importance: Importance.high,
+  );
+
+  /// Son yazılan (kullanıcı, anahtar); aynısı tekrar yazılmaz.
+  String? _savedFor;
+
+  /// Uygulama açılışını bekletmez: runApp'tan sonra çağrılır.
   Future<void> initialize() async {
-    // Android notification channel (high importance)
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'pacta_default_channel',
-      'Genel Bildirimler',
-      description: 'Pacta uygulaması için yüksek öncelikli bildirim kanalı',
-      importance: Importance.high,
-    );
     await _local
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >()
-        ?.createNotificationChannel(channel);
-    const AndroidInitializationSettings androidInit =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings initSettings = InitializationSettings(
-      android: androidInit,
-    );
+        ?.createNotificationChannel(_channel);
     await _local.initialize(
-      initSettings,
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
+      ),
       onDidReceiveNotificationResponse: (r) => NotificationRoutes.open(r.payload),
     );
+
     // Uygulamayı bildirim açtıysa (yerel ya da FCM) ilgili kayda git.
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) {
@@ -54,103 +56,70 @@ class PushNotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen(
       (m) => NotificationRoutes.open(m.data['route'] as String?),
     );
-    // 1. Bildirim İzinlerini İste
-    await _fcm.requestPermission(
+
+    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    await _fcm.setForegroundNotificationPresentationOptions(
       alert: true,
-      announcement: false,
       badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
       sound: true,
     );
 
-    // 2. FCM Token'ı: Giriş sonrasında garanti kayıt
-    _auth.authStateChanges().listen((user) async {
-      if (user != null) {
-        final token = await _fcm.getToken();
-        if (kDebugMode) {
-          print("FCM Token (login): $token");
-        }
-        if (token != null) {
-          await saveTokenToDatabase(token);
-        }
-      }
-    });
-    // Uygulama açılışında kullanıcı varsa yaz
-    final currentUser = _auth.currentUser;
-    if (currentUser != null) {
-      final token = await _fcm.getToken();
-      if (kDebugMode) {
-        print("FCM Token (cold start): $token");
-      }
-      if (token != null) {
-        await saveTokenToDatabase(token);
-      }
-    }
-    // Token her yenilendiğinde veritabanını güncelle
-    _fcm.onTokenRefresh.listen(saveTokenToDatabase);
+    // userChanges: e-posta doğrulanınca da yayın yapar; anahtar ancak
+    // doğrulanmış hesaba yazılır.
+    _auth.userChanges().listen((_) => unawaited(_saveCurrentToken()));
+    _fcm.onTokenRefresh.listen((token) => unawaited(_saveToken(token)));
 
-    // 3. Arkaplan Mesaj Handler'ını Ayarla
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // 4. Uygulama açıkken gelen bildirimleri dinle
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      print('Got a message whilst in the foreground!');
-      print('Message data: ${message.data}');
-
-      if (message.notification != null) {
-        final notif = message.notification!;
-        await _local.show(
-          DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          notif.title ?? 'Bildirim',
-          notif.body ?? '',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'pacta_default_channel',
-              'Genel Bildirimler',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-          payload: message.data['route'] as String?,
-        );
-      }
-
-      // iOS için foreground’da gösterim izni (Android 13+ için de kanallar/importance gerekli)
-      await _fcm.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-    });
+    FirebaseMessaging.onMessage.listen(_showForeground);
   }
 
-  Future<void> saveTokenToDatabase(String token) async {
-    // Giriş yapmış kullanıcının ID'sini al
-    User? user = _auth.currentUser;
+  Future<void> _showForeground(RemoteMessage message) async {
+    final notif = message.notification;
+    if (notif == null) return;
+    await _local.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      notif.title ?? 'Bildirim',
+      notif.body ?? '',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channel.id,
+          _channel.name,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      payload: message.data['route'] as String?,
+    );
+  }
 
-    if (user != null) {
-      // Her durumda `set` ile `merge: true` kullanmak,
-      // doküman olmasa bile işlemi güvenli hale getirir.
-      // Doküman varsa sadece fcmToken alanını günceller,
-      // yoksa yeni dokümanı bu alanla oluşturur.
-      try {
-        await _firestore.collection('users').doc(user.uid).set({
-          'fcmToken': token,
-        }, SetOptions(merge: true));
-        if (kDebugMode) {
-          print("FCM token successfully saved/updated for user: ${user.uid}");
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("Error saving FCM token with set/merge: $e");
-        }
-      }
-    } else {
-      if (kDebugMode) {
-        print("User not logged in, cannot save FCM token.");
-      }
+  Future<void> _saveCurrentToken() async {
+    try {
+      final token = await _fcm.getToken();
+      if (token != null) await _saveToken(token);
+    } catch (e) {
+      if (kDebugMode) debugPrint('FCM anahtarı alınamadı: $e');
+    }
+  }
+
+  Future<void> _saveToken(String token) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final unverified =
+        !user.emailVerified &&
+        user.providerData.any((p) => p.providerId == 'password');
+    if (unverified) return;
+    final key = '${user.uid}:$token';
+    if (_savedFor == key) return;
+    _savedFor = key;
+    try {
+      // Belge yoksa oluşturur; profil AuthWrapper'da eksik alanlarıyla
+      // tamamlanır (kurallar buna izin verir).
+      await _firestore.collection('users').doc(user.uid).set({
+        'fcmToken': token,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      _savedFor = null;
+      if (kDebugMode) debugPrint('FCM anahtarı kaydedilemedi: $e');
     }
   }
 }

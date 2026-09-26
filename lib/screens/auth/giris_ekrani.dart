@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:pacta/screens/auth/kayit_ekrani.dart';
 import 'package:pacta/services/auth_service.dart';
-import 'package:pacta/screens/dashboard/dashboard_screen.dart';
 import 'package:pacta/constants/strings.dart';
 
 class GirisEkrani extends StatefulWidget {
@@ -253,24 +252,24 @@ class _GirisEkraniState extends State<GirisEkrani> {
     );
     if (!mounted) return;
     if (errorMessage == null) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
+      _returnToRoot();
     } else {
-      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Giriş başarısız: $errorMessage')));
     }
   }
 
+  /// Hangi ekranın açılacağına AuthWrapper karar verir (ana ekran ya da
+  /// e-posta doğrulama). Bu ekran üstte açılmışsa en alttaki sayfaya dönülür.
+  void _returnToRoot() =>
+      Navigator.of(context).popUntil((route) => route.isFirst);
+
   void _googleSignIn() async {
     final String? errorMessage = await _authService.googleSignIn();
     if (!mounted) return;
     if (errorMessage == null) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
+      _returnToRoot();
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

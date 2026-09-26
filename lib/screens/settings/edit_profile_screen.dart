@@ -1,8 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/auth_service.dart';
 import 'package:pacta/services/firestore_service.dart';
-import 'package:pacta/screens/auth/giris_ekrani.dart';
 import 'package:pacta/screens/settings/change_password_screen.dart';
 import 'package:pacta/screens/settings/notification_settings_screen.dart';
 
@@ -21,6 +21,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
+
+  bool get _isPasswordUser =>
+      FirebaseAuth.instance.currentUser?.providerData.any(
+        (p) => p.providerId == 'password',
+      ) ??
+      false;
 
   @override
   void initState() {
@@ -237,8 +243,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       title: TextFormField(
         controller: controller,
         readOnly: readOnly,
+        // Kurallar adı 100 karakterle sınırlar.
+        maxLength: readOnly ? null : 100,
         decoration: InputDecoration(
           labelText: label,
+          counterText: '',
           border: InputBorder.none,
           labelStyle: TextStyle(
             color: Colors.grey.shade600,
@@ -262,17 +271,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       child: Column(
         children: [
-          _buildSettingsTile(
-            icon: Icons.lock_outline,
-            title: 'Şifreyi Değiştir',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
-              );
-            },
-          ),
-          const Divider(height: 1, indent: 56),
+          // Google ile açılmış hesabın şifresi yoktur.
+          if (_isPasswordUser) ...[
+            _buildSettingsTile(
+              icon: Icons.lock_outline,
+              title: 'Şifreyi Değiştir',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+                );
+              },
+            ),
+            const Divider(height: 1, indent: 56),
+          ],
           _buildSettingsTile(
             icon: Icons.notifications_outlined,
             title: 'Bildirim Ayarları',
@@ -291,11 +303,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             title: 'Çıkış Yap',
             textColor: Colors.red,
             onTap: () async {
+              final navigator = Navigator.of(context);
               await _authService.signOut();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const GirisEkrani()),
-                (Route<dynamic> route) => false,
-              );
+              // Giriş ekranını AuthWrapper gösterir; en alttaki sayfaya dönülür.
+              navigator.popUntil((route) => route.isFirst);
             },
           ),
         ],
