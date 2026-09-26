@@ -55,12 +55,23 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            // Anahtar yoksa debug anahtarına düşülmez (aşağıdaki denetim
+            // yayın derlemesini durdurur).
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
+    }
+}
+
+// Yayın sürümü yalnızca yükleme anahtarıyla imzalanır; debug derlemeleri
+// (flutter run) etkilenmez.
+gradle.taskGraph.whenReady {
+    if (!keystorePropertiesFile.exists() && allTasks.any { it.name.contains("Release") }) {
+        throw GradleException(
+            "android/key.properties bulunamadı: yayın sürümü yükleme anahtarıyla " +
+                "imzalanmalı. Anahtar dosyasını ve key.properties'i geri yükleyin.",
+        )
     }
 }
 

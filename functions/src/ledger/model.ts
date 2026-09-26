@@ -225,6 +225,35 @@ export function addDays(day: string, days: number): string {
 }
 
 /**
+ * İşlem tarihi makul aralıkta mı: en fazla 50 yıl önce, en geç yarın.
+ * Vade en fazla işlem tarihinden 30 yıl sonra. Uç tarihler (9999 yılı)
+ * vade sıralamasını bozup hatırlatmaları durdurabilirdi.
+ * @param {string} occurredOn İşlem tarihi.
+ * @param {string | null} dueOn Vade.
+ * @param {string} today Bugün (İstanbul).
+ * @return {string | null} Hata mesajı ya da null.
+ */
+export function dateRangeError(
+  occurredOn: string,
+  dueOn: string | null,
+  today: string
+): string | null {
+  if (occurredOn > addDays(today, 1)) {
+    return "İşlem tarihi ileri bir tarih olamaz.";
+  }
+  if (occurredOn < addDays(today, -365 * 50)) {
+    return "İşlem tarihi çok eski.";
+  }
+  if (dueOn && dueOn < occurredOn) {
+    return "Vade, işlem tarihinden önce olamaz.";
+  }
+  if (dueOn && dueOn > addDays(occurredOn, 365 * 30)) {
+    return "Vade en fazla 30 yıl sonrası olabilir.";
+  }
+  return null;
+}
+
+/**
  * @param {string} value YYYY-MM-DD.
  * @return {boolean} Gerçek bir takvim günü mü.
  */

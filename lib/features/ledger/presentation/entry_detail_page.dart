@@ -14,7 +14,11 @@ import 'common.dart';
 
 /// Tek kaydın ayrıntısı ve kullanıcının yapabileceği eylemler.
 class EntryDetailPage extends ConsumerStatefulWidget {
-  const EntryDetailPage({super.key, required this.ledgerId, required this.entryId});
+  const EntryDetailPage({
+    super.key,
+    required this.ledgerId,
+    required this.entryId,
+  });
 
   final String ledgerId;
   final String entryId;
@@ -67,7 +71,8 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
             entry: entry,
             ledger: ledger,
             me: me,
-            events: ref.watch(entryEventsProvider(_key)).valueOrNull ?? const [],
+            events:
+                ref.watch(entryEventsProvider(_key)).valueOrNull ?? const [],
           );
         },
       ),
@@ -88,14 +93,17 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       final isReversal = e.kind == EntryKind.reversal;
       hint = isReversal
           ? 'Onaylarsanız iki kayıt birbirini sıfırlar. Katılmıyorsanız '
-              'reddedin.'
+                'reddedin.'
           : 'Onaylarsanız ikinizin bakiyesine işlenir. Yanlışsa itiraz edin, '
-              '$other düzeltsin.';
+                '$other düzeltsin.';
       children = [
         FilledButton.icon(
           onPressed: _busy
               ? null
-              : () => _run(() => _repo.confirm(e), 'Onaylandı. Bakiyenize işlendi.'),
+              : () => _run(
+                  () => _repo.confirm(e),
+                  'Onaylandı. Bakiyenize işlendi.',
+                ),
           icon: const Icon(Icons.check_rounded),
           label: Text(e.kind == EntryKind.payment ? 'Aldım, onayla' : 'Onayla'),
         ),
@@ -145,7 +153,9 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
             ],
             Expanded(
               child: OutlinedButton(
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                ),
                 onPressed: _busy ? null : () => _cancel(e),
                 child: const Text('Geri çek'),
               ),
@@ -201,7 +211,12 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
     );
     if (result == null) return;
     await _run(
-      () => _repo.dispute(e, reason: result.$1, note: result.$2, suggested: result.$3),
+      () => _repo.dispute(
+        e,
+        reason: result.$1,
+        note: result.$2,
+        suggested: result.$3,
+      ),
       'İtirazınız iletildi.',
     );
   }
@@ -250,8 +265,14 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
           'de kalkar.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Geri çek')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Geri çek'),
+          ),
         ],
       ),
     );
@@ -278,8 +299,14 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
                     'onaylayınca iki kayıt birbirini sıfırlar; geçmiş korunur.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Düzelt')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Düzelt'),
+          ),
         ],
       ),
     );
@@ -340,7 +367,11 @@ class _Body extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              StatusChip(label: status.label, tone: status.tone, icon: status.icon),
+              StatusChip(
+                label: status.label,
+                tone: status.tone,
+                icon: status.icon,
+              ),
               const SizedBox(height: 10),
               AmountText(
                 entry.amount,
@@ -360,11 +391,16 @@ class _Body extends StatelessWidget {
         SurfaceCard(
           child: Column(
             children: [
-              if (entry.description.isNotEmpty) row('Açıklama', entry.description),
+              if (entry.description.isNotEmpty)
+                row('Açıklama', entry.description),
               row('İşlem tarihi', entry.occurredOn.format()),
               if (entry.dueOn != null) row('Vade', entry.dueOn!.format()),
               if (entry.version > 1)
-                row('Durum', '${entry.version - 1} kez düzeltildi', color: c.dispute),
+                row(
+                  'Durum',
+                  '${entry.version - 1} kez düzeltildi',
+                  color: c.dispute,
+                ),
             ],
           ),
         ),
@@ -374,7 +410,8 @@ class _Body extends StatelessWidget {
             ('Düzeltilen kayda git', entry.linkedEntryId!),
           if (entry.kind == EntryKind.payment && entry.linkedEntryId != null)
             ('Ödenen borca git', entry.linkedEntryId!),
-          if (entry.reversedBy != null) ('Düzeltme kaydına git', entry.reversedBy!),
+          if (entry.reversedBy != null)
+            ('Düzeltme kaydına git', entry.reversedBy!),
           if (entry.reversalPendingId != null)
             ('Bekleyen düzeltmeye git', entry.reversalPendingId!),
         ])
@@ -402,7 +439,10 @@ class _Body extends StatelessWidget {
               children: [
                 Text(
                   'İtiraz: ${EntryText.disputeReasons[dispute.reason] ?? 'Diğer'}',
-                  style: TextStyle(fontWeight: FontWeight.w600, color: c.dispute),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: c.dispute,
+                  ),
                 ),
                 if (dispute.note.isNotEmpty) ...[
                   const SizedBox(height: 4),
@@ -438,7 +478,9 @@ class _Body extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: ev.type == 'disputed'
                                 ? c.dispute
-                                : (ev.type == 'confirmed' ? c.credit : c.pendingDot),
+                                : (ev.type == 'confirmed'
+                                      ? c.credit
+                                      : c.pendingDot),
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -455,7 +497,10 @@ class _Body extends StatelessWidget {
                               if (ev.at != null)
                                 Text(
                                   time.format(ev.at!),
-                                  style: TextStyle(fontSize: 12, color: c.muted),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.muted,
+                                  ),
                                 ),
                             ],
                           ),
@@ -595,7 +640,12 @@ class _DisputeSheetState extends State<_DisputeSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -624,7 +674,9 @@ class _DisputeSheetState extends State<_DisputeSheet> {
               const SizedBox(height: 12),
               TextField(
                 controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Doğru tutar (isteğe bağlı)',
                   suffixText: widget.entry.asset.symbol,
@@ -642,7 +694,10 @@ class _DisputeSheetState extends State<_DisputeSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton(onPressed: _submit, child: const Text('İtirazı gönder')),
+            FilledButton(
+              onPressed: _submit,
+              child: const Text('İtirazı gönder'),
+            ),
           ],
         ),
       ),
@@ -674,7 +729,10 @@ class _ReviseSheetState extends State<_ReviseSheet> {
   /// söylenir); yoksa mevcut tutar.
   late final int? _suggested = _e.dispute?.suggestedAmountMinor;
   late final _amount = TextEditingController(
-    text: Money(_suggested ?? _e.amountMinor, _e.asset).format(withSymbol: false),
+    text: Money(
+      _suggested ?? _e.amountMinor,
+      _e.asset,
+    ).format(withSymbol: false),
   );
   late final _description = TextEditingController(text: _e.description);
   late LocalDate _occurredOn = _e.occurredOn;
@@ -688,12 +746,16 @@ class _ReviseSheetState extends State<_ReviseSheet> {
     super.dispose();
   }
 
-  Future<LocalDate?> _pick(LocalDate initial, {LocalDate? first}) async {
+  Future<LocalDate?> _pick(
+    LocalDate initial, {
+    LocalDate? first,
+    LocalDate? last,
+  }) async {
     final picked = await showDatePicker(
       context: context,
       initialDate: initial.toDateTime(),
       firstDate: (first ?? LocalDate(initial.year - 20, 1, 1)).toDateTime(),
-      lastDate: DateTime(initial.year + 30, 12, 31),
+      lastDate: (last ?? LocalDate(initial.year + 30, 12, 31)).toDateTime(),
       locale: const Locale('tr', 'TR'),
     );
     return picked == null ? null : LocalDate.fromDateTime(picked);
@@ -737,17 +799,29 @@ class _ReviseSheetState extends State<_ReviseSheet> {
     final isDebt = _e.kind == EntryKind.debt;
     final due = _dueOn;
 
-    Widget dateRow(String label, String value, VoidCallback onTap, {Widget? trailing}) =>
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(label, style: TextStyle(color: c.muted, fontSize: 13)),
-          subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-          trailing: trailing ?? const Icon(Icons.edit_calendar_outlined),
-          onTap: onTap,
-        );
+    Widget dateRow(
+      String label,
+      String value,
+      VoidCallback onTap, {
+      Widget? trailing,
+    }) => ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label, style: TextStyle(color: c.muted, fontSize: 13)),
+      subtitle: Text(
+        value,
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
+      trailing: trailing ?? const Icon(Icons.edit_calendar_outlined),
+      onTap: onTap,
+    );
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -762,7 +836,9 @@ class _ReviseSheetState extends State<_ReviseSheet> {
             const SizedBox(height: 12),
             TextField(
               controller: _amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: 'Tutar',
                 suffixText: _e.asset.symbol,
@@ -773,7 +849,11 @@ class _ReviseSheetState extends State<_ReviseSheet> {
               ),
             ),
             dateRow('İşlem tarihi', _occurredOn.format(), () async {
-              final picked = await _pick(_occurredOn);
+              // İşlem tarihi en geç yarın olabilir (sunucuyla aynı sınır).
+              final picked = await _pick(
+                _occurredOn,
+                last: LocalDate.today().addDays(1),
+              );
               if (picked != null) setState(() => _occurredOn = picked);
             }),
             if (isDebt)
@@ -781,7 +861,10 @@ class _ReviseSheetState extends State<_ReviseSheet> {
                 'Vade',
                 due == null ? 'Vade yok' : due.format(),
                 () async {
-                  final picked = await _pick(due ?? _occurredOn, first: _occurredOn);
+                  final picked = await _pick(
+                    due ?? _occurredOn,
+                    first: _occurredOn,
+                  );
                   if (picked != null) setState(() => _dueOn = picked);
                 },
                 trailing: due == null
@@ -795,14 +878,23 @@ class _ReviseSheetState extends State<_ReviseSheet> {
             TextField(
               controller: _description,
               maxLength: 280,
-              decoration: const InputDecoration(labelText: 'Açıklama', counterText: ''),
+              decoration: const InputDecoration(
+                labelText: 'Açıklama',
+                counterText: '',
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ],
             const SizedBox(height: 12),
-            FilledButton(onPressed: _submit, child: const Text('Düzelt ve gönder')),
+            FilledButton(
+              onPressed: _submit,
+              child: const Text('Düzelt ve gönder'),
+            ),
           ],
         ),
       ),

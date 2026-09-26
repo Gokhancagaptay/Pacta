@@ -317,6 +317,17 @@ describe("sınırlar", () => {
     assert.equal(res.state, "confirmed");
   });
 
+  it("bakiye üst sınırı aşılamaz", async () => {
+    const ledgerId = await sharedLedger();
+    await db.collection("ledgers").doc(ledgerId)
+      .update({"balances.TRY": 1e15 - 50});
+    // Aleyhe kayıt hemen işlenir; sınırı aşarsa reddedilir.
+    await rejectsWith(call(fns.createEntry, "ayse", {
+      ledgerId, entryId: randomUUID(), kind: "debt", iGave: false,
+      asset: "TRY", amountMinor: 100, occurredOn: today,
+    }), "failed-precondition", /üst sınır/);
+  });
+
   it("günlük kayıt ve düzeltme sınırı", async () => {
     const ledgerId = await sharedLedger();
     await db.collection("rateLimits").doc("entries_ali")
@@ -339,6 +350,9 @@ describe("girdi doğrulama ve tekrar", () => {
       {asset: "BTC"},
       {occurredOn: "2026-02-30"},
       {dueOn: "2026-09-01"},
+      {occurredOn: "9999-12-31"},
+      {occurredOn: "0100-01-01"},
+      {dueOn: "2099-01-01"},
       {extra: true},
     ]) {
       await rejectsWith(

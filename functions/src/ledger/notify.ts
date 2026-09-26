@@ -86,14 +86,19 @@ export async function deliver(notices: Notice[]): Promise<void> {
  * @return {Promise<number>} Gönderilen sayısı.
  */
 export async function flushPushQueue(now: Date): Promise<number> {
-  const due = await db.collection("pushQueue")
-    .where("sendAfter", "<=", Timestamp.fromDate(now))
-    .limit(500)
-    .get();
-  for (const doc of due.docs) {
-    const q = doc.data();
-    await sendPushNotification(q.uid, q.title, q.message, q.data);
-    await doc.ref.delete();
+  // Günde bir kez çalışır; birikenler 500'lük parçalar hâlinde boşaltılır.
+  let sent = 0;
+  for (;;) {
+    const due = await db.collection("pushQueue")
+      .where("sendAfter", "<=", Timestamp.fromDate(now))
+      .limit(500)
+      .get();
+    for (const doc of due.docs) {
+      const q = doc.data();
+      await sendPushNotification(q.uid, q.title, q.message, q.data);
+      await doc.ref.delete();
+    }
+    sent += due.size;
+    if (due.size < 500) return sent;
   }
-  return due.size;
 }

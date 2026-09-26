@@ -99,7 +99,12 @@ service cloud.firestore {
     }
 
     match /ledgers/{ledgerId} {
-      allow get: if signedIn() && (resource == null || isMember(resource.data));
+      // Olmayan defter için "yok" yanıtı yalnızca kişinin kendi kimliğini
+      // içeren numaraya verilir; başkaları arasında defter olup olmadığı
+      // (ilişki) böyle öğrenilemez.
+      allow get: if signedIn() && (
+        (resource == null && ledgerId.matches('.*' + request.auth.uid + '.*'))
+        || (resource != null && isMember(resource.data)));
       allow list: if isMember(resource.data);
       allow write: if false;
 

@@ -260,9 +260,12 @@ describe("v2 defterler", () => {
     await assertFails(getDoc(doc(anon(), "ledgers/p_ali_ayse")));
   });
 
-  it("olmayan defter izin hatası değil 'yok' döner", async () => {
-    const snap = await assertSucceeds(getDoc(doc(mallory(), "ledgers/p_x_y")));
+  it("olmayan defter yalnızca kendi numarasında 'yok' döner", async () => {
+    const snap = await assertSucceeds(
+      getDoc(doc(mallory(), "ledgers/p_ali_mallory")));
     assert.equal(snap.exists(), false);
+    // Başkaları arasında defter var mı sorusu yanıtlanmaz.
+    await assertFails(getDoc(doc(mallory(), "ledgers/p_ali_veli")));
   });
 
   it("kayıt, sürüm ve olayları yalnızca taraflar okur", async () => {

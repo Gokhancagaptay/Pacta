@@ -30,6 +30,7 @@ import {
   deltaForSide,
   directionFor,
   isAgainstProposer,
+  dateRangeError,
   isValidDate,
   otherSide,
   todayIstanbul,
@@ -183,6 +184,9 @@ const DAILY = {ledgers: 20, entries: 300, revisions: 100};
 /** Bir kişinin yanıtını bekleyen kayıt üst sınırı (gelen kutusu taşmasın). */
 const MAX_PENDING_PER_LEDGER = 50;
 
+/** Defterde birim başına bakiye üst sınırı (kuruş; 10 trilyon TL). */
+const MAX_BALANCE = 1e15;
+
 /**
  * Bir kaydı alıcının bakış açısından tek cümleyle anlatır.
  * @param {Side} recipient Alıcının tarafı.
@@ -317,6 +321,12 @@ function commitToLedger(
   e: Entry,
   pendingChange: number
 ) {
+  // Tek kayıt sınırlı ama toplam da sınırlanır; JS sayıları 2^53 üstünde
+  // kuruş kaybeder.
+  const next = (ledger.balances?.[e.asset] ?? 0) + e.deltaMinor;
+  if (Math.abs(next) > MAX_BALANCE) {
+    fail("failed-precondition", "Bu kişiyle bakiye üst sınıra ulaştı.");
+  }
   const seq = ledger.head.seq + 1;
   const chain = chainHash(ledger.head.chainHash, e.contentHash, seq);
   const update: {[field: string]: unknown} = {
@@ -552,11 +562,11 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
 export const createEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = requireUid(req);
   const input = parse(CreateEntryInput, req.data);
+  const dateError =
+    dateRangeError(input.occurredOn, input.dueOn, todayIstanbul());
+  if (dateError) fail("invalid-argument", dateError);
   await consumeDaily(`entries_${uid}`, DAILY.entries,
     "Bugün için kayıt sınırına ulaştınız. Yarın tekrar deneyin.");
-  if (input.dueOn && input.dueOn < input.occurredOn) {
-    fail("invalid-argument", "Vade, işlem tarihinden önce olamaz.");
-  }
   if (input.linkedEntryId && input.kind !== "payment") {
     fail("invalid-argument", "Yalnızca ödeme bir borca bağlanabilir.");
   }
@@ -819,9 +829,9 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
       description: input.description ?? entry.description,
       linkedEntryId: entry.linkedEntryId,
     };
-    if (content.dueOn && content.dueOn < content.occurredOn) {
-      fail("invalid-argument", "Vade, işlem tarihinden önce olamaz.");
-    }
+    const dateError =
+      dateRangeError(content.occurredOn, content.dueOn, todayIstanbul());
+    if (dateError) fail("invalid-argument", dateError);
     const version = entry.version + 1;
     const other = otherSide(side);
     const revised: Entry = {
