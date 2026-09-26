@@ -10,6 +10,7 @@ import '../../screens/settings/notification_settings_screen.dart';
 import '../../services/auth_service.dart';
 import '../ledger/application/providers.dart';
 import '../ledger/presentation/contacts_ui.dart';
+import 'delete_account_page.dart';
 import 'profile_providers.dart';
 
 class ProfilePage extends ConsumerWidget {
@@ -127,6 +128,14 @@ class ProfilePage extends ConsumerWidget {
                   Icons.logout_rounded,
                   'Çıkış yap',
                   () => AuthService().signOut(),
+                ),
+                const Divider(indent: 56),
+                link(
+                  Icons.person_remove_outlined,
+                  'Hesabı sil',
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const DeleteAccountPage()),
+                  ),
                   color: c.debt,
                 ),
               ],

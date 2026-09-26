@@ -320,4 +320,47 @@ class AuthService {
       return 'Şifre değiştirilirken hata oluştu.';
     }
   }
+
+  /// Hesap şifreyle mi açıldı (değilse Google ile).
+  bool get isPasswordUser =>
+      _auth.currentUser?.providerData.any((p) => p.providerId == 'password') ??
+      false;
+
+  /// Geri alınamaz işlemden (hesap silme) önce kimliği yeniden doğrular.
+  /// Şifreli hesapta [password] gerekir; Google hesabında Google seçici açılır.
+  /// Başarılıysa null, değilse Türkçe hata mesajı döner.
+  Future<String?> reauthenticate({String? password}) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Oturum bulunamadı. Yeniden giriş yapın.';
+    try {
+      final AuthCredential credential;
+      if (isPasswordUser) {
+        if (password == null || password.isEmpty) return 'Şifrenizi girin.';
+        credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        );
+      } else {
+        final account = await _googleSignIn.signIn();
+        if (account == null) return 'Google hesabı seçilmedi.';
+        final auth = await account.authentication;
+        credential = GoogleAuthProvider.credential(
+          accessToken: auth.accessToken,
+          idToken: auth.idToken,
+        );
+      }
+      await user.reauthenticateWithCredential(credential);
+      // Sunucu, belirteçteki giriş zamanına bakar.
+      await user.getIdToken(true);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-mismatch') {
+        return 'Farklı bir hesap seçtiniz. Bu hesabın Google hesabıyla doğrulayın.';
+      }
+      return _handleAuthError(e);
+    } catch (e) {
+      debugPrint('Yeniden doğrulama hatası: $e');
+      return 'Doğrulama yapılamadı. Tekrar deneyin.';
+    }
+  }
 }

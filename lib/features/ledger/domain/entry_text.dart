@@ -67,6 +67,10 @@ class EntryText {
             ? (label: 'İtiraz edildi · düzeltmeniz bekleniyor', tone: ChipTone.dispute, icon: Icons.edit_note_rounded)
             : (label: 'İtirazınız iletildi', tone: ChipTone.dispute, icon: Icons.edit_note_rounded);
       case EntryState.rejected:
+        if (e.rejectionReason == 'accountDeleted') {
+          // Kimse reddetmedi: karşı taraf hesabını sildiği için kapandı.
+          return (label: 'Hesap silindiği için kapandı', tone: ChipTone.neutral, icon: Icons.person_off_outlined);
+        }
         return (label: 'Reddedildi', tone: ChipTone.debt, icon: Icons.block_rounded);
       case EntryState.cancelled:
         return (label: 'Geri çekildi', tone: ChipTone.neutral, icon: Icons.undo_rounded);

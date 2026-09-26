@@ -83,6 +83,9 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
   }
 
   Widget? _actions(LedgerEntry e, Ledger ledger, Side me) {
+    // Karşı taraf hesabını sildiyse defter kapalıdır; sunucu hiçbir komutu
+    // kabul etmez, düğme gösterilmez.
+    if (ledger.isClosed) return null;
     final c = context.pacta;
     final other = ledger.other(ref.read(currentUidProvider)).displayName;
     final List<Widget> children;

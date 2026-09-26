@@ -9,10 +9,17 @@ const fns = require("../lib/index.js");
 const {db} = require("../lib/common/firebase.js");
 
 // Varsayılan: e-postası doğrulanmış oturum; verified=false doğrulanmamış.
-const call = (fn, uid, data, {verified = true} = {}) =>
+// authTime: oturumun açıldığı an (saniye); hesap silme yeni oturum ister.
+const call = (fn, uid, data, {verified = true, authTime} = {}) =>
   fft.wrap(fn)({
     data,
-    auth: uid ? {uid, token: {email_verified: verified}} : undefined,
+    auth: uid ? {
+      uid,
+      token: {
+        email_verified: verified,
+        ...(authTime === undefined ? {} : {auth_time: authTime}),
+      },
+    } : undefined,
   });
 
 const rejectsWith = (promise, code, text) =>

@@ -18,6 +18,8 @@ export interface LedgerSide {
   displayName: string;
   /** Ortak defterde giriş e-postası (karşı taraf kişiyi tanısın diye). */
   email?: string | null;
+  /** Bu taraf hesabını sildi; ad anonim, defter kapalı. */
+  deleted?: boolean;
 }
 
 /** Vadesi olan ve henüz kapanmamış borç parçası (bkz. due.ts). */

@@ -97,7 +97,9 @@ class LedgerTile extends ConsumerWidget {
     final due = ledger.dueItems.isEmpty ? null : ledger.dueItems.first.dueOn;
     String? subtitle;
     var subtitleColor = c.muted;
-    if (ledger.pendingCount > 0) {
+    if (ledger.isClosed) {
+      subtitle = 'Hesabını sildi · geçmiş saklanıyor';
+    } else if (ledger.pendingCount > 0) {
       subtitle = '${ledger.pendingCount} kayıt onay bekliyor';
       subtitleColor = c.pending;
     } else if (due != null && due < today) {

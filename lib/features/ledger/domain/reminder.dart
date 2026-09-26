@@ -32,7 +32,9 @@ class ReminderPlan {
     String uid,
     LocalDate today,
   ) {
-    if (ledger.isPrivate) return const ReminderPlan(kind: null, waiting: 0);
+    if (ledger.isPrivate || ledger.isClosed) {
+      return const ReminderPlan(kind: null, waiting: 0);
+    }
     final me = ledger.sideOf(uid) ?? Side.a;
     final other = me == Side.a ? Side.b : Side.a;
     final waiting = entries.where((e) => e.awaits(other)).length;

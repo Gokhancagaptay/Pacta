@@ -147,7 +147,7 @@ class LedgerPage extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (_) => [
-                  if (!ledger.isPrivate)
+                  if (!ledger.isPrivate && !ledger.isClosed)
                     PopupMenuItem(
                       value: 'mute',
                       child: Text(
@@ -202,6 +202,22 @@ class LedgerPage extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 14),
+                    // Karşı taraf hesabını sildiyse defter yalnızca okunur.
+                    if (ledger.isClosed)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: c.line,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Bu kişi Pacta hesabını sildi. Ortak geçmişiniz '
+                          'burada saklanıyor; yeni kayıt eklenemez.',
+                          style: TextStyle(color: c.muted),
+                        ),
+                      )
+                    else
                     Row(
                       children: [
                         _Action(

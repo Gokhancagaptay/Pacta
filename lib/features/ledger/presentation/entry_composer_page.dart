@@ -421,8 +421,11 @@ class _PersonPickerSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
-    final ledgers =
-        ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[];
+    // Hesabını silen kişinin defterine kayıt eklenemez.
+    final ledgers = [
+      for (final l in ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[])
+        if (!l.isClosed) l,
+    ];
     final favorites = ref.watch(favoriteLedgersProvider);
     return SafeArea(
       child: ConstrainedBox(

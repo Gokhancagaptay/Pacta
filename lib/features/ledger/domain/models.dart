@@ -24,12 +24,18 @@ T _enum<T extends Enum>(List<T> values, Object? name, T fallback) {
 DateTime? _time(Object? value) => value is Timestamp ? value.toDate() : null;
 
 class LedgerSide {
-  const LedgerSide({required this.uid, required this.displayName, this.email});
+  const LedgerSide({
+    required this.uid,
+    required this.displayName,
+    this.email,
+    this.deleted = false,
+  });
 
   factory LedgerSide.fromMap(Map<String, dynamic>? m) => LedgerSide(
     uid: m?['uid'] as String?,
     displayName: (m?['displayName'] as String?) ?? 'Pacta kullanıcısı',
     email: m?['email'] as String?,
+    deleted: m?['deleted'] == true,
   );
 
   final String? uid;
@@ -37,6 +43,9 @@ class LedgerSide {
 
   /// Ortak defterde giriş e-postası (özel defterde yok).
   final String? email;
+
+  /// Bu kişi hesabını sildi (ad anonim, defter kapalı).
+  final bool deleted;
 }
 
 /// Vadesi olan, henüz kapanmamış borç parçası. Sunucu hesaplar: ödemeler
@@ -82,6 +91,7 @@ class Ledger {
     this.lastEntryAt,
     this.dueItems = const [],
     this.lastReminderOn = const {},
+    this.isClosed = false,
   });
 
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
@@ -91,6 +101,7 @@ class Ledger {
     return Ledger(
       id: id,
       isPrivate: m['mode'] == 'private',
+      isClosed: m['status'] == 'closed',
       a: LedgerSide.fromMap((sides['a'] as Map?)?.cast<String, dynamic>()),
       b: LedgerSide.fromMap((sides['b'] as Map?)?.cast<String, dynamic>()),
       balances: {
@@ -115,6 +126,9 @@ class Ledger {
 
   final String id;
   final bool isPrivate;
+
+  /// Taraflardan biri hesabını sildi: geçmiş okunur, yeni kayıt eklenemez.
+  final bool isClosed;
   final LedgerSide a;
   final LedgerSide b;
 
@@ -192,6 +206,7 @@ class LedgerEntry {
     required this.reversedBy,
     required this.reversalPendingId,
     required this.dispute,
+    this.rejectionReason,
     this.createdAt,
     this.updatedAt,
   });
@@ -220,6 +235,7 @@ class LedgerEntry {
       reversedBy: m['reversedBy'] as String?,
       reversalPendingId: m['reversalPendingId'] as String?,
       dispute: dispute == null ? null : EntryDispute.fromMap(dispute),
+      rejectionReason: (m['rejection'] as Map?)?['reason'] as String?,
       createdAt: _time(m['createdAt']),
       updatedAt: _time(m['updatedAt']),
     );
@@ -245,6 +261,9 @@ class LedgerEntry {
   final String? reversedBy;
   final String? reversalPendingId;
   final EntryDispute? dispute;
+
+  /// Ret gerekçesi (ör. "accountDeleted": karşı taraf hesabını sildi).
+  final String? rejectionReason;
   final DateTime? createdAt;
 
   /// Son durum değişikliği (Hareketler > Geçmiş sırası).

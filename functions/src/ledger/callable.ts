@@ -41,6 +41,30 @@ export function requireUid(req: CallableRequest<unknown>): string {
 }
 
 /**
+ * Geri alınamaz işlemler (hesap silme) için: oturum son birkaç dakika içinde
+ * açılmış (yeniden giriş yapılmış) olmalı. Kilidi açık unutulmuş telefondan
+ * hesap silinemez. E-posta doğrulaması aranmaz; doğrulanmamış hesap da
+ * kendini silebilir.
+ * @param {CallableRequest<unknown>} req İstek.
+ * @param {number} maxAgeSeconds Girişin en fazla kaç saniye önce olduğu.
+ * @param {Date} now An.
+ * @return {string} Oturumdaki kullanıcı.
+ */
+export function requireRecentLogin(
+  req: CallableRequest<unknown>,
+  maxAgeSeconds: number,
+  now: Date = new Date()
+): string {
+  if (!req.auth) fail("unauthenticated", "Giriş yapmalısınız.");
+  const authTime = Number(req.auth.token.auth_time ?? 0);
+  if (now.getTime() / 1000 - authTime > maxAgeSeconds) {
+    fail("failed-precondition",
+      "REAUTH_REQUIRED: Güvenlik için yeniden giriş yapmanız gerekiyor.");
+  }
+  return req.auth.uid;
+}
+
+/**
  * Günlük kullanım hakkından bir tane düşer; dolmuşsa reddeder. Spam ve
  * kötüye kullanımı sınırlar (rateLimits istemciye kapalıdır).
  * @param {string} key Sayaç (ör. "entries_<uid>").

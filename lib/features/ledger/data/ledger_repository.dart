@@ -9,12 +9,19 @@ import '../domain/reminder.dart';
 
 /// Komut hatası; mesaj sunucudan Türkçe gelir.
 class LedgerException implements Exception {
-  const LedgerException(this.message, {this.isStale = false});
+  const LedgerException(
+    this.message, {
+    this.isStale = false,
+    this.needsReauth = false,
+  });
 
   final String message;
 
   /// Kullanıcı eski bir sürüme bakıyordu; ekran güncel hâli gösterecek.
   final bool isStale;
+
+  /// Geri alınamaz işlem (hesap silme) için yeniden giriş gerekiyor.
+  final bool needsReauth;
 
   @override
   String toString() => message;
@@ -193,6 +200,10 @@ class LedgerRepository {
     return r['ledgerId'] as String;
   }
 
+  /// Hesabı siler. Önce yeniden giriş yapılmış olmalı (sunucu eski oturumu
+  /// reddeder: [LedgerException.message] "REAUTH_REQUIRED" ile başlar).
+  Future<void> deleteAccount() => _call('deleteAccount', {});
+
   /// Özel defteri kayıtlarıyla birlikte siler (ortak defter silinmez).
   Future<void> deletePrivateLedger(String ledgerId) =>
       _call('deletePrivateLedger', {'ledgerId': ledgerId});
@@ -316,8 +327,11 @@ class LedgerRepository {
     } on FirebaseFunctionsException catch (e) {
       final message = e.message ?? 'İşlem tamamlanamadı.';
       throw LedgerException(
-        message.replaceFirst('STALE_VERSION: ', ''),
+        message
+            .replaceFirst('STALE_VERSION: ', '')
+            .replaceFirst('REAUTH_REQUIRED: ', ''),
         isStale: message.startsWith('STALE_VERSION'),
+        needsReauth: message.startsWith('REAUTH_REQUIRED'),
       );
     } catch (_) {
       throw const LedgerException(

@@ -13,6 +13,7 @@ import 'package:pacta/features/ledger/domain/reminder.dart';
 import 'package:pacta/features/ledger/presentation/entry_composer_page.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/features/ledger/presentation/ledger_page.dart';
+import 'package:pacta/features/profile/delete_account_page.dart';
 import 'package:pacta/features/profile/profile_providers.dart';
 import 'package:pacta/models/user_model.dart';
 
@@ -52,6 +53,11 @@ class FakeRepo extends LedgerRepository {
   @override
   Future<void> setFavorite(String uid, String ledgerId, bool favorite) async {
     calls.add('favorite $ledgerId $favorite');
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    calls.add('deleteAccount');
   }
 
   @override
@@ -134,6 +140,18 @@ final ledgers = [
   ]),
 ];
 
+// Karşı tarafın hesabını sildiği, kapalı defter (listelere eklenmez).
+final closedLedger = Ledger.fromMap('p_eski', {
+  'mode': 'shared',
+  'status': 'closed',
+  'sides': {
+    'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+    'b': {'uid': 'eski', 'displayName': 'Silinmiş kullanıcı', 'deleted': true},
+  },
+  'balances': {'TRY': 30000},
+  'pendingCount': 0,
+});
+
 final recent = [
   LedgerEntry.fromMap('e-can', {
     'ledgerId': 'p_can',
@@ -176,7 +194,9 @@ Widget app(Widget home, FakeRepo repo) => ProviderScope(
     recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
     todayProvider.overrideWith((ref) => today),
     ledgerProvider.overrideWith(
-      (ref, id) => Stream.value(ledgers.firstWhere((l) => l.id == id)),
+      (ref, id) => Stream.value(
+        [...ledgers, closedLedger].firstWhere((l) => l.id == id),
+      ),
     ),
     entriesProvider.overrideWith((ref, id) => Stream.value(const [])),
     userProfileProvider.overrideWith(
@@ -365,6 +385,58 @@ void main() {
     expect(find.textContaining('açık bakiye'), findsOneWidget);
     await tester.tap(find.text('Vazgeç'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('Kapalı defter: açıklama görünür, yeni kayıt eklenemez', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_eski'), FakeRepo()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Silinmiş kullanıcı'), findsOneWidget);
+    expect(find.textContaining('Pacta hesabını sildi'), findsOneWidget);
+    expect(find.text('Kayıt ekle'), findsNothing);
+    expect(find.text('Hatırlat'), findsNothing);
+  });
+
+  testWidgets('Hesap silme: onay ve yeniden giriş olmadan silinmez', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    final reauthAnswers = <String?>['E-posta ya da şifre hatalı.', null];
+    var signedOut = false;
+    await tester.pumpWidget(
+      app(
+        DeleteAccountPage(
+          passwordUser: true,
+          reauthenticate: ({String? password}) async => reauthAnswers.removeAt(0),
+          signOut: () async => signedOut = true,
+        ),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Açıklamalar uzun; düğme sayfanın altında.
+    await tester.scrollUntilVisible(find.text('Hesabımı kalıcı olarak sil'), 300);
+    final button = find.widgetWithText(FilledButton, 'Hesabımı kalıcı olarak sil');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.tap(find.byType(Checkbox));
+    await tester.enterText(find.widgetWithText(TextField, 'Şifreniz'), 'yanlis');
+    await tester.pumpAndSettle();
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('E-posta ya da şifre hatalı.'), findsOneWidget);
+    expect(repo.calls, isEmpty);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(repo.calls, ['deleteAccount']);
+    expect(signedOut, isTrue);
+    expect(find.text('Hesabınız silindi. Görüşmek üzere.'), findsOneWidget);
   });
 
   testWidgets('Hatırlat: tutarsız önizleme gösterir ve sunucuya gönderir', (

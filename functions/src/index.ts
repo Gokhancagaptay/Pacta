@@ -12,6 +12,7 @@ export {
   reverseEntry,
   reviseEntry,
 } from "./ledger/commands";
+export {deleteAccount} from "./ledger/account";
 export {
   deletePrivateLedger,
   myPactaCode,
