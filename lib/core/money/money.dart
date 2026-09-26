@@ -59,7 +59,12 @@ class Money {
         '${asset.label} için en fazla ${asset.scale} ondalık basamak girilebilir.',
       );
     }
-    final minorText = whole + fraction.padRight(asset.scale, '0');
+    final minorText = (whole + fraction.padRight(asset.scale, '0'))
+        .replaceFirst(RegExp('^0+(?=.)'), '');
+    // Çok uzun sayı int.parse'ta İngilizce hata verir; önce uzunluk bakılır.
+    if (minorText.length > maxMinor.toString().length) {
+      throw const FormatException('Tutar çok büyük.');
+    }
     final minor = int.parse(minorText);
     if (minor > maxMinor) throw const FormatException('Tutar çok büyük.');
     return Money(minor, asset);

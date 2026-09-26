@@ -268,6 +268,7 @@ class LedgerRepository {
   Future<void> revise(
     LedgerEntry e, {
     Money? amount,
+    LocalDate? occurredOn,
     LocalDate? dueOn,
     bool clearDue = false,
     String? description,
@@ -275,6 +276,7 @@ class LedgerRepository {
     ..._key(e),
     if (amount != null) 'amountMinor': amount.minor,
     if (amount != null) 'asset': amount.asset.code,
+    if (occurredOn != null) 'occurredOn': occurredOn.toIso(),
     if (dueOn != null || clearDue) 'dueOn': dueOn?.toIso(),
     'description': ?description,
   });

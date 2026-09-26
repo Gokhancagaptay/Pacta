@@ -140,39 +140,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       children: [
         SizedBox(height: size.height * 0.02),
+        // Fotoğraf yükleme yok; baş harf gösterilir.
         Center(
-          child: Stack(
-            children: [
-              CircleAvatar(
-                radius: size.width * 0.125,
-                backgroundColor: Colors.green.shade100,
-                child: Text(
-                  widget.user.adSoyad?.isNotEmpty ?? false
-                      ? widget.user.adSoyad![0].toUpperCase()
-                      : '?',
-                  style: TextStyle(
-                    fontSize: size.width * 0.1,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade700,
-                  ),
-                ),
+          child: CircleAvatar(
+            radius: size.width * 0.125,
+            backgroundColor: Colors.green.shade100,
+            child: Text(
+              widget.user.adSoyad?.isNotEmpty ?? false
+                  ? widget.user.adSoyad![0].toUpperCase()
+                  : '?',
+              style: TextStyle(
+                fontSize: size.width * 0.1,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade700,
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: GestureDetector(
-                  child: CircleAvatar(
-                    radius: size.width * 0.045,
-                    backgroundColor: Theme.of(context).primaryColor,
-                    child: Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: size.width * 0.05,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
         SizedBox(height: size.height * 0.02),

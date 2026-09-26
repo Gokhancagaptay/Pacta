@@ -129,8 +129,9 @@ final totalsProvider = Provider.autoDispose<AsyncValue<Totals>>((ref) {
   return ref.watch(ledgersProvider).whenData((l) => Totals.from(l, uid));
 });
 
-/// Bugün (testlerde sabitlenebilir).
-final todayProvider = Provider<LocalDate>((ref) => LocalDate.today());
+/// Bugün. Ana kabuk gece yarısında ve uygulamaya dönüldüğünde günceller
+/// (vade renkleri, "Bugün/Dün" etiketleri eski günde kalmasın).
+final todayProvider = StateProvider<LocalDate>((ref) => LocalDate.today());
 
 /// Tüm defterlerdeki son kayıtlar (Hareketler > Geçmiş).
 final recentEntriesProvider = StreamProvider.autoDispose<List<LedgerEntry>>((
@@ -200,11 +201,19 @@ final personRowsProvider = Provider.autoDispose<AsyncValue<List<PersonRow>>>((
       );
 });
 
-final peopleFilterProvider = StateProvider<PeopleFilter>(
-  (ref) => PeopleFilter.all,
-);
-final peopleSortProvider = StateProvider<PeopleSort>((ref) => PeopleSort.recent);
-final peopleQueryProvider = StateProvider<String>((ref) => '');
+// Süzgeç, sıralama ve arama hesaba özeldir: başka hesap girince sıfırlanır.
+final peopleFilterProvider = StateProvider<PeopleFilter>((ref) {
+  ref.watch(currentUidProvider);
+  return PeopleFilter.all;
+});
+final peopleSortProvider = StateProvider<PeopleSort>((ref) {
+  ref.watch(currentUidProvider);
+  return PeopleSort.recent;
+});
+final peopleQueryProvider = StateProvider<String>((ref) {
+  ref.watch(currentUidProvider);
+  return '';
+});
 
 /// Kişiler ekranı tablo görünümünde mi.
 final peopleTableViewProvider = StateProvider<bool>((ref) => false);

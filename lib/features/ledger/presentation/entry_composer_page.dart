@@ -32,7 +32,10 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
   final _description = TextEditingController();
   late ComposerMode _mode = widget.initialMode ?? ComposerMode.lent;
   late String? _ledgerId = widget.ledgerId;
-  late final String _entryId = ref.read(ledgerRepositoryProvider).newId();
+  /// Aynı form tekrar gönderilirse aynı kimlik kullanılır (sunucu tek kayıt
+  /// üretir). Başarısız denemeden sonra form değiştiyse yeni kimlik alınır.
+  late String _entryId = ref.read(ledgerRepositoryProvider).newId();
+  String? _lastAttempt;
   Asset _asset = Asset.tryLira;
   _Due _due = _Due.none;
   LocalDate? _customDue;
@@ -130,6 +133,18 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       _amountError = null;
       _busy = true;
     });
+    final attempt = [
+      ledgerId,
+      _mode.name,
+      amount.minor,
+      _asset.code,
+      _isPayment ? '' : _dueOn?.toIso(),
+      _description.text.trim(),
+    ].join('|');
+    if (_lastAttempt != null && _lastAttempt != attempt) {
+      _entryId = ref.read(ledgerRepositoryProvider).newId();
+    }
+    _lastAttempt = attempt;
     EntryState? state;
     final ok = await runCommand(context, () async {
       state = await ref.read(ledgerRepositoryProvider).createEntry(

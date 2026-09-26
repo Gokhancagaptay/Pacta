@@ -45,6 +45,13 @@ Future<bool> runCommand(
       );
     }
     return false;
+  } catch (e) {
+    // Beklenmeyen hata da kullanıcıya söylenir; düğmeler "meşgul"de kalmaz.
+    debugPrint('Komut hatası: $e');
+    if (context.mounted) {
+      showSnack(context, 'İşlem tamamlanamadı. Tekrar deneyin.', error: true);
+    }
+    return false;
   }
 }
 
@@ -81,7 +88,11 @@ class LedgerTile extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     final today = ref.watch(todayProvider);
     final other = ledger.other(uid);
-    final balance = ledger.balanceFor(uid);
+    // TL bakiyesi yoksa ama altın/döviz varsa satırda o gösterilir
+    // ("0,00 ₺" yazıp borcu gizlemez).
+    final tryBalance = ledger.balanceFor(uid);
+    final all = ledger.balancesFor(uid);
+    final balance = tryBalance.isZero && all.isNotEmpty ? all.first : tryBalance;
     final c = context.pacta;
     final due = ledger.dueItems.isEmpty ? null : ledger.dueItems.first.dueOn;
     String? subtitle;
@@ -182,7 +193,9 @@ class EntryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.pacta;
     final status = EntryText.status(entry, me, isPrivate: isPrivate);
-    final counted = entry.state == EntryState.confirmed;
+    // Onaylı düzeltme kaydı asıl kayıtla birbirini sıfırlar; ikisi de gri.
+    final counted =
+        entry.state == EntryState.confirmed && entry.kind != EntryKind.reversal;
     final mine = Money(entry.deltaFor(me), entry.asset);
     final (fg, bg) = (counted ? status.tone : ChipTone.neutral) == ChipTone.neutral
         ? (c.muted, c.line)

@@ -174,7 +174,7 @@ Widget app(Widget home, FakeRepo repo) => ProviderScope(
     inboxProvider.overrideWith((ref) => Stream.value(inbox)),
     notificationsProvider.overrideWith((ref) => Stream.value(const [])),
     recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
-    todayProvider.overrideWithValue(today),
+    todayProvider.overrideWith((ref) => today),
     ledgerProvider.overrideWith(
       (ref, id) => Stream.value(ledgers.firstWhere((l) => l.id == id)),
     ),

@@ -68,6 +68,14 @@ void main() {
     });
   });
 
+  test('çok uzun tutar Türkçe hatayla reddedilir', () {
+    expect(
+      () => Money.parse('9' * 30, Asset.tryLira),
+      throwsA(isA<FormatException>().having((e) => e.message, 'mesaj', 'Tutar çok büyük.')),
+    );
+    expect(Money.parse('00012,5', Asset.tryLira).minor, 1250);
+  });
+
   test('farklı birimler toplanamaz', () {
     expect(
       () => const Money(1, Asset.tryLira) + const Money(1, Asset.usd),

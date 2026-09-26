@@ -170,13 +170,17 @@ class _HistoryTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
+    final ledgersAsync = ref.watch(ledgersProvider);
     final ledgers = {
-      for (final l in ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[])
-        l.id: l,
+      for (final l in ledgersAsync.valueOrNull ?? const <Ledger>[]) l.id: l,
     };
     final recent = ref.watch(recentEntriesProvider);
     final today = ref.watch(todayProvider);
 
+    // Kişiler yüklenmeden kayıtlar süzülürse "Henüz hareket yok" yanıp söner.
+    if (ledgersAsync.isLoading && ledgers.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return recent.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ErrorState(
@@ -255,7 +259,9 @@ class _HistoryTile extends StatelessWidget {
     final name = ledger.other(uid).displayName;
     final status = EntryText.status(entry, me, isPrivate: ledger.isPrivate);
     final counted =
-        entry.state == EntryState.confirmed && entry.reversedBy == null;
+        entry.state == EntryState.confirmed &&
+        entry.reversedBy == null &&
+        entry.kind != EntryKind.reversal;
     final title = entry.description.isEmpty
         ? EntryText.title(entry, me)
         : '${EntryText.title(entry, me)} · ${entry.description}';

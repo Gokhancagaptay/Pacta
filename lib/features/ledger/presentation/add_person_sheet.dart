@@ -234,7 +234,13 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
                 quick(
                   Icons.share_rounded,
                   'Davet et',
-                  () => shareInvite(context, ref),
+                  () => shareInvite(
+                    context,
+                    ref,
+                    onError: (m) {
+                      if (mounted) _fail(m);
+                    },
+                  ),
                 ),
               ],
             ),

@@ -96,29 +96,20 @@ class _PeopleBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.pacta;
     final filter = ref.watch(peopleFilterProvider);
+    final searchable = all.length >= PeoplePage.searchThreshold;
     final rows = selectRows(
       all,
       filter: filter,
       sort: ref.watch(peopleSortProvider),
-      query: ref.watch(peopleQueryProvider),
+      // Arama kutusu görünmüyorsa eski sorgu listeyi süzmez.
+      query: searchable ? ref.watch(peopleQueryProvider) : '',
     );
     final totals = SummaryTotals.of(rows);
 
     return ListView(
       padding: const EdgeInsets.only(top: 4, bottom: 24),
       children: [
-        if (all.length >= PeoplePage.searchThreshold)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-            child: TextField(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
-                hintText: 'Kişi ara',
-                isDense: true,
-              ),
-              onChanged: (q) => ref.read(peopleQueryProvider.notifier).state = q,
-            ),
-          ),
+        if (searchable) const _SearchField(),
         // Sarılır, kaydırılmaz: tüm seçenekler görünür kalsın.
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
@@ -153,8 +144,9 @@ class _PeopleBody extends ConsumerWidget {
                   onPressed: () {
                     ref.read(peopleFilterProvider.notifier).state =
                         PeopleFilter.all;
+                    ref.read(peopleQueryProvider.notifier).state = '';
                   },
-                  child: const Text('Süzgeci temizle'),
+                  child: const Text('Süzgeci ve aramayı temizle'),
                 ),
               ],
             ),
@@ -185,6 +177,54 @@ class _PeopleBody extends ConsumerWidget {
           ),
         const _HiddenLink(),
       ],
+    );
+  }
+}
+
+/// Kişi araması; sorgu dışarıdan temizlenince kutu da boşalır.
+class _SearchField extends ConsumerStatefulWidget {
+  const _SearchField();
+
+  @override
+  ConsumerState<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends ConsumerState<_SearchField> {
+  late final _controller = TextEditingController(
+    text: ref.read(peopleQueryProvider),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(peopleQueryProvider, (_, next) {
+      if (next != _controller.text) _controller.text = next;
+    });
+    final hasText = ref.watch(peopleQueryProvider).isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: TextField(
+        controller: _controller,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search_rounded),
+          hintText: 'Ad ya da e-posta ara',
+          isDense: true,
+          suffixIcon: !hasText
+              ? null
+              : IconButton(
+                  tooltip: 'Aramayı temizle',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () =>
+                      ref.read(peopleQueryProvider.notifier).state = '',
+                ),
+        ),
+        onChanged: (q) => ref.read(peopleQueryProvider.notifier).state = q,
+      ),
     );
   }
 }
@@ -228,11 +268,23 @@ class _TotalsCard extends StatelessWidget {
     );
     return SurfaceCard(
       padding: const EdgeInsets.all(14),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          cell('Alacağınız', AmountText(totals.receivable, color: c.credit)),
-          cell('Borcunuz', AmountText(totals.payable, color: c.debt)),
-          cell('Net', AmountText(totals.net, signed: true, colorBySign: true)),
+          Row(
+            children: [
+              cell('Alacağınız', AmountText(totals.receivable, color: c.credit)),
+              cell('Borcunuz', AmountText(totals.payable, color: c.debt)),
+              cell('Net', AmountText(totals.net, signed: true, colorBySign: true)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Ana sayfadaki toplam kaldırılan kişileri de içerir; bu yalnızca
+          // listede görünenlerin TL toplamıdır.
+          Text(
+            'Listede görünen kişilerin TL toplamı',
+            style: TextStyle(fontSize: 11, color: c.muted),
+          ),
         ],
       ),
     );

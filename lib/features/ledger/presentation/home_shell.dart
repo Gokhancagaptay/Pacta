@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/dates/local_date.dart';
 import '../../../services/notification_routes.dart';
 import '../../profile/profile_page.dart';
 import '../application/providers.dart';
@@ -22,13 +23,17 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   int _index = 0;
   StreamSubscription<String>? _routes;
+  Timer? _midnight;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleMidnight();
     // Bildirime dokunulunca ilgili kayıt ya da defter açılır.
     _routes = NotificationRoutes.stream.listen(_openRoute);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -39,8 +44,32 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _midnight?.cancel();
     _routes?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshToday();
+  }
+
+  void _refreshToday() {
+    final today = LocalDate.today();
+    final current = ref.read(todayProvider.notifier);
+    if (current.state != today) current.state = today;
+  }
+
+  /// Uygulama gece yarısını açık geçirirse gün değişir.
+  void _scheduleMidnight() {
+    final now = DateTime.now();
+    final next = DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    _midnight = Timer(next.difference(now), () {
+      if (!mounted) return;
+      _refreshToday();
+      _scheduleMidnight();
+    });
   }
 
   void _openRoute(String route) {

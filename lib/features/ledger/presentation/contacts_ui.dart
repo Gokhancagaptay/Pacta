@@ -22,12 +22,22 @@ final myPactaCodeProvider = FutureProvider.autoDispose<String>((ref) async {
 });
 
 /// Davet metnini paylaşım menüsüyle gönderir (WhatsApp, SMS...).
-Future<void> shareInvite(BuildContext context, WidgetRef ref) async {
+/// [onError] verilirse hata oraya iletilir (ör. açık panelin içinde
+/// gösterilir; alttaki bildirim şeridi panelin arkasında kalır).
+Future<void> shareInvite(
+  BuildContext context,
+  WidgetRef ref, {
+  void Function(String message)? onError,
+}) async {
   try {
     final code = await ref.read(myPactaCodeProvider.future);
     await SharePlus.instance.share(ShareParams(text: inviteText(code)));
   } on LedgerException catch (e) {
-    if (context.mounted) showSnack(context, e.message, error: true);
+    if (onError != null) {
+      onError(e.message);
+    } else if (context.mounted) {
+      showSnack(context, e.message, error: true);
+    }
   }
 }
 

@@ -27,7 +27,8 @@ class LedgerPage extends ConsumerWidget {
     final c = context.pacta;
 
     return ledgerAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
         body: ErrorState(
@@ -48,8 +49,14 @@ class LedgerPage extends ConsumerWidget {
         }
         final other = ledger.other(uid);
         final me = ledger.sideOf(uid) ?? Side.a;
-        final balance = ledger.balanceFor(uid);
-        final others = ledger.balancesFor(uid).where((m) => m.asset != balance.asset);
+        // Ana tutar TL; TL yoksa ilk altın/döviz bakiyesi (yoksa "denk" yazıp
+        // altında dolar alacağı göstermek çelişir).
+        final all = ledger.balancesFor(uid);
+        final tryBalance = ledger.balanceFor(uid);
+        final balance = tryBalance.isZero && all.isNotEmpty
+            ? all.first
+            : tryBalance;
+        final others = all.where((m) => m.asset != balance.asset);
         final today = ref.watch(todayProvider);
         final plan = ReminderPlan.of(
           ledger,
@@ -58,9 +65,11 @@ class LedgerPage extends ConsumerWidget {
           today,
         );
         final muted =
-            ref.watch(userProfileProvider).valueOrNull?.reminderMutes.contains(
-              ledger.id,
-            ) ??
+            ref
+                .watch(userProfileProvider)
+                .valueOrNull
+                ?.reminderMutes
+                .contains(ledger.id) ??
             false;
         final favorite = ref.watch(favoriteLedgersProvider).contains(ledger.id);
 
@@ -119,12 +128,20 @@ class LedgerPage extends ConsumerWidget {
               PopupMenuButton<String>(
                 tooltip: 'Diğer',
                 onSelected: (value) {
-                  void close() => Navigator.of(context).maybePop();
+                  void close() {
+                    if (context.mounted) Navigator.of(context).maybePop();
+                  }
+
                   switch (value) {
                     case 'mute':
                       _toggleMute(context, ref, ledger, muted);
                     case 'person' when ledger.isPrivate:
-                      deletePrivateLedger(context, ref, ledger, onDeleted: close);
+                      deletePrivateLedger(
+                        context,
+                        ref,
+                        ledger,
+                        onDeleted: close,
+                      );
                     case 'person':
                       hidePerson(context, ref, ledger, onHidden: close);
                   }
@@ -142,9 +159,7 @@ class LedgerPage extends ConsumerWidget {
                   PopupMenuItem(
                     value: 'person',
                     child: Text(
-                      ledger.isPrivate
-                          ? 'Defteri sil'
-                          : 'Listeden kaldır',
+                      ledger.isPrivate ? 'Defteri sil' : 'Listeden kaldır',
                     ),
                   ),
                 ],
@@ -197,7 +212,9 @@ class LedgerPage extends ConsumerWidget {
                         const SizedBox(width: 8),
                         _Action(
                           icon: Icons.south_west_rounded,
-                          label: balance.isNegative ? 'Ödeme yaptım' : 'Ödeme aldım',
+                          label: balance.isNegative
+                              ? 'Ödeme yaptım'
+                              : 'Ödeme aldım',
                           onTap: () => _compose(
                             context,
                             ledger,
@@ -314,7 +331,8 @@ class LedgerPage extends ConsumerWidget {
   void _compose(BuildContext context, Ledger ledger, {ComposerMode? mode}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => EntryComposerPage(ledgerId: ledger.id, initialMode: mode),
+        builder: (_) =>
+            EntryComposerPage(ledgerId: ledger.id, initialMode: mode),
       ),
     );
   }
@@ -391,7 +409,8 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
       final result = await ref
           .read(ledgerRepositoryProvider)
           .sendReminder(widget.ledger.id);
-      navigator.pop();
+      // Pencere bu arada kapandıysa arkadaki sayfa kapatılmaz.
+      if (mounted) navigator.pop();
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
@@ -431,91 +450,99 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
         children: [
           Icon(icon, size: 18, color: c.muted),
           const SizedBox(width: 10),
-          Expanded(child: Text(value, style: TextStyle(color: c.muted))),
+          Expanded(
+            child: Text(value, style: TextStyle(color: c.muted)),
+          ),
         ],
       ),
     );
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Nazik bir hatırlatma',
-              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$otherName uygulamada şu bildirimi görecek:',
-              style: TextStyle(color: c.muted),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: c.line.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(14),
+    // Gönderim sürerken pencere kapatılamaz.
+    return PopScope(
+      canPop: !_busy,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Nazik bir hatırlatma',
+                style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.notifications_rounded, color: c.credit),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          preview.title,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(preview.message),
-                      ],
+              const SizedBox(height: 4),
+              Text(
+                '$otherName uygulamada şu bildirimi görecek:',
+                style: TextStyle(color: c.muted),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: c.line.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.notifications_rounded, color: c.credit),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            preview.title,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(preview.message),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              note(Icons.lock_outline_rounded, 'Tutar bildirimde görünmez.'),
+              note(
+                Icons.schedule_rounded,
+                'Aynı kişiye $interval günde bir hatırlatma gönderebilirsiniz.',
+              ),
+              note(
+                Icons.bedtime_outlined,
+                '21:00–09:00 arasında gönderilirse bildirim sabah gider.',
+              ),
+              const SizedBox(height: 16),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
-                ],
-              ),
-            ),
-            note(Icons.lock_outline_rounded, 'Tutar bildirimde görünmez.'),
-            note(
-              Icons.schedule_rounded,
-              'Aynı kişiye $interval günde bir hatırlatma gönderebilirsiniz.',
-            ),
-            note(
-              Icons.bedtime_outlined,
-              '21:00–09:00 arasında gönderilirse bildirim sabah gider.',
-            ),
-            const SizedBox(height: 16),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-              ),
-            if (plan.nextOn != null)
-              StatusChip(
-                label:
-                    'Yakın zamanda hatırlattınız. Bir sonraki: '
-                    '${plan.nextOn!.formatShort()}',
-                tone: ChipTone.pending,
-                icon: Icons.schedule_rounded,
-              )
-            else
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+              if (plan.nextOn != null)
+                StatusChip(
+                  label:
+                      'Yakın zamanda hatırlattınız. Bir sonraki: '
+                      '${plan.nextOn!.formatShort()}',
+                  tone: ChipTone.pending,
+                  icon: Icons.schedule_rounded,
+                )
+              else
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: _busy ? null : _send,
+                  icon: const Icon(Icons.send_rounded),
+                  label: const Text('Hatırlatma gönder'),
                 ),
-                onPressed: _busy ? null : _send,
-                icon: const Icon(Icons.send_rounded),
-                label: const Text('Hatırlatma gönder'),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

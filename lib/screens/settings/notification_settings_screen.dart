@@ -119,23 +119,8 @@ class _NotificationSettingsScreenState
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle(context, 'Genel Bildirimler'),
-                      _buildSettingsGroupCard(
-                        context: context,
-                        children: [
-                          _buildSwitchTile(
-                            context: context,
-                            icon: Icons.campaign_outlined,
-                            title: 'Promosyonlar ve Haberler',
-                            subtitle:
-                                'Yenilik ve kampanyalardan haberdar olun.',
-                            value: settings.promotionsAndNews,
-                            onChanged: (value) =>
-                                _updateSetting('promotionsAndNews', value),
-                          ),
-                        ],
-                      ),
+                      // Pacta tanıtım bildirimi göndermez; olursa ayrı açık
+                      // rıza (KVKK/İYS) gerekir, bu yüzden anahtar yok.
                     ],
                   ),
                 );

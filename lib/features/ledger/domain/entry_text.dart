@@ -71,6 +71,10 @@ class EntryText {
       case EntryState.cancelled:
         return (label: 'Geri çekildi', tone: ChipTone.neutral, icon: Icons.undo_rounded);
       case EntryState.confirmed:
+        if (e.kind == EntryKind.reversal) {
+          // Asıl kayıtla birbirini sıfırlar; kendi başına bakiye değildir.
+          return (label: 'Düzeltme işlendi', tone: ChipTone.neutral, icon: Icons.history_rounded);
+        }
         if (e.reversedBy != null) {
           return (label: 'Düzeltildi', tone: ChipTone.neutral, icon: Icons.history_rounded);
         }
@@ -78,7 +82,11 @@ class EntryText {
           return (label: 'Düzeltme onay bekliyor', tone: ChipTone.pending, icon: Icons.schedule_rounded);
         }
         return (
-          label: isPrivate ? 'Kaydedildi' : 'Onaylı',
+          // Kaydı girenin aleyhine olduğu için onay beklemeden işlenmiş kayıt
+          // karşı taraf onaylamış gibi gösterilmez.
+          label: isPrivate
+              ? 'Kaydedildi'
+              : (e.autoConfirmed ? 'Onay gerekmedi' : 'Onaylı'),
           tone: ChipTone.credit,
           icon: Icons.check_circle_rounded,
         );

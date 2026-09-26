@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/dates/local_date.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/widgets.dart';
 import '../application/providers.dart';
@@ -38,7 +39,8 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
   Widget build(BuildContext context) {
     final uid = ref.watch(currentUidProvider);
     final entryAsync = ref.watch(entryProvider(_key));
-    final ledger = ref.watch(ledgerProvider(widget.ledgerId)).valueOrNull;
+    final ledgerAsync = ref.watch(ledgerProvider(widget.ledgerId));
+    final ledger = ledgerAsync.valueOrNull;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kayıt detayı')),
@@ -49,6 +51,10 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
           onRetry: () => ref.invalidate(entryProvider(_key)),
         ),
         data: (entry) {
+          // Defter henüz yüklenirken "kayıt yok" denmez.
+          if (ledgerAsync.isLoading && ledger == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (entry == null || ledger == null) {
             return const EmptyState(
               icon: Icons.receipt_long_rounded,
@@ -78,8 +84,13 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
     String? hint;
 
     if (e.state == EntryState.pending && e.awaitingSide == me) {
-      hint = 'Onaylarsanız ikinizin bakiyesine işlenir. Yanlışsa itiraz edin, '
-          '$other düzeltsin.';
+      // Düzeltme kaydının tutarı değiştirilemez; itiraz yerine reddedilir.
+      final isReversal = e.kind == EntryKind.reversal;
+      hint = isReversal
+          ? 'Onaylarsanız iki kayıt birbirini sıfırlar. Katılmıyorsanız '
+              'reddedin.'
+          : 'Onaylarsanız ikinizin bakiyesine işlenir. Yanlışsa itiraz edin, '
+              '$other düzeltsin.';
       children = [
         FilledButton.icon(
           onPressed: _busy
@@ -91,15 +102,17 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              child: _SoftButton(
-                label: 'İtiraz et',
-                fg: c.dispute,
-                bg: c.disputeSoft,
-                onPressed: _busy ? null : () => _dispute(e),
+            if (!isReversal) ...[
+              Expanded(
+                child: _SoftButton(
+                  label: 'İtiraz et',
+                  fg: c.dispute,
+                  bg: c.disputeSoft,
+                  onPressed: _busy ? null : () => _dispute(e),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: _SoftButton(
                 label: 'Reddet',
@@ -112,8 +125,11 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         ),
       ];
     } else if (e.isOpen && e.proposedBy == me) {
-      hint = e.state == EntryState.disputed
-          ? 'Tutarı ya da açıklamayı düzeltin; $other yeniden onaylayabilir.'
+      hint = e.kind == EntryKind.reversal
+          ? '$other onaylayana kadar geri çekebilirsiniz.'
+          : e.state == EntryState.disputed
+          ? 'Tutarı, tarihi ya da açıklamayı düzeltin; $other yeniden '
+                'onaylayabilir.'
           : '$other onaylayana kadar düzeltebilir ya da geri çekebilirsiniz.';
       children = [
         Row(
@@ -140,7 +156,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
     } else if (e.canBeReversed) {
       children = [
         OutlinedButton(
-          onPressed: _busy ? null : () => _reverse(e, ledger.isPrivate),
+          onPressed: _busy ? null : () => _reverse(e, ledger, me),
           child: const Text('Bu kaydı düzelt'),
         ),
       ];
@@ -205,14 +221,21 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
   }
 
   Future<void> _revise(LedgerEntry e) async {
-    final result = await showModalBottomSheet<(Money, String)>(
+    final result = await showModalBottomSheet<_Revision>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _ReviseSheet(entry: e),
     );
     if (result == null) return;
     await _run(
-      () => _repo.revise(e, amount: result.$1, description: result.$2),
+      () => _repo.revise(
+        e,
+        amount: result.amount,
+        description: result.description,
+        occurredOn: result.occurredOn,
+        dueOn: result.dueOn,
+        clearDue: result.dueOn == null && e.dueOn != null,
+      ),
       'Düzeltildi ve yeniden onaya gönderildi.',
     );
   }
@@ -236,15 +259,22 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
     await _run(() => _repo.cancel(e), 'Kayıt geri çekildi.');
   }
 
-  Future<void> _reverse(LedgerEntry e, bool isPrivate) async {
+  Future<void> _reverse(LedgerEntry e, Ledger ledger, Side me) async {
+    final other = ledger.other(ref.read(currentUidProvider)).displayName;
+    // Lehinize bir kaydı düzeltmek sizin aleyhinizedir: onay beklemeden işlenir.
+    final immediate = !ledger.isPrivate && e.deltaFor(me) > 0;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Kaydı düzelt?'),
         content: Text(
-          isPrivate
+          ledger.isPrivate
               ? 'Kaydın tersi eklenir ve bakiye eski hâline döner.'
-              : 'Kaydın tersi olan bir düzeltme kaydı açılır. Karşı taraf '
+              : immediate
+              ? 'Kaydın tersi hemen işlenir ve bakiye bu kayıttan önceki '
+                    'hâline döner; onay beklenmez. $other bilgilendirilir, '
+                    'geçmiş korunur.'
+              : 'Kaydın tersi olan bir düzeltme kaydı açılır. $other '
                     'onaylayınca iki kayıt birbirini sıfırlar; geçmiş korunur.',
         ),
         actions: [
@@ -254,7 +284,12 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       ),
     );
     if (ok != true) return;
-    await _run(() => _repo.reverse(e), 'Düzeltme kaydı açıldı.');
+    await _run(
+      () => _repo.reverse(e),
+      immediate || ledger.isPrivate
+          ? 'Kayıt düzeltildi.'
+          : 'Düzeltme kaydı açıldı; $other onaylayınca işlenecek.',
+    );
   }
 }
 
@@ -333,6 +368,26 @@ class _Body extends StatelessWidget {
             ],
           ),
         ),
+        // Düzeltme ile düzeltilen kayıt ve borca bağlı ödeme birbirine gider.
+        for (final (label, id) in [
+          if (entry.kind == EntryKind.reversal && entry.linkedEntryId != null)
+            ('Düzeltilen kayda git', entry.linkedEntryId!),
+          if (entry.kind == EntryKind.payment && entry.linkedEntryId != null)
+            ('Ödenen borca git', entry.linkedEntryId!),
+          if (entry.reversedBy != null) ('Düzeltme kaydına git', entry.reversedBy!),
+          if (entry.reversalPendingId != null)
+            ('Bekleyen düzeltmeye git', entry.reversalPendingId!),
+        ])
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: () => openEntry(context, entry.ledgerId, id),
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: Text(label),
+              ),
+            ),
+          ),
         if (dispute != null && entry.state == EntryState.disputed) ...[
           const SizedBox(height: 12),
           Container(
@@ -595,6 +650,14 @@ class _DisputeSheetState extends State<_DisputeSheet> {
   }
 }
 
+/// Düzeltme sonucu: değişen alanlar yeni sürüm olarak onaya gider.
+typedef _Revision = ({
+  Money amount,
+  String description,
+  LocalDate occurredOn,
+  LocalDate? dueOn,
+});
+
 class _ReviseSheet extends StatefulWidget {
   const _ReviseSheet({required this.entry});
 
@@ -605,16 +668,18 @@ class _ReviseSheet extends StatefulWidget {
 }
 
 class _ReviseSheetState extends State<_ReviseSheet> {
-  late final _amount = TextEditingController(
-    text: _suggestedOrCurrent().format(withSymbol: false),
-  );
-  late final _description = TextEditingController(text: widget.entry.description);
-  String? _amountError;
+  LedgerEntry get _e => widget.entry;
 
-  Money _suggestedOrCurrent() {
-    final s = widget.entry.dispute?.suggestedAmountMinor;
-    return s == null ? widget.entry.amount : Money(s, widget.entry.asset);
-  }
+  /// İtirazda önerilen tutar varsa başlangıç değeri odur (kullanıcıya
+  /// söylenir); yoksa mevcut tutar.
+  late final int? _suggested = _e.dispute?.suggestedAmountMinor;
+  late final _amount = TextEditingController(
+    text: Money(_suggested ?? _e.amountMinor, _e.asset).format(withSymbol: false),
+  );
+  late final _description = TextEditingController(text: _e.description);
+  late LocalDate _occurredOn = _e.occurredOn;
+  late LocalDate? _dueOn = _e.dueOn;
+  String? _error;
 
   @override
   void dispose() {
@@ -623,18 +688,64 @@ class _ReviseSheetState extends State<_ReviseSheet> {
     super.dispose();
   }
 
+  Future<LocalDate?> _pick(LocalDate initial, {LocalDate? first}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial.toDateTime(),
+      firstDate: (first ?? LocalDate(initial.year - 20, 1, 1)).toDateTime(),
+      lastDate: DateTime(initial.year + 30, 12, 31),
+      locale: const Locale('tr', 'TR'),
+    );
+    return picked == null ? null : LocalDate.fromDateTime(picked);
+  }
+
   void _submit() {
+    final Money amount;
     try {
-      final amount = Money.parse(_amount.text, widget.entry.asset);
+      amount = Money.parse(_amount.text, _e.asset);
       if (amount.minor <= 0) throw const FormatException('Tutar girin.');
-      Navigator.pop(context, (amount, _description.text.trim()));
     } on FormatException catch (e) {
-      setState(() => _amountError = e.message);
+      setState(() => _error = e.message);
+      return;
     }
+    final due = _dueOn;
+    if (due != null && due < _occurredOn) {
+      setState(() => _error = 'Vade, işlem tarihinden önce olamaz.');
+      return;
+    }
+    final description = _description.text.trim();
+    final unchanged =
+        amount.minor == _e.amountMinor &&
+        description == _e.description &&
+        _occurredOn == _e.occurredOn &&
+        due == _e.dueOn;
+    if (unchanged) {
+      setState(() => _error = 'Hiçbir şeyi değiştirmediniz.');
+      return;
+    }
+    Navigator.pop<_Revision>(context, (
+      amount: amount,
+      description: description,
+      occurredOn: _occurredOn,
+      dueOn: due,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.pacta;
+    final isDebt = _e.kind == EntryKind.debt;
+    final due = _dueOn;
+
+    Widget dateRow(String label, String value, VoidCallback onTap, {Widget? trailing}) =>
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(label, style: TextStyle(color: c.muted, fontSize: 13)),
+          subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+          trailing: trailing ?? const Icon(Icons.edit_calendar_outlined),
+          onTap: onTap,
+        );
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
@@ -646,7 +757,7 @@ class _ReviseSheetState extends State<_ReviseSheet> {
             const SizedBox(height: 4),
             Text(
               'Düzeltilen kayıt yeniden onaya gider.',
-              style: TextStyle(color: context.pacta.muted),
+              style: TextStyle(color: c.muted),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -654,16 +765,42 @@ class _ReviseSheetState extends State<_ReviseSheet> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
                 labelText: 'Tutar',
-                suffixText: widget.entry.asset.symbol,
-                errorText: _amountError,
+                suffixText: _e.asset.symbol,
+                helperText: _suggested == null
+                    ? null
+                    : 'Karşı tarafın önerdiği tutar yazıldı; isterseniz değiştirin.',
+                helperMaxLines: 2,
               ),
             ),
-            const SizedBox(height: 12),
+            dateRow('İşlem tarihi', _occurredOn.format(), () async {
+              final picked = await _pick(_occurredOn);
+              if (picked != null) setState(() => _occurredOn = picked);
+            }),
+            if (isDebt)
+              dateRow(
+                'Vade',
+                due == null ? 'Vade yok' : due.format(),
+                () async {
+                  final picked = await _pick(due ?? _occurredOn, first: _occurredOn);
+                  if (picked != null) setState(() => _dueOn = picked);
+                },
+                trailing: due == null
+                    ? const Icon(Icons.edit_calendar_outlined)
+                    : IconButton(
+                        tooltip: 'Vadeyi kaldır',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => setState(() => _dueOn = null),
+                      ),
+              ),
             TextField(
               controller: _description,
               maxLength: 280,
               decoration: const InputDecoration(labelText: 'Açıklama', counterText: ''),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
             const SizedBox(height: 12),
             FilledButton(onPressed: _submit, child: const Text('Düzelt ve gönder')),
           ],
