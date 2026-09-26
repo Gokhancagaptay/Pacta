@@ -8,10 +8,10 @@ import 'package:pacta/screens/settings/notification_settings_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final UserModel user;
-  const EditProfileScreen({Key? key, required this.user}) : super(key: key);
+  const EditProfileScreen({super.key, required this.user});
 
   @override
-  _EditProfileScreenState createState() => _EditProfileScreenState();
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
@@ -55,14 +55,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (updatedData.isNotEmpty) {
           await _firestoreService.updateUser(widget.user.uid, updatedData);
         }
-
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profil başarıyla güncellendi!')),
         );
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+        debugPrint('Profil kaydedilemedi: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profil kaydedilemedi. Tekrar deneyin.'),
+          ),
+        );
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -261,7 +265,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const ChangePasswordScreen(),
+                  ),
                 );
               },
             ),
@@ -318,7 +324,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       trailing: Icon(
         Icons.chevron_right,
-        color: Colors.grey.withOpacity(0.5),
+        color: Colors.grey.withValues(alpha: 0.5),
         size: size.width * 0.06,
       ),
     );

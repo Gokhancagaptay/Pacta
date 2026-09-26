@@ -346,36 +346,12 @@ describe("v2 defterler", () => {
   });
 });
 
-describe("notifications", () => {
-  it("istemci bildirim oluşturamaz", async () => {
-    await assertFails(
-      addDoc(collection(ali(), "notifications"), {
-        toUserId: "ayse",
-        message: "Sahte bildirim",
-        isRead: false,
-      }),
-    );
-  });
-
-  it("yalnızca alıcı okur", async () => {
-    await assertSucceeds(getDoc(doc(ayse(), "notifications/n1")));
-    await assertSucceeds(
-      getDocs(
-        query(
-          collection(ayse(), "notifications"),
-          where("toUserId", "==", "ayse"),
-        ),
-      ),
-    );
-    await assertFails(getDoc(doc(ali(), "notifications/n1")));
-  });
-
-  it("alıcı yalnızca okundu bilgisini değiştirir", async () => {
-    await assertSucceeds(
-      updateDoc(doc(ayse(), "notifications/n1"), {isRead: true}),
-    );
-    await assertFails(
-      updateDoc(doc(ayse(), "notifications/n1"), {message: "Değişti"}),
-    );
+describe("eski v1 koleksiyonları", () => {
+  it("üst düzey bildirimler ve kayıtlı kişiler tamamen kapalı", async () => {
+    await assertFails(getDoc(doc(ayse(), "notifications/n1")));
+    await assertFails(addDoc(collection(ali(), "notifications"),
+      {toUserId: "ayse", message: "Sahte", isRead: false}));
+    await assertFails(setDoc(doc(ali(), "users/ali/savedContacts/c1"),
+      {adSoyad: "X"}));
   });
 });

@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/constants/strings.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -106,7 +107,7 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
-      print('Unexpected error during sign up: $e');
+      debugPrint('Unexpected error during sign up: $e');
       return 'Beklenmeyen bir hata oluştu.';
     }
   }
@@ -133,7 +134,7 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
-      print('Unexpected error during sign in: $e');
+      debugPrint('Unexpected error during sign in: $e');
       return 'Beklenmeyen bir hata oluştu.';
     }
   }
@@ -254,7 +255,7 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
-      print('Unexpected error during Google sign in: $e');
+      debugPrint('Unexpected error during Google sign in: $e');
       return 'Google ile giriş yapılırken hata oluştu.';
     }
   }
@@ -315,7 +316,7 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
-      print('Unexpected error during password change: $e');
+      debugPrint('Unexpected error during password change: $e');
       return 'Şifre değiştirilirken hata oluştu.';
     }
   }

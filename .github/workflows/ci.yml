@@ -4,6 +4,10 @@ on:
   push:
   workflow_dispatch:
 
+# CI yalnızca kodu okur; depoya yazma yetkisi yoktur.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

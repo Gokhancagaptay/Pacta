@@ -51,10 +51,6 @@ service cloud.firestore {
         && (!changed(['adSoyad']) || validName(request.resource.data));
       allow delete: if false;
 
-      match /savedContacts/{contactId} {
-        allow read, write: if isSelf(uid);
-      }
-
       // v2: onay bekleyenler ve bildirimler Cloud Functions tarafından yazılır.
       match /inbox/{itemId} {
         allow read: if isSelf(uid);
@@ -130,17 +126,7 @@ service cloud.firestore {
       allow list: if isMember(resource.data);
     }
 
-    // codes, pushQueue ve rateLimits yalnızca Cloud Functions içindir; eşleşen
-    // kural olmadığı için istemciye kapalıdır.
-
-    // Bildirimleri yalnızca Cloud Functions yazar; alıcı yalnızca okundu bilgisini değiştirir.
-    match /notifications/{notificationId} {
-      allow get, list: if signedIn() && resource.data.toUserId == request.auth.uid;
-      allow update: if signedIn()
-        && resource.data.toUserId == request.auth.uid
-        && onlyChanges(['isRead'])
-        && request.resource.data.isRead is bool;
-      allow create, delete: if false;
-    }
+    // codes, pushQueue, rateLimits ve eski v1 koleksiyonları (notifications,
+    // users/*/savedContacts) için kural yoktur: istemciye kapalıdır.
   }
 }

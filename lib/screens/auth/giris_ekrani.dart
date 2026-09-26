@@ -311,6 +311,7 @@ class _GirisEkraniState extends State<GirisEkrani> {
       ),
       builder: (ctx) {
         bool isSending = false;
+        String? error; // panelin içinde gösterilir (arkada kalmaz)
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return Padding(
@@ -329,7 +330,7 @@ class _GirisEkraniState extends State<GirisEkrani> {
                       width: 44,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.4),
+                        color: Colors.grey.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
@@ -363,6 +364,13 @@ class _GirisEkraniState extends State<GirisEkrani> {
                       ),
                     ),
                   ),
+                  if (error != null) ...[
+                    SizedBox(height: size.height * 0.01),
+                    Text(
+                      error!,
+                      style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                    ),
+                  ],
                   SizedBox(height: size.height * 0.014),
                   SizedBox(
                     width: double.infinity,
@@ -371,13 +379,16 @@ class _GirisEkraniState extends State<GirisEkrani> {
                       onPressed: isSending
                           ? null
                           : () async {
-                              setSheetState(() => isSending = true);
+                              setSheetState(() {
+                                isSending = true;
+                                error = null;
+                              });
                               final msg = await _authService
                                   .sendPasswordResetEmail(
                                     _resetEmailController.text.trim(),
                                   );
-                              if (!mounted) return;
-                              setSheetState(() => isSending = false);
+                              // Panel bu arada kapandıysa dokunulmaz.
+                              if (!mounted || !ctx.mounted) return;
                               if (msg == null) {
                                 Navigator.of(ctx).pop();
                                 _showSnack(
@@ -385,7 +396,10 @@ class _GirisEkraniState extends State<GirisEkrani> {
                                   isSuccess: true,
                                 );
                               } else {
-                                _showSnack(msg, isSuccess: false);
+                                setSheetState(() {
+                                  isSending = false;
+                                  error = msg;
+                                });
                               }
                             },
                       style: ElevatedButton.styleFrom(

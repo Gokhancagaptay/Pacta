@@ -3,10 +3,10 @@ import 'package:pacta/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({Key? key}) : super(key: key);
+  const ChangePasswordScreen({super.key});
 
   @override
-  _ChangePasswordScreenState createState() => _ChangePasswordScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
@@ -39,9 +39,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         );
         if (!mounted) return;
         if (error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error)));
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,7 +102,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             SizedBox(height: size.height * 0.03),
             Card(
               elevation: 4.0,
-              shadowColor: Colors.black.withOpacity(0.05),
+              shadowColor: Colors.black.withValues(alpha: 0.05),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(size.width * 0.04),
               ),

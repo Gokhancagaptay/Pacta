@@ -69,13 +69,18 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
       // geçer; burada ayrıca yönlendirme yapılmaz.
       final ok = await _auth.refreshEmailVerified();
       if (!ok && !silent && mounted) {
-        _show('Henüz doğrulanmamış görünüyor. E-postadaki bağlantıya dokunup '
-            'tekrar deneyin.', error: true);
+        _show(
+          'Henüz doğrulanmamış görünüyor. E-postadaki bağlantıya dokunup '
+          'tekrar deneyin.',
+          error: true,
+        );
       }
     } catch (_) {
       if (!silent && mounted) {
-        _show('Kontrol edilemedi. İnternet bağlantınızı kontrol edin.',
-            error: true);
+        _show(
+          'Kontrol edilemedi. İnternet bağlantınızı kontrol edin.',
+          error: true,
+        );
       }
     } finally {
       _checking = false;
@@ -89,8 +94,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
       _show(error, error: true);
       return;
     }
-    _show('Doğrulama bağlantısı tekrar gönderildi. Gereksiz (spam) klasörünü '
-        'de kontrol edin.');
+    _show(
+      'Doğrulama bağlantısı tekrar gönderildi. Gereksiz (spam) klasörünü '
+      'de kontrol edin.',
+    );
     setState(() => _wait = _cooldown);
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -124,7 +131,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                   color: c.creditSoft,
                   borderRadius: BorderRadius.circular(22),
                 ),
-                child: Icon(Icons.mark_email_unread_outlined, size: 36, color: c.credit),
+                child: Icon(
+                  Icons.mark_email_unread_outlined,
+                  size: 36,
+                  color: c.credit,
+                ),
               ),
             ),
             const SizedBox(height: 20),

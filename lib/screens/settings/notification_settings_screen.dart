@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pacta/models/user_model.dart';
 import 'package:pacta/services/firestore_service.dart';
-import 'package:pacta/utils/dialog_utils.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
-  const NotificationSettingsScreen({Key? key}) : super(key: key);
+  const NotificationSettingsScreen({super.key});
 
   @override
-  _NotificationSettingsScreenState createState() =>
+  State<NotificationSettingsScreen> createState() =>
       _NotificationSettingsScreenState();
 }
 
@@ -25,9 +24,12 @@ class _NotificationSettingsScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      DialogUtils.showError(
-        context,
-        'Ayarlar güncellenirken bir hata oluştu: $e',
+      debugPrint('Bildirim ayarı kaydedilemedi: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Ayar kaydedilemedi. Tekrar deneyin.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     }
   }
@@ -187,8 +189,8 @@ class _NotificationSettingsScreenState
       secondary: CircleAvatar(
         radius: 18,
         backgroundColor: isDark
-            ? Colors.green.shade800.withOpacity(
-                0.3,
+            ? Colors.green.shade800.withValues(
+                alpha: 0.3,
               ) // Dark mode koyu yeşil arka plan
             : Colors.green.shade50, // Light mode açık yeşil arka plan
         child: Icon(
@@ -226,7 +228,9 @@ class _NotificationSettingsScreenState
       value: value,
       onChanged: onChanged,
       // Modern switch renk ayarları (tema bağımsız)
-      activeColor: const Color(0xFF00C853), // Vurgulu yeşil (açık durum thumb)
+      activeThumbColor: const Color(
+        0xFF00C853,
+      ), // Vurgulu yeşil (açık durum thumb)
       activeTrackColor: isDark
           ? const Color(0xFF2E7D32) // Dark mode koyu yeşil track
           : const Color(0xFFB9F6CA), // Light mode açık yeşil track
