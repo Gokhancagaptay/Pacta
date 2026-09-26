@@ -8,8 +8,16 @@ import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
 import {db} from "../common/firebase";
 import {ASSET_CODES, MAX_MINOR, formatMinor} from "./assets";
-import {OPTS, Id, fail, parse, readLedger, requireUid} from "./callable";
-import {authEmail, uidForCode, uidForEmail} from "./contacts";
+import {
+  OPTS,
+  Id,
+  consumeDaily,
+  fail,
+  parse,
+  readLedger,
+  requireUid,
+} from "./callable";
+import {authInfo, uidForCode, uidForEmail} from "./contacts";
 import {
   Entry,
   EntryContent,
@@ -37,7 +45,9 @@ const Text = z.string().trim().max(280);
 const EntryKey = {ledgerId: Id, entryId: Id, expectedVersion: z.number().int()};
 
 const CreateLedgerInput = z.union([
-  z.object({counterpartyUid: z.string().min(1).max(128)}).strict(),
+  // Firebase uid biçimi; eğik çizgi vb. ile yol oluşturulamaz.
+  z.object({counterpartyUid: z.string().regex(/^[A-Za-z0-9]{1,128}$/)})
+    .strict(),
   z.object({
     counterpartyEmail: z.string().trim().min(3).max(254)
       .refine((v) => v.includes("@"), "Geçerli bir e-posta girin."),
@@ -147,14 +157,31 @@ function assertVersion(entry: Entry, expected: number) {
   }
 }
 
+/** Defterde ve bildirimlerde görünen adın üst sınırı. */
+const MAX_NAME = 80;
+
 /**
+ * Görünen ad: profildeki ad, yoksa giriş kaydındaki ad. Tek satıra indirilir
+ * ve kısaltılır; ad alanına yazılmış uzun ya da oltalama amaçlı metinler
+ * bildirimlere taşınmaz.
  * @param {DocumentSnapshot} user Kullanıcı belgesi.
+ * @param {string | null} fallback Auth'taki ad.
  * @return {string} Görünen ad.
  */
-function displayNameOf(user: DocumentSnapshot): string {
-  const name = (user.get("adSoyad") as string | undefined)?.trim();
+function displayNameOf(
+  user: DocumentSnapshot,
+  fallback: string | null = null
+): string {
+  const raw = (user.get("adSoyad") as string | undefined) || fallback || "";
+  const name = String(raw).replace(/\s+/g, " ").trim().slice(0, MAX_NAME);
   return name || "Pacta kullanıcısı";
 }
+
+/** Günlük sınırlar (kişi başına). Olağan kullanımın çok üstündedir. */
+const DAILY = {ledgers: 20, entries: 300, revisions: 100};
+
+/** Bir kişinin yanıtını bekleyen kayıt üst sınırı (gelen kutusu taşmasın). */
+const MAX_PENDING_PER_LEDGER = 50;
 
 /**
  * Bir kaydı alıcının bakış açısından tek cümleyle anlatır.
@@ -385,6 +412,11 @@ function writeNewEntry(
   if (auto) {
     chain = commitToLedger(tx, ledgerRef, ledger, entry, 0);
   } else {
+    if (ledger.pendingCount >= MAX_PENDING_PER_LEDGER) {
+      fail("resource-exhausted",
+        "Bu kişide onay bekleyen çok fazla kayıt var. Önce bekleyenlerin " +
+        "yanıtlanmasını bekleyin.");
+    }
     tx.update(ledgerRef, {
       pendingCount: FieldValue.increment(1),
       updatedAt: FieldValue.serverTimestamp(),
@@ -440,14 +472,18 @@ function writeNewEntry(
 export const createLedger = onCall<unknown>(OPTS, async (req) => {
   const uid = requireUid(req);
   const input = parse(CreateLedgerInput, req.data);
+  await consumeDaily(`ledgers_${uid}`, DAILY.ledgers,
+    "Bugün çok fazla kişi eklediniz. Yarın tekrar deneyin.");
   const me = await db.collection("users").doc(uid).get();
+  const myAuth = await authInfo(uid);
+  const myName = displayNameOf(me, myAuth?.displayName ?? null);
 
   if ("privateName" in input) {
     const autoId = db.collection("ledgers").doc().id;
     const ref = db.collection("ledgers").doc(`v_${autoId}`);
     await ref.set(newLedger(
       "private",
-      {uid, displayName: displayNameOf(me)},
+      {uid, displayName: myName},
       {uid: null, displayName: input.privateName},
       [uid]
     ));
@@ -467,13 +503,23 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
       "Bu sizin hesabınız. Kendinizle defter açamazsınız.");
   }
   const other = await db.collection("users").doc(otherUid).get();
-  if (!other.exists) fail("not-found", "Kullanıcı bulunamadı.");
-  const [myEmail, otherEmail] =
-    await Promise.all([authEmail(uid), authEmail(otherUid)]);
+  const otherAuth = await authInfo(otherUid);
+  if (!other.exists || !otherAuth) {
+    fail("not-found", "Kullanıcı bulunamadı.");
+  }
+  // Yalnızca kimliği doğrulanmış kişiyle ortak defter açılır.
+  if (!otherAuth.verified) {
+    fail("failed-precondition",
+      "Bu kişi hesabını açmış ama e-posta adresini henüz doğrulamamış. " +
+      "Gelen doğrulama e-postasındaki bağlantıya tıklamasını isteyin.");
+  }
+  const myEmail = myAuth?.email ?? null;
+  const otherEmail = otherAuth.email;
+  const otherName = displayNameOf(other, otherAuth.displayName);
 
   const ledgerId = `p_${[uid, otherUid].sort().join("_")}`;
   const ref = db.collection("ledgers").doc(ledgerId);
-  const result = await db.runTransaction(async (tx) => {
+  const created = await db.runTransaction(async (tx) => {
     const existing = await tx.get(ref);
     if (existing.exists) {
       // Eski defterlerde e-posta yoktu; tamamlanır.
@@ -485,17 +531,17 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
           "sides.b.email": emailOf(sides.b),
         });
       }
-      return {created: false, name: displayNameOf(other)};
+      return false;
     }
     tx.set(ref, newLedger(
       "shared",
-      {uid, displayName: displayNameOf(me), email: myEmail},
-      {uid: otherUid, displayName: displayNameOf(other), email: otherEmail},
+      {uid, displayName: myName, email: myEmail},
+      {uid: otherUid, displayName: otherName, email: otherEmail},
       [uid, otherUid]
     ));
-    return {created: true, name: displayNameOf(other)};
+    return true;
   });
-  return {ledgerId, created: result.created, displayName: result.name};
+  return {ledgerId, created, displayName: otherName};
 });
 
 /**
@@ -506,6 +552,8 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
 export const createEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = requireUid(req);
   const input = parse(CreateEntryInput, req.data);
+  await consumeDaily(`entries_${uid}`, DAILY.entries,
+    "Bugün için kayıt sınırına ulaştınız. Yarın tekrar deneyin.");
   if (input.dueOn && input.dueOn < input.occurredOn) {
     fail("invalid-argument", "Vade, işlem tarihinden önce olamaz.");
   }
@@ -743,6 +791,8 @@ export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
 export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = requireUid(req);
   const input = parse(ReviseInput, req.data);
+  await consumeDaily(`revisions_${uid}`, DAILY.revisions,
+    "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const notices: Notice[] = [];
 

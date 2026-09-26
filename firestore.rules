@@ -21,23 +21,34 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    function userExists(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid));
+    function changed(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys);
     }
 
-    // Profil yalnızca sahibine açıktır. E-posta giriş kimliğidir; değiştirilemez.
-    // Diğer kullanıcılar yalnızca publicProfiles üzerinden adı görür.
-    // pactaCode sunucuda üretilir (codes/{kod} ile eşleşir); istemci yazamaz.
+    function validName(d) {
+      return !('adSoyad' in d) || (d.adSoyad is string && d.adSoyad.size() <= 100);
+    }
+
+    // Profil yalnızca sahibine açıktır. E-posta giriş kimliğidir: yalnızca
+    // giriş e-postasıyla ve yalnızca henüz yoksa yazılabilir, sonra değişmez.
+    // (Bildirim anahtarı belgeyi profilden önce oluşturabilir; profil sonradan
+    // tamamlanır.) Diğer kullanıcılar yalnızca publicProfiles üzerinden adı
+    // görür. pactaCode sunucuda üretilir (codes/{kod}); istemci yazamaz.
     match /users/{uid} {
       allow get: if isSelf(uid);
       allow list: if false;
       allow create: if isSelf(uid)
         && (!('email' in request.resource.data) || request.resource.data.email == tokenEmail())
         && (!('uid' in request.resource.data) || request.resource.data.uid == uid)
-        && !('pactaCode' in request.resource.data);
+        && !('pactaCode' in request.resource.data)
+        && validName(request.resource.data);
       allow update: if isSelf(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['uid', 'email', 'pactaCode']);
+        && !changed(['pactaCode'])
+        && (!changed(['email'])
+          || (!('email' in resource.data) && request.resource.data.email == tokenEmail()))
+        && (!changed(['uid'])
+          || (!('uid' in resource.data) && request.resource.data.uid == uid))
+        && (!changed(['adSoyad']) || validName(request.resource.data));
       allow delete: if false;
 
       match /savedContacts/{contactId} {
@@ -72,75 +83,13 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in data.visibleto;
     }
 
-    // Yeni kayıt ya tek taraflı nottur ya da karşı tarafın onayını bekler.
-    // Onaylı ("approved") kayıt doğrudan oluşturulamaz.
-    function validNewDebt(d) {
-      return d.keys().hasOnly([
-          'borcluId', 'alacakliId', 'miktar', 'aciklama', 'islemTarihi',
-          'tahminiOdemeTarihi', 'createdAt', 'dueReminderSent', 'status',
-          'isShared', 'requiresApproval', 'visibleto', 'createdBy',
-          'deletion_requester_id'])
-        && d.createdBy == request.auth.uid
-        && (d.borcluId == request.auth.uid || d.alacakliId == request.auth.uid)
-        && d.borcluId != d.alacakliId
-        && d.miktar is number && d.miktar > 0 && d.miktar <= 1000000000
-        && (d.get('aciklama', null) == null
-          || (d.aciklama is string && d.aciklama.size() <= 500))
-        && d.islemTarihi is timestamp
-        && (d.get('tahminiOdemeTarihi', null) == null
-          || d.tahminiOdemeTarihi is timestamp)
-        && d.createdAt == request.time
-        && d.dueReminderSent == false
-        && d.get('deletion_requester_id', null) == null
-        && (
-          (d.status == 'note'
-            && d.visibleto == [request.auth.uid]
-            && d.isShared == false
-            && d.requiresApproval == false)
-          || (d.status == 'pending'
-            && d.visibleto.size() == 2
-            && d.visibleto.hasAll([d.borcluId, d.alacakliId])
-            && d.isShared == true
-            && d.requiresApproval == true
-            && userExists(d.borcluId)
-            && userExists(d.alacakliId))
-        );
-    }
-
+    // v1 borç kayıtları (debts) arşivdir: taraflar okuyabilir, kimse yazamaz.
+    // Yazma açık kaldığında her kullanıcı istediği kişiye bildirim
+    // gönderebiliyordu; v2 defterlerine geçildi (ledgers).
     match /debts/{debtId} {
-      // Bildirimden açılan kayıt silinmiş olabilir: olmayan kayıt için izin
-      // hatası yerine "yok" yanıtı döner. Var olan kaydı yalnızca taraflar okur.
       allow get: if signedIn() && (resource == null || isParty(resource.data));
       allow list: if isParty(resource.data);
-      allow create: if signedIn() && validNewDebt(request.resource.data);
-
-      allow update: if isParty(resource.data) && (
-        // Bekleyen kaydı yalnızca karşı taraf onaylar veya reddeder.
-        (resource.data.status == 'pending'
-          && request.resource.data.status in ['approved', 'rejected']
-          && resource.data.createdBy != request.auth.uid
-          && request.resource.data.updatedById == request.auth.uid
-          && onlyChanges(['status', 'updatedById']))
-        // Taraflardan biri onaylı kaydın silinmesini ister.
-        || (resource.data.status == 'approved'
-          && request.resource.data.status == 'pending_deletion'
-          && request.resource.data.deletion_requester_id == request.auth.uid
-          && onlyChanges(['status', 'deletion_requester_id']))
-        // Silme talebini yalnızca karşı taraf reddeder.
-        || (resource.data.status == 'pending_deletion'
-          && resource.data.deletion_requester_id != request.auth.uid
-          && request.resource.data.status == 'approved'
-          && !('deletion_requester_id' in request.resource.data)
-          && onlyChanges(['status', 'deletion_requester_id']))
-      );
-
-      allow delete: if isParty(resource.data) && (
-        (resource.data.status == 'note' && resource.data.createdBy == request.auth.uid)
-        || resource.data.status == 'rejected'
-        // Silme talebini yalnızca karşı taraf onaylar.
-        || (resource.data.status == 'pending_deletion'
-          && resource.data.deletion_requester_id != request.auth.uid)
-      );
+      allow write: if false;
     }
 
     // v2 defterler: istemci yalnızca taraf olduğu defteri okur. Tüm yazmalar

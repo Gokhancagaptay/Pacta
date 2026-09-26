@@ -1,6 +1,7 @@
 // functions/src/index.ts
-export {lookupUserByEmail} from "./users";
-export {onDebtCreate, onDebtDelete, onDebtStatusUpdate} from "./v1/debts";
+// v1 (debts koleksiyonu, lookupUserByEmail) kaldırıldı: arayüzü artık
+// kullanılmıyordu ve açık kaldığı sürece istenen kişiye sahte bildirim
+// göndermeye izin veriyordu.
 export {
   cancelEntry,
   confirmEntry,

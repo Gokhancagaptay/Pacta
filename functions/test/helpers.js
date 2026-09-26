@@ -8,8 +8,12 @@ const fft = require("firebase-functions-test")({projectId: "demo-pacta"});
 const fns = require("../lib/index.js");
 const {db} = require("../lib/common/firebase.js");
 
-const call = (fn, uid, data) =>
-  fft.wrap(fn)({data, auth: uid ? {uid, token: {}} : undefined});
+// Varsayılan: e-postası doğrulanmış oturum; verified=false doğrulanmamış.
+const call = (fn, uid, data, {verified = true} = {}) =>
+  fft.wrap(fn)({
+    data,
+    auth: uid ? {uid, token: {email_verified: verified}} : undefined,
+  });
 
 const rejectsWith = (promise, code, text) =>
   assert.rejects(promise, (e) => {
@@ -19,6 +23,8 @@ const rejectsWith = (promise, code, text) =>
   });
 
 const today = "2026-09-25";
+// Günlük sayaçlar sunucunun gerçek tarihine (İstanbul) göre tutulur.
+const limitDay = require("../lib/ledger/model.js").todayIstanbul();
 const ledgerDoc = (id) => db.collection("ledgers").doc(id).get();
 const entryDoc = (ledgerId, entryId) =>
   db.collection("ledgers").doc(ledgerId)
@@ -89,6 +95,7 @@ module.exports = {
   inboxDoc,
   lend,
   ledgerDoc,
+  limitDay,
   notifications,
   rejectsWith,
   sharedLedger,

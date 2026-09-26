@@ -114,6 +114,9 @@ function toSource(id: string, d: DocumentData): DueSource {
 export async function recomputeDue(ledgerId: string): Promise<void> {
   const ledgerRef = db.collection("ledgers").doc(ledgerId);
   await db.runTransaction(async (tx) => {
+    // Silinen defterin kayıtları tek tek silinirken tetikleyici her biri
+    // için çalışır; defter yoksa okumadan çıkılır.
+    if (!(await tx.get(ledgerRef)).exists) return;
     const snap = await tx.get(
       ledgerRef.collection("entries").where("state", "==", "confirmed")
     );

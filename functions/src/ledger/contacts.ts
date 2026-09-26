@@ -3,8 +3,8 @@ import {FieldValue} from "firebase-admin/firestore";
 import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
 import {admin, db} from "../common/firebase";
-import {OPTS, Id, fail, parse, requireUid} from "./callable";
-import {Ledger, todayIstanbul} from "./model";
+import {OPTS, Id, consumeDaily, fail, parse, requireUid} from "./callable";
+import {Ledger} from "./model";
 
 // Kişi bulma: e-posta, Pacta kodu (QR ve davet linki de bu kodu taşır).
 // Kodlar codes/{KOD} altında tutulur; istemciye kapalıdır.
@@ -45,17 +45,8 @@ function randomCode(): string {
  * @param {string} uid Kullanıcı.
  */
 async function consumeCodeLookup(uid: string): Promise<void> {
-  const ref = db.collection("rateLimits").doc(`codes_${uid}`);
-  const today = todayIstanbul();
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const count = snap.get("day") === today ? (snap.get("count") as number) : 0;
-    if (count >= DAILY_CODE_LOOKUPS) {
-      fail("resource-exhausted",
-        "Bugün çok fazla kod denendi. Yarın tekrar deneyin.");
-    }
-    tx.set(ref, {day: today, count: count + 1});
-  });
+  await consumeDaily(`codes_${uid}`, DAILY_CODE_LOOKUPS,
+    "Bugün çok fazla kod denendi. Yarın tekrar deneyin.");
 }
 
 /**
@@ -104,14 +95,28 @@ export async function uidForEmail(email: string): Promise<string> {
   return user.uid;
 }
 
+/** Firebase Auth kaydından gereken alanlar. */
+export interface AuthInfo {
+  email: string | null;
+  verified: boolean;
+  displayName: string | null;
+}
+
 /**
- * Giriş e-postası; karşı taraf kişiyi tanısın diye defterde görünür.
+ * Giriş kaydı: e-posta (karşı taraf kişiyi tanısın diye defterde görünür),
+ * doğrulama durumu ve Auth'taki ad.
  * @param {string} uid Kullanıcı.
- * @return {Promise<string | null>} E-posta.
+ * @return {Promise<AuthInfo | null>} Kayıt ya da bulunamazsa null.
  */
-export async function authEmail(uid: string): Promise<string | null> {
+export async function authInfo(uid: string): Promise<AuthInfo | null> {
   try {
-    return (await admin.auth().getUser(uid)).email ?? null;
+    const user = await admin.auth().getUser(uid);
+    const byPhone = user.providerData.some((p) => p.providerId === "phone");
+    return {
+      email: user.email ?? null,
+      verified: user.emailVerified || byPhone,
+      displayName: user.displayName ?? null,
+    };
   } catch {
     return null;
   }
@@ -148,7 +153,9 @@ export const previewCode = onCall<unknown>(OPTS, async (req) => {
   const {code} = parse(input, req.data);
   const target = await uidForCode(uid, code);
   const profile = await db.collection("users").doc(target).get();
-  const name = (profile.get("adSoyad") as string | undefined)?.trim();
+  const raw = (profile.get("adSoyad") as string | undefined) ||
+    (await authInfo(target))?.displayName || "";
+  const name = String(raw).replace(/\s+/g, " ").trim().slice(0, 80);
   return {
     self: target === uid,
     displayName: name || "Pacta kullanıcısı",

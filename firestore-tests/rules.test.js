@@ -131,6 +131,29 @@ describe("users", () => {
     await assertSucceeds(updateDoc(doc(ali(), "users/ali"), {adSoyad: "Ali V."}));
   });
 
+  it("eksik e-posta yalnızca giriş e-postasıyla tamamlanır", async () => {
+    // Bildirim anahtarı belgeyi profilden önce oluşturmuş olabilir.
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/veli"), {fcmToken: "t"}));
+    const veli = env
+      .authenticatedContext("veli", {email: "veli@example.com"})
+      .firestore();
+    await assertFails(updateDoc(doc(veli, "users/veli"),
+      {email: "ali@example.com"}));
+    await assertSucceeds(updateDoc(doc(veli, "users/veli"),
+      {uid: "veli", email: "veli@example.com", adSoyad: "Veli"}));
+    // Bir kez yazılan e-posta değişmez.
+    await assertFails(updateDoc(doc(veli, "users/veli"),
+      {email: "veli2@example.com"}));
+  });
+
+  it("ad en fazla 100 karakter", async () => {
+    await assertFails(
+      updateDoc(doc(ali(), "users/ali"), {adSoyad: "x".repeat(101)}));
+    await assertSucceeds(
+      updateDoc(doc(ali(), "users/ali"), {adSoyad: "x".repeat(100)}));
+  });
+
   it("profil yalnızca giriş e-postasıyla oluşturulur", async () => {
     const veli = env
       .authenticatedContext("veli", {email: "veli@example.com"})
@@ -188,120 +211,15 @@ describe("debts okuma", () => {
   });
 });
 
-describe("debts oluşturma", () => {
-  it("geçerli bekleyen kayıt ve not oluşturulur", async () => {
-    await assertSucceeds(addDoc(collection(ali(), "debts"), newDebt()));
-    await assertSucceeds(
-      addDoc(
-        collection(ali(), "debts"),
-        newDebt({
-          status: "note",
-          borcluId: "note_user_1",
-          visibleto: ["ali"],
-          isShared: false,
-          requiresApproval: false,
-        }),
-      ),
-    );
-  });
-
-  it("onaylı kayıt doğrudan oluşturulamaz", async () => {
+describe("debts (v1 arşivi)", () => {
+  it("kimse yeni kayıt açamaz, güncelleyemez, silemez", async () => {
+    await assertFails(setDoc(doc(ali(), "debts/yeni"), newDebt()));
     await assertFails(
-      addDoc(collection(ali(), "debts"), newDebt({status: "approved"})),
-    );
-  });
-
-  it("başkası adına veya kayıtsız kişiye kayıt açılamaz", async () => {
-    await assertFails(addDoc(collection(mallory(), "debts"), newDebt()));
-    await assertFails(
-      addDoc(
-        collection(ali(), "debts"),
-        newDebt({borcluId: "ghost", visibleto: ["ali", "ghost"]}),
-      ),
-    );
-    await assertFails(
-      addDoc(collection(ali(), "debts"), newDebt({visibleto: ["ali"]})),
-    );
-  });
-
-  it("geçersiz tutar ve fazladan alan reddedilir", async () => {
-    await assertFails(addDoc(collection(ali(), "debts"), newDebt({miktar: 0})));
-    await assertFails(
-      addDoc(collection(ali(), "debts"), newDebt({miktar: -10})),
-    );
-    await assertFails(addDoc(collection(ali(), "debts"), newDebt({extra: 1})));
-  });
-});
-
-describe("debts durum geçişleri", () => {
-  it("kayıt sahibi kendi talebini onaylayamaz", async () => {
-    await assertFails(
-      updateDoc(doc(ali(), "debts/pending1"), {
-        status: "approved",
-        updatedById: "ali",
-      }),
-    );
-  });
-
-  it("karşı taraf onaylar; onaylarken tutarı değiştiremez", async () => {
-    await assertFails(
-      updateDoc(doc(ayse(), "debts/pending1"), {
-        status: "approved",
-        updatedById: "ayse",
-        miktar: 1,
-      }),
-    );
-    await assertSucceeds(
-      updateDoc(doc(ayse(), "debts/pending1"), {
-        status: "approved",
-        updatedById: "ayse",
-      }),
-    );
-  });
-
-  it("taraf olmayan onaylayamaz", async () => {
-    await assertFails(
-      updateDoc(doc(mallory(), "debts/pending1"), {
-        status: "approved",
-        updatedById: "mallory",
-      }),
-    );
-  });
-
-  it("onaylı kayıt için silme talebi açılır, doğrudan silinemez", async () => {
-    await assertFails(deleteDoc(doc(ali(), "debts/approved1")));
-    await assertSucceeds(
-      updateDoc(doc(ayse(), "debts/approved1"), {
-        status: "pending_deletion",
-        deletion_requester_id: "ayse",
-      }),
-    );
-  });
-
-  it("silme talebini talep eden onaylayamaz veya geri alamaz", async () => {
-    await assertFails(deleteDoc(doc(ali(), "debts/deletion1")));
-    await assertFails(
-      updateDoc(doc(ali(), "debts/deletion1"), {
-        status: "approved",
-        deletion_requester_id: deleteField(),
-      }),
-    );
-  });
-
-  it("karşı taraf silme talebini reddeder veya onaylar", async () => {
-    await assertSucceeds(
-      updateDoc(doc(ayse(), "debts/deletion1"), {
-        status: "approved",
-        deletion_requester_id: deleteField(),
-      }),
-    );
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(
-        doc(ctx.firestore(), "debts/deletion1"),
-        newDebt({status: "pending_deletion", deletion_requester_id: "ali"}),
-      );
-    });
-    await assertSucceeds(deleteDoc(doc(ayse(), "debts/deletion1")));
+      addDoc(collection(ali(), "debts"), newDebt({status: "note",
+        visibleto: ["ali"], isShared: false, requiresApproval: false})));
+    await assertFails(updateDoc(doc(ayse(), "debts/pending1"),
+      {status: "approved", updatedById: "ayse"}));
+    await assertFails(deleteDoc(doc(ayse(), "debts/deletion1")));
   });
 });
 

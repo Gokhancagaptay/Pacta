@@ -9,6 +9,7 @@ const {
   db,
   fns,
   ledgerDoc,
+  limitDay,
   rejectsWith,
   today,
   useEmulator,
@@ -97,10 +98,48 @@ describe("Pacta kodu", () => {
       call(fns.previewCode, "ali", {code: "abc"}),
       "invalid-argument", /6 karakter/);
     await db.collection("rateLimits").doc("codes_ali")
-      .set({day: today, count: 30});
+      .set({day: limitDay, count: 30});
     await rejectsWith(
       call(fns.createLedger, "ali", {counterpartyCode: "ZZZZZZ"}),
       "resource-exhausted");
+  });
+});
+
+describe("kimlik ve kötüye kullanım korumaları", () => {
+  it("e-postası doğrulanmamış oturum hiçbir komutu çalıştıramaz", async () => {
+    await rejectsWith(
+      call(fns.createLedger, "ali", {counterpartyEmail: "ayse@example.com"},
+        {verified: false}),
+      "permission-denied", /doğrulamalısınız/);
+    await rejectsWith(
+      call(fns.myPactaCode, "ali", {}, {verified: false}),
+      "permission-denied");
+  });
+
+  it("kimliğiyle de doğrulanmamış kişiyle defter açılamaz", async () => {
+    await rejectsWith(
+      call(fns.createLedger, "ali", {counterpartyUid: "mallory"}),
+      "failed-precondition", /doğrulamamış/);
+    await rejectsWith(
+      call(fns.createLedger, "ali", {counterpartyUid: "ayse/inbox/x"}),
+      "invalid-argument");
+  });
+
+  it("ad tek satıra indirilip kısaltılır", async () => {
+    await db.collection("users").doc("ayse")
+      .set({adSoyad: "Banka\nHesabınız askıya alındı " + "x".repeat(200)});
+    const res = await call(fns.createLedger, "ali", {counterpartyUid: "ayse"});
+    const name = (await ledgerDoc(res.ledgerId)).get("sides.b.displayName");
+    assert.equal(name.includes("\n"), false);
+    assert.equal(name.length, 80);
+  });
+
+  it("günlük kişi ekleme sınırı", async () => {
+    await db.collection("rateLimits").doc("ledgers_ali")
+      .set({day: limitDay, count: 20});
+    await rejectsWith(
+      call(fns.createLedger, "ali", {counterpartyUid: "ayse"}),
+      "resource-exhausted", /çok fazla kişi/);
   });
 });
 

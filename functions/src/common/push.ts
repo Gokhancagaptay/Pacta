@@ -1,3 +1,4 @@
+import {FieldValue} from "firebase-admin/firestore";
 import * as logger from "firebase-functions/logger";
 import {admin, db} from "./firebase";
 
@@ -40,6 +41,17 @@ export async function sendPushNotification(
     logger.info(`[push] Gönderildi: ${toUserId}`);
   } catch (error) {
     const err = error as {message?: string; code?: string; stack?: string};
+    // Cihaz çıkış yaptı ya da uygulama kaldırıldı: eski anahtar silinir.
+    if (
+      err.code === "messaging/registration-token-not-registered" ||
+      err.code === "messaging/invalid-registration-token"
+    ) {
+      await db.collection("users").doc(toUserId)
+        .update({fcmToken: FieldValue.delete()})
+        .catch(() => undefined);
+      logger.info(`[push] Geçersiz anahtar silindi: ${toUserId}`);
+      return;
+    }
     logger.error(`[push] Gönderilemedi: ${toUserId}`, {
       errorMessage: err.message,
       errorCode: err.code,

@@ -16,6 +16,7 @@ const {
   inboxDoc,
   lend,
   ledgerDoc,
+  limitDay,
   rejectsWith,
   sharedLedger,
   today,
@@ -299,6 +300,28 @@ describe("özel defter", () => {
         asset: "TRY", amountMinor: 100, occurredOn: today,
       }),
       "permission-denied");
+  });
+});
+
+describe("sınırlar", () => {
+  it("bir kişide 50 onay bekleyen kayıttan fazlası açılamaz", async () => {
+    const ledgerId = await sharedLedger();
+    await db.collection("ledgers").doc(ledgerId).update({pendingCount: 50});
+    await rejectsWith(lend(ledgerId, "ali", 100), "resource-exhausted",
+      /onay bekleyen çok fazla/);
+    // Aleyhe kayıt onay beklemediği için sınırdan etkilenmez.
+    const res = await call(fns.createEntry, "ali", {
+      ledgerId, entryId: randomUUID(), kind: "debt", iGave: false,
+      asset: "TRY", amountMinor: 100, occurredOn: today,
+    });
+    assert.equal(res.state, "confirmed");
+  });
+
+  it("günlük kayıt ve düzeltme sınırı", async () => {
+    const ledgerId = await sharedLedger();
+    await db.collection("rateLimits").doc("entries_ali")
+      .set({day: limitDay, count: 300});
+    await rejectsWith(lend(ledgerId, "ali", 100), "resource-exhausted");
   });
 });
 
