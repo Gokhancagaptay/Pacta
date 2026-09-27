@@ -12,6 +12,7 @@ import 'package:pacta/features/ledger/domain/models.dart';
 import 'package:pacta/features/ledger/domain/reminder.dart';
 import 'package:pacta/features/ledger/presentation/contacts_ui.dart';
 import 'package:pacta/features/ledger/presentation/entry_composer_page.dart';
+import 'package:pacta/features/ledger/presentation/home_page.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/features/ledger/presentation/ledger_page.dart';
 import 'package:pacta/features/profile/delete_account_page.dart';
@@ -269,13 +270,13 @@ final inbox = [
   }),
 ];
 
-Widget app(Widget home, FakeRepo repo) => ProviderScope(
+Widget app(Widget home, FakeRepo repo, {List<Ledger>? people}) => ProviderScope(
   overrides: [
     authUserProvider.overrideWith((ref) => Stream.value(null)),
     currentUidProvider.overrideWith((ref) => 'gokhan'),
     ledgerRepositoryProvider.overrideWithValue(repo),
     ledgersProvider.overrideWith(
-      (ref) => Stream.value([...ledgers, archivedLedger]),
+      (ref) => Stream.value(people ?? [...ledgers, archivedLedger]),
     ),
     inboxProvider.overrideWith((ref) => Stream.value(inbox)),
     notificationsProvider.overrideWith((ref) => Stream.value(const [])),
@@ -776,5 +777,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, contains('rotateCode'));
     expect(find.text('Yeni kodunuz hazır.'), findsOneWidget);
+  });
+
+  testWidgets('yeni kullanıcı Başlarken rehberini görür', (tester) async {
+    phoneSize(tester);
+    var addEntry = 0;
+    await tester.pumpWidget(
+      app(
+        HomePage(
+          onSeeAllPeople: () {},
+          onOpenActivity: () {},
+          onAddEntry: () => addEntry++,
+        ),
+        FakeRepo(),
+        people: const [],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Başlarken'), findsOneWidget);
+    expect(find.text('Kişi ekle'), findsOneWidget);
+    await tester.tap(find.text('Kayıt ekle'));
+    expect(addEntry, 1);
+
+    await tester.scrollUntilVisible(
+      find.text('Pacta kodum'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pacta kodum'));
+    await tester.pumpAndSettle();
+    expect(find.text('K7Q-3XM'), findsOneWidget);
   });
 }

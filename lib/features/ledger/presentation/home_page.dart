@@ -7,7 +7,9 @@ import '../../../core/money/money.dart';
 import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
+import 'add_person_sheet.dart';
 import 'common.dart';
+import 'contacts_ui.dart';
 import 'notifications_page.dart';
 
 /// Ana sayfa: onaylı bakiye, onayınızı bekleyenler, yaklaşan vadeler, kişiler.
@@ -175,20 +177,7 @@ class HomePage extends ConsumerWidget {
                 ),
               ],
               data: (list) => list.isEmpty
-                  ? [
-                      EmptyState(
-                        icon: Icons.handshake_rounded,
-                        title: 'İlk kaydınızı ekleyin',
-                        message:
-                            'Kime borç verdiğinizi ya da kimden aldığınızı '
-                            'yazın. Karşı taraf onaylayınca bakiyeniz burada '
-                            'görünür.',
-                        action: FilledButton(
-                          onPressed: onAddEntry,
-                          child: const Text('Kayıt ekle'),
-                        ),
-                      ),
-                    ]
+                  ? [GettingStarted(onAddEntry: onAddEntry)]
                   : [
                       SectionHeader(
                         title: 'Kişiler',
@@ -212,6 +201,133 @@ class HomePage extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Henüz kimse eklenmemişken: Pacta'nın nasıl çalıştığı ve üç adım.
+class GettingStarted extends StatelessWidget {
+  const GettingStarted({super.key, required this.onAddEntry});
+
+  final VoidCallback onAddEntry;
+
+  Future<void> _addPerson(BuildContext context) async {
+    final id = await showAddPersonSheet(context);
+    if (id != null && context.mounted) openLedger(context, id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final text = Theme.of(context).textTheme;
+
+    Widget step(
+      int number,
+      String title,
+      String body,
+      String action,
+      VoidCallback onTap,
+    ) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: c.creditSoft,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$number',
+              style: TextStyle(fontWeight: FontWeight.w700, color: c.credit),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(body, style: TextStyle(color: c.muted, height: 1.4)),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 36),
+                    ),
+                    onPressed: onTap,
+                    child: Text(action),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return SurfaceCard(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.handshake_rounded, color: c.credit),
+                const SizedBox(width: 10),
+                Text(
+                  'Başlarken',
+                  style: text.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              'Pacta, bir kişiyle aranızdaki borçları birlikte tuttuğunuz '
+              'defterdir. Karşı tarafın aleyhine bir kayıt, o onaylamadan '
+              'bakiyeye girmez.',
+              style: TextStyle(color: c.muted, height: 1.4),
+            ),
+          ),
+          step(
+            1,
+            'Kişi ekleyin',
+            'E-posta, Pacta kodu ya da QR ile bulun. Uygulaması olmayan biri '
+                'için yalnızca sizin göreceğiniz özel defter açın.',
+            'Kişi ekle',
+            () => _addPerson(context),
+          ),
+          step(
+            2,
+            'İlk kaydı girin',
+            'Borç verdim, borç aldım ya da ödeme. Karşı taraf onaylayınca '
+                'bakiyenize işlenir.',
+            'Kayıt ekle',
+            onAddEntry,
+          ),
+          step(
+            3,
+            'Kodunuzu paylaşın',
+            'Arkadaşlarınız sizi QR ya da davet linkiyle hemen eklesin.',
+            'Pacta kodum',
+            () => openPactaCodePage(context),
+          ),
+        ],
       ),
     );
   }
