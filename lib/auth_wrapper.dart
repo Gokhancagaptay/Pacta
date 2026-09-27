@@ -3,15 +3,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
+import 'package:pacta/features/profile/profile_providers.dart';
 import 'package:pacta/firebase_options.dart';
 import 'package:pacta/screens/auth/giris_ekrani.dart';
+import 'package:pacta/screens/auth/terms_screen.dart';
 import 'package:pacta/screens/auth/verify_email_screen.dart';
 import 'package:pacta/services/auth_service.dart';
+import 'package:pacta/services/firestore_service.dart';
 
 /// Hangi ekranın açılacağına tek başına karar verir:
 /// - oturum yok → giriş,
 /// - e-posta/şifre hesabı doğrulanmamış → doğrulama ekranı,
+/// - Kullanım Koşulları'nın güncel sürümü kabul edilmemiş → koşullar,
 /// - oturum var → ana ekran (profil eksikse arka planda tamamlanır).
 ///
 /// Giriş ve çıkış ekranları kendileri yönlendirme yapmaz; bu widget
@@ -76,11 +82,39 @@ class _AuthWrapperState extends State<AuthWrapper> {
             }
             if (_needsVerification(user)) return const VerifyEmailScreen();
             _ensureProfile(user);
-            return const HomeShell();
+            return _TermsGate(uid: user.uid);
           },
         );
       },
     );
+  }
+}
+
+/// Güncel koşullar kabul edildiyse ana ekran, edilmediyse koşullar.
+class _TermsGate extends ConsumerWidget {
+  const _TermsGate({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(userProfileProvider)
+        .when(
+          loading: () => const _LoadingScreen(),
+          // Profil okunamıyorsa ana ekran kendi hata durumunu gösterir.
+          error: (_, _) => const HomeShell(),
+          data: (profile) {
+            final accepted = profile?.termsVersion;
+            if (accepted == AppConstants.termsVersion) {
+              return const HomeShell();
+            }
+            return TermsScreen(
+              updated: accepted != null,
+              onAccept: () => FirestoreService().acceptTerms(uid),
+            );
+          },
+        );
   }
 }
 

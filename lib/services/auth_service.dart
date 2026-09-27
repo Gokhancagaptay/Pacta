@@ -95,10 +95,12 @@ class AuthService {
       // Profil hemen oluşturulur; e-posta doğrulanana kadar uygulama
       // AuthWrapper'da doğrulama ekranında kalır, sunucu da işlem kabul etmez.
       if (user != null) {
+        // Kayıt formu koşulların kabulü işaretlenmeden gönderilemez.
         await _firestoreService.ensureProfile(
           uid: user.uid,
           email: user.email ?? email,
           adSoyad: adSoyad,
+          acceptedTerms: true,
         );
       }
       await _sendVerificationWithSettings(user);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
+import '../../core/legal.dart';
 import '../../core/ui/widgets.dart';
 import '../../providers/theme_provider.dart';
 import '../../screens/settings/change_password_screen.dart';
@@ -168,6 +169,24 @@ class ProfilePage extends ConsumerWidget {
                     ),
                   ),
                   color: c.debt,
+                ),
+              ],
+            ),
+          ),
+          const SectionHeader(title: 'Yasal'),
+          SurfaceCard(
+            child: Column(
+              children: [
+                link(
+                  Icons.description_outlined,
+                  LegalPage.terms.title,
+                  () => openLegalPage(context, LegalPage.terms),
+                ),
+                const Divider(indent: 56),
+                link(
+                  Icons.privacy_tip_outlined,
+                  LegalPage.privacy.title,
+                  () => openLegalPage(context, LegalPage.privacy),
                 ),
               ],
             ),

@@ -1,6 +1,7 @@
 // lib/screens/auth/giris_ekrani.dart
 
 import 'package:flutter/material.dart';
+import 'package:pacta/core/legal.dart';
 import 'package:pacta/screens/auth/kayit_ekrani.dart';
 import 'package:pacta/services/auth_service.dart';
 import 'package:pacta/constants/strings.dart';
@@ -182,6 +183,27 @@ class _GirisEkraniState extends State<GirisEkrani> {
                         ),
                       ),
                     ],
+                  ),
+                  // Google ile ilk girişte ad ve e-posta bu ekranda alınır;
+                  // aydınlatma metni girişten önce erişilebilir olmalı.
+                  Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        for (final page in [LegalPage.privacy, LegalPage.terms])
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 36),
+                              foregroundColor: textSec,
+                            ),
+                            onPressed: () => openLegalPage(context, page),
+                            child: Text(
+                              page.title,
+                              style: TextStyle(fontSize: size.width * 0.034),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),

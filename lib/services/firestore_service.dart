@@ -29,14 +29,28 @@ class FirestoreService {
     });
   }
 
+  /// Kullanım Koşulları'nın güncel sürümünün kabul edildiğini kaydeder
+  /// (zaman sunucudan; kurallar başka zamanı kabul etmez).
+  static Map<String, dynamic> termsAcceptance() => {
+    'termsVersion': AppConstants.termsVersion,
+    'termsAcceptedAt': FieldValue.serverTimestamp(),
+  };
+
+  Future<void> acceptTerms(String uid) => _db
+      .collection(_usersCollection)
+      .doc(uid)
+      .set(termsAcceptance(), SetOptions(merge: true));
+
   /// Profili oluşturur ya da eksik alanlarını tamamlar. Belgenin var olup
   /// olmamasına bakmaz: bildirim anahtarı belgeyi profilden önce
   /// oluşturmuş olabilir. Var olan alanlar (ad, ayarlar) ezilmez.
+  /// [acceptedTerms]: kayıt formunda koşullar az önce kabul edildi.
   Future<void> ensureProfile({
     required String uid,
     required String email,
     String? adSoyad,
     String? telefon,
+    bool acceptedTerms = false,
   }) async {
     final ref = _db.collection(_usersCollection).doc(uid);
     final data = (await ref.get()).data() ?? const <String, dynamic>{};
@@ -52,6 +66,7 @@ class FirestoreService {
         'telefon': telefon!.trim(),
       if (data['notificationSettings'] == null)
         'notificationSettings': NotificationSettings().toMap(),
+      if (acceptedTerms) ...termsAcceptance(),
     };
     if (update.isNotEmpty) await ref.set(update, SetOptions(merge: true));
 

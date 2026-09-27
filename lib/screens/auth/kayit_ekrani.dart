@@ -1,6 +1,7 @@
 // lib/screens/auth/kayit_ekrani.dart
 
 import 'package:flutter/material.dart';
+import 'package:pacta/core/legal.dart';
 import 'package:pacta/services/auth_service.dart';
 
 class KayitEkrani extends StatefulWidget {
@@ -183,32 +184,51 @@ class _KayitEkraniState extends State<KayitEkrani> {
     final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
     final green = const Color(0xFF4ADE80);
 
-    return Row(
+    Widget pageLink(LegalPage page) => TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        foregroundColor: green,
+      ),
+      onPressed: () => openLegalPage(context, page),
+      child: Text(page.title, style: TextStyle(fontSize: size.width * 0.036)),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Checkbox(
-          value: _agreed,
-          onChanged: (val) {
-            setState(() {
-              _agreed = val ?? false;
-            });
-          },
-          activeColor: green,
-          checkColor: Colors.white,
-          side: BorderSide(
-            color: isDark ? Colors.white24 : Colors.grey.shade300,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(size.width * 0.015),
-          ),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        Row(
+          children: [
+            Checkbox(
+              value: _agreed,
+              onChanged: (val) {
+                setState(() {
+                  _agreed = val ?? false;
+                });
+              },
+              activeColor: green,
+              checkColor: Colors.white,
+              side: BorderSide(
+                color: isDark ? Colors.white24 : Colors.grey.shade300,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(size.width * 0.015),
+              ),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            SizedBox(width: size.width * 0.015),
+            Expanded(
+              child: Text(
+                "Kullanım Koşulları'nı okudum ve kabul ediyorum. 18 "
+                'yaşından büyüğüm.',
+                style: TextStyle(fontSize: size.width * 0.038, color: textSec),
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: size.width * 0.015),
-        Expanded(
-          child: Text(
-            'Kullanım Şartları ve Gizlilik Politikasını kabul ediyorum.',
-            style: TextStyle(fontSize: size.width * 0.038, color: textSec),
-            maxLines: 2,
-          ),
+        // Aydınlatma metni onaya bağlanmaz; yalnızca okunmak üzere sunulur.
+        Wrap(
+          children: [pageLink(LegalPage.terms), pageLink(LegalPage.privacy)],
         ),
       ],
     );

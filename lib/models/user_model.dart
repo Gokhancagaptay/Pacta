@@ -66,6 +66,9 @@ class UserModel {
   /// Kişinin Pacta kodu (QR ve davet linki bunu taşır); sunucu üretir.
   final String? pactaCode;
 
+  /// Kabul edilen Kullanım Koşulları sürümü (AppConstants.termsVersion).
+  final String? termsVersion;
+
   UserModel({
     required this.uid,
     required this.email,
@@ -79,6 +82,7 @@ class UserModel {
     this.favoriteLedgers = const {},
     this.hiddenLedgers = const {},
     this.pactaCode,
+    this.termsVersion,
   }) : notificationSettings = notificationSettings ?? NotificationSettings();
 
   Map<String, dynamic> toMap() {
@@ -124,6 +128,7 @@ class UserModel {
               : DateTime.now(),
       },
       pactaCode: map['pactaCode'] as String?,
+      termsVersion: map['termsVersion'] as String?,
     );
   }
 }
