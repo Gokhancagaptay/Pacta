@@ -167,8 +167,9 @@ class _DeleteAccountPageState extends ConsumerState<DeleteAccountPage> {
                   'e-postanız kaldırılır. Karşı tarafın daha önce aldığı '
                   'bildirimlerde ve kayıt açıklamalarında adınız geçebilir.',
               'Karşı taraf, hesabınızı sildiğiniz konusunda bilgilendirilir.',
-              'Bu defterlere artık yeni kayıt eklenemez. Karşı taraf da '
-                  'hesabını silmişse ortak defter tamamen silinir.',
+              'Bu defterlere artık yeni kayıt eklenemez. Kayıtlar 10 yıl '
+                  'sonra otomatik silinir; karşı taraf da hesabını silmişse '
+                  'ortak defter hemen tamamen silinir.',
             ]),
             section('Kapanacaklar', const [
               'Açık kayıtlar kapatılır: sizin önerileriniz geri çekilir, '
