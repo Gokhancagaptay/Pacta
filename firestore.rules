@@ -29,6 +29,12 @@ service cloud.firestore {
       return !('adSoyad' in d) || (d.adSoyad is string && d.adSoyad.size() <= 100);
     }
 
+    // Hesap silme başladı (Cloud Functions yazar): eski oturum profili ve
+    // herkese açık adı yeniden oluşturamaz.
+    function notDeleted(uid) {
+      return !exists(/databases/$(database)/documents/deletedAccounts/$(uid));
+    }
+
     // Profil yalnızca sahibine açıktır. E-posta giriş kimliğidir: yalnızca
     // giriş e-postasıyla ve yalnızca henüz yoksa yazılabilir, sonra değişmez.
     // (Bildirim anahtarı belgeyi profilden önce oluşturabilir; profil sonradan
@@ -41,7 +47,8 @@ service cloud.firestore {
         && (!('email' in request.resource.data) || request.resource.data.email == tokenEmail())
         && (!('uid' in request.resource.data) || request.resource.data.uid == uid)
         && !('pactaCode' in request.resource.data)
-        && validName(request.resource.data);
+        && validName(request.resource.data)
+        && notDeleted(uid);
       allow update: if isSelf(uid)
         && !changed(['pactaCode'])
         && (!changed(['email'])
@@ -69,23 +76,11 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if false;
       allow create, update: if isSelf(uid)
+        && notDeleted(uid)
         && request.resource.data.keys().hasOnly(['adSoyad'])
         && request.resource.data.adSoyad is string
         && request.resource.data.adSoyad.size() <= 100;
       allow delete: if false;
-    }
-
-    function isParty(data) {
-      return signedIn() && request.auth.uid in data.visibleto;
-    }
-
-    // v1 borç kayıtları (debts) arşivdir: taraflar okuyabilir, kimse yazamaz.
-    // Yazma açık kaldığında her kullanıcı istediği kişiye bildirim
-    // gönderebiliyordu; v2 defterlerine geçildi (ledgers).
-    match /debts/{debtId} {
-      allow get: if signedIn() && (resource == null || isParty(resource.data));
-      allow list: if isParty(resource.data);
-      allow write: if false;
     }
 
     // v2 defterler: istemci yalnızca taraf olduğu defteri okur. Tüm yazmalar
@@ -126,7 +121,8 @@ service cloud.firestore {
       allow list: if isMember(resource.data);
     }
 
-    // codes, pushQueue, rateLimits ve eski v1 koleksiyonları (notifications,
-    // users/*/savedContacts) için kural yoktur: istemciye kapalıdır.
+    // codes, pushQueue, rateLimits, deletedAccounts ve eski v1 koleksiyonları
+    // (debts, notifications, users/*/savedContacts) için kural yoktur:
+    // istemciye kapalıdır.
   }
 }

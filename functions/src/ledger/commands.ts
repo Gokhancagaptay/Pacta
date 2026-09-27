@@ -13,6 +13,7 @@ import {
   Id,
   consumeDaily,
   fail,
+  isDeletedAccount,
   parse,
   readLedger,
   requireUid,
@@ -480,7 +481,7 @@ function writeNewEntry(
  * iki tarafın giriş e-postası görünür; kişiler birbirini tanır.
  */
 export const createLedger = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(CreateLedgerInput, req.data);
   await consumeDaily(`ledgers_${uid}`, DAILY.ledgers,
     "Bugün çok fazla kişi eklediniz. Yarın tekrar deneyin.");
@@ -512,6 +513,10 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
     fail("invalid-argument",
       "Bu sizin hesabınız. Kendinizle defter açamazsınız.");
   }
+  // Hesabını silmekte olan kişiyle yeni defter açılamaz.
+  if (await isDeletedAccount(otherUid)) {
+    fail("not-found", "Kullanıcı bulunamadı.");
+  }
   const other = await db.collection("users").doc(otherUid).get();
   const otherAuth = await authInfo(otherUid);
   if (!other.exists || !otherAuth) {
@@ -532,8 +537,13 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
   const created = await db.runTransaction(async (tx) => {
     const existing = await tx.get(ref);
     if (existing.exists) {
-      // Eski defterlerde e-posta yoktu; tamamlanır.
-      const sides = (existing.data() as Ledger).sides;
+      // Eski defterlerde e-posta yoktu; tamamlanır. Kapalı defterde (bir
+      // taraf hesabını sildi) silinen kişinin e-postası geri yazılmaz.
+      const data = existing.data() as Ledger;
+      const sides = data.sides;
+      if (data.status === "closed" || sides.a.deleted || sides.b.deleted) {
+        return false;
+      }
       const emailOf = (s: LedgerSide) => s.uid === uid ? myEmail : otherEmail;
       if (!sides.a.email || !sides.b.email) {
         tx.update(ref, {
@@ -560,7 +570,7 @@ export const createLedger = onCall<unknown>(OPTS, async (req) => {
  * Aynı entryId ile tekrar çağrı aynı sonucu döner.
  */
 export const createEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(CreateEntryInput, req.data);
   const dateError =
     dateRangeError(input.occurredOn, input.dueOn, todayIstanbul());
@@ -621,7 +631,7 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
 
 /** Bekleyen kaydı karşı taraf onaylar; bakiye ve zincir güncellenir. */
 export const confirmEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(ConfirmInput, req.data);
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const notices: Notice[] = [];
@@ -691,7 +701,7 @@ export const confirmEntry = onCall<unknown>(OPTS, async (req) => {
 
 /** Karşı taraf itiraz eder; kayıt düzeltilmek üzere kaydı girene döner. */
 export const disputeEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(DisputeInput, req.data);
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const notices: Notice[] = [];
@@ -742,7 +752,7 @@ export const disputeEntry = onCall<unknown>(OPTS, async (req) => {
 
 /** Karşı taraf reddeder; kayıt kapanır, bakiyeye hiç işlenmez. */
 export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(RejectInput, req.data);
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const notices: Notice[] = [];
@@ -799,7 +809,7 @@ export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
  * oluşur ve karşı tarafın önceki onay görünümü geçersizleşir.
  */
 export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(ReviseInput, req.data);
   await consumeDaily(`revisions_${uid}`, DAILY.revisions,
     "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
@@ -883,7 +893,7 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
 
 /** Kaydı giren, onaylanmamış kaydını geri çeker. Bildirim gönderilmez. */
 export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(CancelInput, req.data);
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
 
@@ -925,7 +935,7 @@ export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
  * Ters kayıt da onay ister (aleyhe ise hemen işlenir).
  */
 export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = parse(ReverseInput, req.data);
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const reversalRef = ledgerRef.collection("entries").doc(input.reversalId);

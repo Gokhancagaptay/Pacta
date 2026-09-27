@@ -124,7 +124,7 @@ export async function authInfo(uid: string): Promise<AuthInfo | null> {
 
 /** Kişinin Pacta kodu; yoksa oluşturulur. */
 export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const userRef = db.collection("users").doc(uid);
   const existing = (await userRef.get()).get("pactaCode") as string | undefined;
   if (existing) return {code: existing};
@@ -148,7 +148,7 @@ export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
 
 /** Koddan kişinin adını gösterir; eklemeden önce onay için. */
 export const previewCode = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const input = z.object({code: z.string().max(200)}).strict();
   const {code} = parse(input, req.data);
   const target = await uidForCode(uid, code);
@@ -167,7 +167,7 @@ export const previewCode = onCall<unknown>(OPTS, async (req) => {
  * siler. Ortak defterler silinmez; her iki tarafın kaydıdır.
  */
 export const deletePrivateLedger = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const {ledgerId} = parse(z.object({ledgerId: Id}).strict(), req.data);
   const ref = db.collection("ledgers").doc(ledgerId);
   const snap = await ref.get();

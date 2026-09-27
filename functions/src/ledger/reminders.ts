@@ -127,7 +127,7 @@ const ReminderInput = z.object({ledgerId: Id}).strict();
  * taraf size borçluysa ya da yanıtını bekleyen bir kayıt varsa çalışır.
  */
 export const sendReminder = onCall<unknown>(OPTS, async (req) => {
-  const uid = requireUid(req);
+  const uid = await requireUid(req);
   const {ledgerId} = parse(ReminderInput, req.data);
   const now = clock.now();
   const today = todayIstanbul(now);

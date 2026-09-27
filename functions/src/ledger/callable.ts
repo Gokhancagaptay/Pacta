@@ -26,10 +26,14 @@ export function fail(code: FunctionsErrorCode, message: string): never {
  * Oturum açmış ve e-postası doğrulanmış kullanıcı. Doğrulanmamış bir
  * e-postayla (başkasının adresi olabilir) işlem yapılamaz. Telefonla giriş
  * (Faz 2c) e-posta taşımaz; o kimlik SMS ile doğrulanmıştır.
+ * Hesabı silinmiş kişinin eski oturumu (belirteç ~1 saat geçerli kalır)
+ * hiçbir komut çalıştıramaz; silme başında yazılan işarete bakılır.
  * @param {CallableRequest<unknown>} req İstek.
- * @return {string} Oturumdaki kullanıcı.
+ * @return {Promise<string>} Oturumdaki kullanıcı.
  */
-export function requireUid(req: CallableRequest<unknown>): string {
+export async function requireUid(
+  req: CallableRequest<unknown>
+): Promise<string> {
   if (!req.auth) fail("unauthenticated", "Giriş yapmalısınız.");
   const token = req.auth.token;
   const byPhone = token.firebase?.sign_in_provider === "phone";
@@ -37,7 +41,19 @@ export function requireUid(req: CallableRequest<unknown>): string {
     fail("permission-denied",
       "Devam etmek için e-posta adresinizi doğrulamalısınız.");
   }
+  if (await isDeletedAccount(req.auth.uid)) {
+    fail("permission-denied", "Bu hesap silindi.");
+  }
   return req.auth.uid;
+}
+
+/**
+ * Hesap silme başladı mı (deletedAccounts/{uid}; istemciye kapalı).
+ * @param {string} uid Kullanıcı.
+ * @return {Promise<boolean>} Silinmiş ya da siliniyorsa true.
+ */
+export async function isDeletedAccount(uid: string): Promise<boolean> {
+  return (await db.collection("deletedAccounts").doc(uid).get()).exists;
 }
 
 /**

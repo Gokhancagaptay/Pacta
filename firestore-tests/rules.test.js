@@ -154,6 +154,17 @@ describe("users", () => {
       updateDoc(doc(ali(), "users/ali"), {adSoyad: "x".repeat(100)}));
   });
 
+  it("silinen hesabın eski oturumu profili yeniden oluşturamaz", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "deletedAccounts/veli"), {deletedAt: 1}));
+    const veli = env
+      .authenticatedContext("veli", {email: "veli@example.com"})
+      .firestore();
+    await assertFails(setDoc(doc(veli, "users/veli"), {fcmToken: "t"}));
+    await assertFails(setDoc(doc(veli, "publicProfiles/veli"), {adSoyad: "V"}));
+    await assertFails(getDoc(doc(veli, "deletedAccounts/veli")));
+  });
+
   it("profil yalnızca giriş e-postasıyla oluşturulur", async () => {
     const veli = env
       .authenticatedContext("veli", {email: "veli@example.com"})
@@ -186,32 +197,13 @@ describe("publicProfiles", () => {
   });
 });
 
-describe("debts okuma", () => {
-  it("taraf olmayan okuyamaz, taraf okur", async () => {
-    await assertFails(getDoc(doc(mallory(), "debts/pending1")));
-    await assertSucceeds(getDoc(doc(ayse(), "debts/pending1")));
-  });
-
-  it("silinmiş kayıt izin hatası değil 'yok' döner", async () => {
-    const snap = await assertSucceeds(getDoc(doc(ayse(), "debts/silinmis")));
-    assert.equal(snap.exists(), false);
-    await assertFails(getDoc(doc(anon(), "debts/silinmis")));
-  });
-
-  it("liste yalnızca visibleto filtresiyle", async () => {
-    await assertSucceeds(
-      getDocs(
-        query(
-          collection(ayse(), "debts"),
-          where("visibleto", "array-contains", "ayse"),
-        ),
-      ),
-    );
-    await assertFails(getDocs(collection(ayse(), "debts")));
-  });
-});
-
 describe("debts (v1 arşivi)", () => {
+  it("taraflar dahil kimse okuyamaz", async () => {
+    await assertFails(getDoc(doc(ayse(), "debts/pending1")));
+    await assertFails(getDocs(query(collection(ayse(), "debts"),
+      where("visibleto", "array-contains", "ayse"))));
+  });
+
   it("kimse yeni kayıt açamaz, güncelleyemez, silemez", async () => {
     await assertFails(setDoc(doc(ali(), "debts/yeni"), newDebt()));
     await assertFails(
