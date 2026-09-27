@@ -43,7 +43,8 @@ class PushNotificationService {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
-      onDidReceiveNotificationResponse: (r) => NotificationRoutes.open(r.payload),
+      onDidReceiveNotificationResponse: (r) =>
+          NotificationRoutes.open(r.payload),
     );
 
     // Uygulamayı bildirim açtıysa (yerel ya da FCM) ilgili kayda git.
@@ -52,7 +53,9 @@ class PushNotificationService {
       NotificationRoutes.open(launch!.notificationResponse?.payload);
     }
     final initial = await _fcm.getInitialMessage();
-    if (initial != null) NotificationRoutes.open(initial.data['route'] as String?);
+    if (initial != null) {
+      NotificationRoutes.open(initial.data['route'] as String?);
+    }
     FirebaseMessaging.onMessageOpenedApp.listen(
       (m) => NotificationRoutes.open(m.data['route'] as String?),
     );

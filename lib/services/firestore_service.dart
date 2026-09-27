@@ -55,7 +55,10 @@ class FirestoreService {
     };
     if (update.isNotEmpty) await ref.set(update, SetOptions(merge: true));
 
-    final public = await _db.collection(_publicProfilesCollection).doc(uid).get();
+    final public = await _db
+        .collection(_publicProfilesCollection)
+        .doc(uid)
+        .get();
     if (!public.exists || (public.data()?['adSoyad'] ?? '') != name) {
       await syncPublicProfile(uid, name);
     }

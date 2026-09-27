@@ -4,6 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/core/dates/local_date.dart';
 import 'package:pacta/core/money/asset.dart';
 import 'package:pacta/core/money/money.dart';
+import 'package:pacta/features/ledger/domain/entry_text.dart';
 import 'package:pacta/features/ledger/domain/models.dart';
 import 'package:pacta/features/ledger/domain/pacta_code.dart';
 import 'package:pacta/features/ledger/domain/reminder.dart';
@@ -34,7 +35,12 @@ Ledger ledger(
   },
 });
 
-Map<String, Object?> dueItem(String entryId, String side, int minor, String on) => {
+Map<String, Object?> dueItem(
+  String entryId,
+  String side,
+  int minor,
+  String on,
+) => {
   'entryId': entryId,
   'asset': 'TRY',
   'debtorSide': side,
@@ -62,8 +68,16 @@ void main() {
 
   group('ReminderPlan', () {
     test('konu sırası: vadesi geçmiş > yanıt bekleyen > açık bakiye', () {
-      final overdue = ledger('x', 'Ayşe', 5000, due: [dueItem('e', 'b', 5000, '2026-09-20')]);
-      expect(ReminderPlan.of(overdue, const [], 'me', today).kind, ReminderKind.overdue);
+      final overdue = ledger(
+        'x',
+        'Ayşe',
+        5000,
+        due: [dueItem('e', 'b', 5000, '2026-09-20')],
+      );
+      expect(
+        ReminderPlan.of(overdue, const [], 'me', today).kind,
+        ReminderKind.overdue,
+      );
 
       final pending = ledger('x', 'Ayşe', 0);
       final plan = ReminderPlan.of(pending, [pendingFor('b')], 'me', today);
@@ -77,13 +91,31 @@ void main() {
     });
 
     test('borçlu olan, kendi bekleyeni olan ve özel defter hatırlatamaz', () {
-      expect(ReminderPlan.of(ledger('x', 'Ayşe', -5000), const [], 'me', today).isRelevant, isFalse);
       expect(
-        ReminderPlan.of(ledger('x', 'Ayşe', 0), [pendingFor('a')], 'me', today).isRelevant,
+        ReminderPlan.of(
+          ledger('x', 'Ayşe', -5000),
+          const [],
+          'me',
+          today,
+        ).isRelevant,
         isFalse,
       );
       expect(
-        ReminderPlan.of(ledger('x', 'Bakkal', 5000, private: true), const [], 'me', today).isRelevant,
+        ReminderPlan.of(
+          ledger('x', 'Ayşe', 0),
+          [pendingFor('a')],
+          'me',
+          today,
+        ).isRelevant,
+        isFalse,
+      );
+      expect(
+        ReminderPlan.of(
+          ledger('x', 'Bakkal', 5000, private: true),
+          const [],
+          'me',
+          today,
+        ).isRelevant,
         isFalse,
       );
     });
@@ -107,7 +139,10 @@ void main() {
         'Uygun olduğunuzda kontrol edebilirsiniz.',
       );
       for (final kind in ReminderKind.values) {
-        expect(ReminderPlan.text(kind, 'Gökhan', 2).message, isNot(contains('₺')));
+        expect(
+          ReminderPlan.text(kind, 'Gökhan', 2).message,
+          isNot(contains('₺')),
+        );
       }
     });
   });
@@ -115,21 +150,32 @@ void main() {
   group('Hesap özeti', () {
     final rows = [
       PersonRow.of(
-        ledger('a', 'Ayşe', 120000, due: [dueItem('e1', 'b', 50000, '2026-09-20')]),
+        ledger(
+          'a',
+          'Ayşe',
+          120000,
+          due: [dueItem('e1', 'b', 50000, '2026-09-20')],
+        ),
         'me',
         today,
       ),
       PersonRow.of(ledger('c', 'Can', 200000, pending: 2), 'me', today),
       PersonRow.of(
-        ledger('d', 'Deniz', -75000, due: [dueItem('e2', 'a', 75000, '2026-09-28')]),
+        ledger(
+          'd',
+          'Deniz',
+          -75000,
+          due: [dueItem('e2', 'a', 75000, '2026-09-28')],
+        ),
         'me',
         today,
       ),
     ];
 
     test('süzgeçler', () {
-      List<String> names(PeopleFilter f) =>
-          [for (final r in selectRows(rows, filter: f)) r.name];
+      List<String> names(PeopleFilter f) => [
+        for (final r in selectRows(rows, filter: f)) r.name,
+      ];
       expect(names(PeopleFilter.owesMe), ['Ayşe', 'Can']);
       expect(names(PeopleFilter.iOwe), ['Deniz']);
       expect(names(PeopleFilter.overdue), ['Ayşe']);
@@ -137,11 +183,15 @@ void main() {
     });
 
     test('sıralama ve Türkçe arama', () {
-      List<String> names(PeopleSort s) =>
-          [for (final r in selectRows(rows, sort: s)) r.name];
+      List<String> names(PeopleSort s) => [
+        for (final r in selectRows(rows, sort: s)) r.name,
+      ];
       expect(names(PeopleSort.amount), ['Can', 'Ayşe', 'Deniz']);
       expect(names(PeopleSort.due), ['Ayşe', 'Deniz', 'Can']);
-      expect([for (final r in selectRows(rows, query: 'AYŞ')) r.name], ['Ayşe']);
+      expect(
+        [for (final r in selectRows(rows, query: 'AYŞ')) r.name],
+        ['Ayşe'],
+      );
     });
 
     test('toplamlar', () {
@@ -154,21 +204,38 @@ void main() {
   });
 
   group('Vade takvimi', () {
-    test('gecikmiş, 30 gün ve sonrası ayrılır; tutar kullanıcının gözünden', () {
-      final s = DueSchedule.of([
-        ledger('a', 'Ayşe', 1, due: [
-          dueItem('e1', 'b', 100, '2026-09-20'),
-          dueItem('e3', 'b', 100, '2026-12-01'),
-        ]),
-        ledger('d', 'Deniz', -1, due: [dueItem('e2', 'a', 300, '2026-09-25')]),
-      ], 'me', today);
-      expect([for (final r in s.overdue) r.item.entryId], ['e1']);
-      expect([for (final r in s.upcoming) r.item.entryId], ['e2']);
-      expect([for (final r in s.later) r.item.entryId], ['e3']);
-      expect(s.overdue.single.amount.minor, 100);
-      expect(s.upcoming.single.amount.minor, -300);
-      expect(s.upcoming.single.iOwe, isTrue);
-    });
+    test(
+      'gecikmiş, 30 gün ve sonrası ayrılır; tutar kullanıcının gözünden',
+      () {
+        final s = DueSchedule.of(
+          [
+            ledger(
+              'a',
+              'Ayşe',
+              1,
+              due: [
+                dueItem('e1', 'b', 100, '2026-09-20'),
+                dueItem('e3', 'b', 100, '2026-12-01'),
+              ],
+            ),
+            ledger(
+              'd',
+              'Deniz',
+              -1,
+              due: [dueItem('e2', 'a', 300, '2026-09-25')],
+            ),
+          ],
+          'me',
+          today,
+        );
+        expect([for (final r in s.overdue) r.item.entryId], ['e1']);
+        expect([for (final r in s.upcoming) r.item.entryId], ['e2']);
+        expect([for (final r in s.later) r.item.entryId], ['e3']);
+        expect(s.overdue.single.amount.minor, 100);
+        expect(s.upcoming.single.amount.minor, -300);
+        expect(s.upcoming.single.iOwe, isTrue);
+      },
+    );
 
     test('göreli gün', () {
       expect(relativeDue(const LocalDate(2026, 9, 20), today), '5 gün geçti');
@@ -184,9 +251,15 @@ void main() {
         PersonRow.of(ledger('a', 'Ayşe', 100), 'me', today),
         PersonRow.of(ledger('c', 'Can', 300), 'me', today, favorite: true),
       ];
-      expect([for (final r in selectRows(rows, sort: PeopleSort.name)) r.name], ['Can', 'Ayşe']);
       expect(
-        [for (final r in selectRows(rows, filter: PeopleFilter.favorites)) r.name],
+        [for (final r in selectRows(rows, sort: PeopleSort.name)) r.name],
+        ['Can', 'Ayşe'],
+      );
+      expect(
+        [
+          for (final r in selectRows(rows, filter: PeopleFilter.favorites))
+            r.name,
+        ],
         ['Can'],
       );
       final withEmail = PersonRow(
@@ -214,9 +287,62 @@ void main() {
       expect(isHiddenLedger(l, {'x': DateTime(2026, 9, 19)}), isFalse);
       final other = ledger('y', 'Can', 0);
       expect(
-        [for (final v in visibleLedgers([l, other], favorites: {'y'})) v.id],
+        [
+          for (final v in visibleLedgers([l, other], favorites: {'y'})) v.id,
+        ],
         ['y', 'x'],
       );
+    });
+  });
+
+  group('Kapalı defter (karşı taraf hesabını sildi)', () {
+    Ledger closed() => Ledger.fromMap('k', {
+      'mode': 'shared',
+      'status': 'closed',
+      'sides': {
+        'a': {'uid': 'me', 'displayName': 'Gökhan'},
+        'b': {'uid': 'u', 'displayName': 'Silinmiş kullanıcı', 'deleted': true},
+      },
+      'balances': {'TRY': 5000},
+      'dueItems': [dueItem('e1', 'b', 5000, '2026-09-20')],
+    });
+
+    test('vadeler takvime ve gecikmiş süzgecine girmez', () {
+      final l = closed();
+      expect(l.isClosed, isTrue);
+      expect(l.b.deleted, isTrue);
+      expect(DueSchedule.of([l], 'me', today).isEmpty, isTrue);
+      final row = PersonRow.of(l, 'me', today);
+      expect(row.hasOverdue, isFalse);
+      expect(row.nextDue, isNull);
+    });
+
+    test('hatırlatma gönderilemez', () {
+      expect(
+        ReminderPlan.of(closed(), const [], 'me', today).isRelevant,
+        isFalse,
+      );
+    });
+
+    test('hesap silindiği için kapanan kayıt reddedildi sayılmaz', () {
+      final e = LedgerEntry.fromMap('x', {
+        'ledgerId': 'k',
+        'kind': 'debt',
+        'direction': 'aToB',
+        'asset': 'TRY',
+        'amountMinor': 100,
+        'deltaMinor': 100,
+        'occurredOn': '2026-09-25',
+        'state': 'rejected',
+        'proposedBy': 'a',
+        'rejection': {'reason': 'accountDeleted'},
+      });
+      expect(EntryText.status(e, Side.a).label, 'Hesap silindiği için kapandı');
+      expect(
+        EntryText.eventLabel('rejected', reason: 'accountDeleted'),
+        'Hesap silindiği için kapandı',
+      );
+      expect(EntryText.eventLabel('rejected'), 'Reddedildi');
     });
   });
 
@@ -227,12 +353,21 @@ void main() {
     expect(parsePactaCode('K7Q3X0'), isNull);
     expect(parsePactaCode('ali@ornek.com'), isNull);
     expect(formatPactaCode('K7Q3XM'), 'K7Q-3XM');
-    expect(inviteText('K7Q3XM'), contains('https://pacta-76686.web.app/u/K7Q3XM'));
+    expect(
+      inviteText('K7Q3XM'),
+      contains('https://pacta-76686.web.app/u/K7Q3XM'),
+    );
   });
 
   test('bildirim rotası çözülür', () {
-    expect(NotificationRoutes.parse('/l/p_a_b'), (ledgerId: 'p_a_b', entryId: null));
-    expect(NotificationRoutes.parse('/l/p_a_b/e/e-1'), (ledgerId: 'p_a_b', entryId: 'e-1'));
+    expect(NotificationRoutes.parse('/l/p_a_b'), (
+      ledgerId: 'p_a_b',
+      entryId: null,
+    ));
+    expect(NotificationRoutes.parse('/l/p_a_b/e/e-1'), (
+      ledgerId: 'p_a_b',
+      entryId: 'e-1',
+    ));
     expect(NotificationRoutes.parse('/debts/x'), isNull);
   });
 }

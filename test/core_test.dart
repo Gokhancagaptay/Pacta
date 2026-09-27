@@ -36,7 +36,10 @@ void main() {
     test('Türkçe gösterim ve sıralama', () {
       expect(LocalDate.parse('2026-09-22').format(), '22 Eylül 2026');
       expect(LocalDate.parse('2026-09-22').formatMonth(), 'Eylül 2026');
-      expect(LocalDate.parse('2026-09-22') < LocalDate.parse('2026-10-01'), isTrue);
+      expect(
+        LocalDate.parse('2026-09-22') < LocalDate.parse('2026-10-01'),
+        isTrue,
+      );
     });
   });
 }

@@ -157,9 +157,9 @@ class SectionHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           ?trailing,
@@ -225,7 +225,10 @@ class BalanceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(fontSize: 11, color: c.balanceCardMuted)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: c.balanceCardMuted),
+            ),
             const SizedBox(height: 2),
             AmountText(value, color: c.balanceCardText),
           ],
@@ -264,7 +267,10 @@ class BalanceCard extends StatelessWidget {
           ),
           if (footnote != null) ...[
             const SizedBox(height: 12),
-            Text(footnote!, style: TextStyle(fontSize: 12, color: c.balanceCardMuted)),
+            Text(
+              footnote!,
+              style: TextStyle(fontSize: 12, color: c.balanceCardMuted),
+            ),
           ],
         ],
       ),
@@ -308,9 +314,9 @@ class EmptyState extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
@@ -340,7 +346,10 @@ class ErrorState extends StatelessWidget {
       message: message,
       action: onRetry == null
           ? null
-          : OutlinedButton(onPressed: onRetry, child: const Text('Tekrar dene')),
+          : OutlinedButton(
+              onPressed: onRetry,
+              child: const Text('Tekrar dene'),
+            ),
     );
   }
 }

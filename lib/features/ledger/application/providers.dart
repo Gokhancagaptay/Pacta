@@ -34,8 +34,8 @@ final ledgerProvider = StreamProvider.autoDispose.family<Ledger?, String>(
   (ref, id) => ref.watch(ledgerRepositoryProvider).watchLedger(id),
 );
 
-final entriesProvider =
-    StreamProvider.autoDispose.family<List<LedgerEntry>, String>((ref, id) {
+final entriesProvider = StreamProvider.autoDispose
+    .family<List<LedgerEntry>, String>((ref, id) {
       final uid = ref.watch(currentUidProvider);
       return ref.watch(ledgerRepositoryProvider).watchEntries(id, uid);
     });
@@ -43,13 +43,12 @@ final entriesProvider =
 typedef EntryKey = ({String ledgerId, String entryId});
 
 final entryProvider = StreamProvider.autoDispose.family<LedgerEntry?, EntryKey>(
-  (ref, key) => ref
-      .watch(ledgerRepositoryProvider)
-      .watchEntry(key.ledgerId, key.entryId),
+  (ref, key) =>
+      ref.watch(ledgerRepositoryProvider).watchEntry(key.ledgerId, key.entryId),
 );
 
-final entryEventsProvider =
-    StreamProvider.autoDispose.family<List<LedgerEvent>, EntryKey>((ref, key) {
+final entryEventsProvider = StreamProvider.autoDispose
+    .family<List<LedgerEvent>, EntryKey>((ref, key) {
       final uid = ref.watch(currentUidProvider);
       return ref
           .watch(ledgerRepositoryProvider)
@@ -61,11 +60,12 @@ final inboxProvider = StreamProvider.autoDispose<List<InboxItem>>((ref) {
   return ref.watch(ledgerRepositoryProvider).watchInbox(uid);
 });
 
-final notificationsProvider =
-    StreamProvider.autoDispose<List<AppNotification>>((ref) {
-      final uid = ref.watch(currentUidProvider);
-      return ref.watch(ledgerRepositoryProvider).watchNotifications(uid);
-    });
+final notificationsProvider = StreamProvider.autoDispose<List<AppNotification>>(
+  (ref) {
+    final uid = ref.watch(currentUidProvider);
+    return ref.watch(ledgerRepositoryProvider).watchNotifications(uid);
+  },
+);
 
 /// Tüm defterlerin kullanıcı bakış açısından onaylı toplamı.
 class Totals {
@@ -91,7 +91,8 @@ class Totals {
             payable -= money.minor;
           }
         } else {
-          others[money.asset.code] = (others[money.asset.code] ?? 0) + money.minor;
+          others[money.asset.code] =
+              (others[money.asset.code] ?? 0) + money.minor;
         }
       }
     }
@@ -116,9 +117,7 @@ class Totals {
     if (others.isEmpty) return null;
     final parts = [
       for (final m in others)
-        m.isNegative
-            ? '${(-m).format()} borcunuz'
-            : '${m.format()} alacağınız',
+        m.isNegative ? '${(-m).format()} borcunuz' : '${m.format()} alacağınız',
     ];
     return 'Ayrıca ${parts.join(', ')} var.';
   }
@@ -142,7 +141,9 @@ final recentEntriesProvider = StreamProvider.autoDispose<List<LedgerEntry>>((
 });
 
 /// Açık vadeler: gecikmiş, 30 gün içinde, sonrası.
-final dueScheduleProvider = Provider.autoDispose<AsyncValue<DueSchedule>>((ref) {
+final dueScheduleProvider = Provider.autoDispose<AsyncValue<DueSchedule>>((
+  ref,
+) {
   final uid = ref.watch(currentUidProvider);
   final today = ref.watch(todayProvider);
   return ref
@@ -157,7 +158,8 @@ final favoriteLedgersProvider = Provider.autoDispose<Set<String>>(
 );
 
 final _hiddenMapProvider = Provider.autoDispose<Map<String, DateTime>>(
-  (ref) => ref.watch(userProfileProvider).valueOrNull?.hiddenLedgers ?? const {},
+  (ref) =>
+      ref.watch(userProfileProvider).valueOrNull?.hiddenLedgers ?? const {},
 );
 
 /// Listelerde görünen defterler: kaldırılanlar çıkar, favoriler başta.
@@ -169,9 +171,7 @@ final visibleLedgersProvider = Provider.autoDispose<AsyncValue<List<Ledger>>>((
   final hidden = ref.watch(_hiddenMapProvider);
   return ref
       .watch(ledgersProvider)
-      .whenData(
-        (l) => visibleLedgers(l, favorites: favorites, hidden: hidden),
-      );
+      .whenData((l) => visibleLedgers(l, favorites: favorites, hidden: hidden));
 });
 
 /// Listeden kaldırılmış defterler (geri getirmek için).

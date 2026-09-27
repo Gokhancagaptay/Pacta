@@ -27,16 +27,28 @@ Future<void> main() async {
     debugPrint('Firebase başlatılamadı: $e');
   }
 
-  // Çökme raporları (Crashlytics): yalnızca yayın sürümünde toplanır; web'de
-  // yok. Kullanıcı kimliği eklenmez.
-  if (Firebase.apps.isNotEmpty && !kIsWeb) {
-    final crashlytics = FirebaseCrashlytics.instance;
-    await crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
-    FlutterError.onError = crashlytics.recordFlutterFatalError;
-    PlatformDispatcher.instance.onError = (error, stack) {
-      crashlytics.recordError(error, stack, fatal: true);
-      return true;
-    };
+  // Çökme raporları (Crashlytics): yalnızca desteklenen platformlarda ve
+  // yayın sürümünde. Kullanıcı kimliği eklenmez. Uygulamayı kapatmayan
+  // hatalar "ölümcül değil" kaydedilir (çökmesiz oturum oranı doğru kalsın).
+  const crashPlatforms = {
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+    TargetPlatform.macOS,
+  };
+  if (Firebase.apps.isNotEmpty &&
+      !kIsWeb &&
+      crashPlatforms.contains(defaultTargetPlatform)) {
+    try {
+      final crashlytics = FirebaseCrashlytics.instance;
+      await crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
+      FlutterError.onError = crashlytics.recordFlutterError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        crashlytics.recordError(error, stack);
+        return true;
+      };
+    } catch (e) {
+      debugPrint('Crashlytics başlatılamadı: $e');
+    }
   }
 
   // Uygulama hemen açılır; bildirim ve link servisleri (izin sorusu, ağ)

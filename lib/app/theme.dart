@@ -211,14 +211,20 @@ class PactaTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-      dividerTheme: DividerThemeData(color: colors.line, thickness: 1, space: 1),
+      dividerTheme: DividerThemeData(
+        color: colors.line,
+        thickness: 1,
+        space: 1,
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: brandFill,
           foregroundColor: onBrandFill,
           minimumSize: const Size.fromHeight(54),
           shape: RoundedRectangleBorder(borderRadius: radius14),
-          textStyle: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          textStyle: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -227,20 +233,27 @@ class PactaTheme {
           minimumSize: const Size.fromHeight(48),
           side: BorderSide(color: outline),
           shape: RoundedRectangleBorder(borderRadius: radius14),
-          textStyle: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w500),
+          textStyle: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: colors.credit,
           minimumSize: const Size(44, 44),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: radius14,
           borderSide: BorderSide(color: outline),

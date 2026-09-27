@@ -53,10 +53,10 @@ void main() {
       expect(l.balanceFor('ayse').minor, -120000);
       expect(l.other('gokhan').displayName, 'Ayşe Yılmaz');
       expect(l.sideOf('mallory'), isNull);
-      expect(
-        l.balancesFor('ayse').map((m) => m.format()),
-        ['−1.200,00 ₺', '2 çeyrek'],
-      );
+      expect(l.balancesFor('ayse').map((m) => m.format()), [
+        '−1.200,00 ₺',
+        '2 çeyrek',
+      ]);
     });
   });
 

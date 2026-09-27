@@ -55,8 +55,9 @@ Future<bool> runCommand(
   }
 }
 
-void openLedger(BuildContext context, String ledgerId) => Navigator.of(context)
-    .push(MaterialPageRoute<void>(builder: (_) => LedgerPage(ledgerId: ledgerId)));
+void openLedger(BuildContext context, String ledgerId) => Navigator.of(
+  context,
+).push(MaterialPageRoute<void>(builder: (_) => LedgerPage(ledgerId: ledgerId)));
 
 void openEntry(BuildContext context, String ledgerId, String entryId) =>
     Navigator.of(context).push(
@@ -92,7 +93,9 @@ class LedgerTile extends ConsumerWidget {
     // ("0,00 ₺" yazıp borcu gizlemez).
     final tryBalance = ledger.balanceFor(uid);
     final all = ledger.balancesFor(uid);
-    final balance = tryBalance.isZero && all.isNotEmpty ? all.first : tryBalance;
+    final balance = tryBalance.isZero && all.isNotEmpty
+        ? all.first
+        : tryBalance;
     final c = context.pacta;
     final due = ledger.dueItems.isEmpty ? null : ledger.dueItems.first.dueOn;
     String? subtitle;
@@ -118,7 +121,9 @@ class LedgerTile extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          border: showDivider ? Border(bottom: BorderSide(color: c.line)) : null,
+          border: showDivider
+              ? Border(bottom: BorderSide(color: c.line))
+              : null,
         ),
         child: Row(
           children: [
@@ -199,7 +204,10 @@ class EntryTile extends StatelessWidget {
     final counted =
         entry.state == EntryState.confirmed && entry.kind != EntryKind.reversal;
     final mine = Money(entry.deltaFor(me), entry.asset);
-    final (fg, bg) = (counted ? status.tone : ChipTone.neutral) == ChipTone.neutral
+    final (
+      fg,
+      bg,
+    ) = (counted ? status.tone : ChipTone.neutral) == ChipTone.neutral
         ? (c.muted, c.line)
         : status.tone.colors(c, Theme.of(context).colorScheme);
     final title = entry.description.isEmpty
@@ -211,7 +219,9 @@ class EntryTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          border: showDivider ? Border(bottom: BorderSide(color: c.line)) : null,
+          border: showDivider
+              ? Border(bottom: BorderSide(color: c.line))
+              : null,
         ),
         child: Row(
           children: [
@@ -306,7 +316,9 @@ class DueTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          border: showDivider ? Border(bottom: BorderSide(color: c.line)) : null,
+          border: showDivider
+              ? Border(bottom: BorderSide(color: c.line))
+              : null,
         ),
         child: Row(
           children: [
@@ -372,12 +384,14 @@ String inboxTitle(InboxItem item) {
   if (!item.needsConfirmation) return '${item.fromName} kaydınıza itiraz etti';
   return switch (item.kind) {
     EntryKind.reversal => '${item.fromName} bir kaydı düzeltmek istiyor',
-    EntryKind.debt => item.myDeltaMinor < 0
-        ? '${item.fromName} size borç yazdı'
-        : '${item.fromName} sizden borç aldığını yazdı',
-    EntryKind.payment => item.myDeltaMinor < 0
-        ? '${item.fromName} ödeme bildirdi'
-        : '${item.fromName} ödeme aldığını bildirdi',
+    EntryKind.debt =>
+      item.myDeltaMinor < 0
+          ? '${item.fromName} size borç yazdı'
+          : '${item.fromName} sizden borç aldığını yazdı',
+    EntryKind.payment =>
+      item.myDeltaMinor < 0
+          ? '${item.fromName} ödeme bildirdi'
+          : '${item.fromName} ödeme aldığını bildirdi',
   };
 }
 
@@ -428,7 +442,9 @@ class _InboxCardState extends ConsumerState<InboxCard> {
               children: [
                 PersonAvatar(
                   name: item.fromName,
-                  tone: item.needsConfirmation ? ChipTone.pending : ChipTone.dispute,
+                  tone: item.needsConfirmation
+                      ? ChipTone.pending
+                      : ChipTone.dispute,
                   square: true,
                 ),
                 const SizedBox(width: 12),
@@ -462,10 +478,14 @@ class _InboxCardState extends ConsumerState<InboxCard> {
                 if (item.needsConfirmation) ...[
                   Expanded(
                     child: FilledButton(
-                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
                       onPressed: _busy ? null : _confirm,
                       child: Text(
-                        item.kind == EntryKind.payment ? 'Aldım, onayla' : 'Onayla',
+                        item.kind == EntryKind.payment
+                            ? 'Aldım, onayla'
+                            : 'Onayla',
                       ),
                     ),
                   ),
@@ -473,8 +493,11 @@ class _InboxCardState extends ConsumerState<InboxCard> {
                 ],
                 Expanded(
                   child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
-                    onPressed: () => openEntry(context, item.ledgerId, item.entryId),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                    ),
+                    onPressed: () =>
+                        openEntry(context, item.ledgerId, item.entryId),
                     child: Text(item.needsConfirmation ? 'İncele' : 'Düzelt'),
                   ),
                 ),

@@ -60,30 +60,70 @@ class EntryText {
     switch (e.state) {
       case EntryState.pending:
         return e.awaitingSide == me
-            ? (label: 'Onayınız bekleniyor', tone: ChipTone.pending, icon: Icons.schedule_rounded)
-            : (label: 'Karşı tarafın onayı bekleniyor', tone: ChipTone.pending, icon: Icons.schedule_rounded);
+            ? (
+                label: 'Onayınız bekleniyor',
+                tone: ChipTone.pending,
+                icon: Icons.schedule_rounded,
+              )
+            : (
+                label: 'Karşı tarafın onayı bekleniyor',
+                tone: ChipTone.pending,
+                icon: Icons.schedule_rounded,
+              );
       case EntryState.disputed:
         return e.awaitingSide == me
-            ? (label: 'İtiraz edildi · düzeltmeniz bekleniyor', tone: ChipTone.dispute, icon: Icons.edit_note_rounded)
-            : (label: 'İtirazınız iletildi', tone: ChipTone.dispute, icon: Icons.edit_note_rounded);
+            ? (
+                label: 'İtiraz edildi · düzeltmeniz bekleniyor',
+                tone: ChipTone.dispute,
+                icon: Icons.edit_note_rounded,
+              )
+            : (
+                label: 'İtirazınız iletildi',
+                tone: ChipTone.dispute,
+                icon: Icons.edit_note_rounded,
+              );
       case EntryState.rejected:
         if (e.rejectionReason == 'accountDeleted') {
           // Kimse reddetmedi: karşı taraf hesabını sildiği için kapandı.
-          return (label: 'Hesap silindiği için kapandı', tone: ChipTone.neutral, icon: Icons.person_off_outlined);
+          return (
+            label: 'Hesap silindiği için kapandı',
+            tone: ChipTone.neutral,
+            icon: Icons.person_off_outlined,
+          );
         }
-        return (label: 'Reddedildi', tone: ChipTone.debt, icon: Icons.block_rounded);
+        return (
+          label: 'Reddedildi',
+          tone: ChipTone.debt,
+          icon: Icons.block_rounded,
+        );
       case EntryState.cancelled:
-        return (label: 'Geri çekildi', tone: ChipTone.neutral, icon: Icons.undo_rounded);
+        return (
+          label: 'Geri çekildi',
+          tone: ChipTone.neutral,
+          icon: Icons.undo_rounded,
+        );
       case EntryState.confirmed:
         if (e.kind == EntryKind.reversal) {
           // Asıl kayıtla birbirini sıfırlar; kendi başına bakiye değildir.
-          return (label: 'Düzeltme işlendi', tone: ChipTone.neutral, icon: Icons.history_rounded);
+          return (
+            label: 'Düzeltme işlendi',
+            tone: ChipTone.neutral,
+            icon: Icons.history_rounded,
+          );
         }
         if (e.reversedBy != null) {
-          return (label: 'Düzeltildi', tone: ChipTone.neutral, icon: Icons.history_rounded);
+          return (
+            label: 'Düzeltildi',
+            tone: ChipTone.neutral,
+            icon: Icons.history_rounded,
+          );
         }
         if (e.reversalPendingId != null) {
-          return (label: 'Düzeltme onay bekliyor', tone: ChipTone.pending, icon: Icons.schedule_rounded);
+          return (
+            label: 'Düzeltme onay bekliyor',
+            tone: ChipTone.pending,
+            icon: Icons.schedule_rounded,
+          );
         }
         return (
           // Kaydı girenin aleyhine olduğu için onay beklemeden işlenmiş kayıt
@@ -111,7 +151,8 @@ class EntryText {
     'other': 'Diğer',
   };
 
-  static String eventLabel(String type) => switch (type) {
+  static String eventLabel(String type, {String? reason}) => switch (type) {
+    _ when reason == 'accountDeleted' => 'Hesap silindiği için kapandı',
     'created' => 'Kaydedildi',
     'confirmed' => 'Onaylandı',
     'disputed' => 'İtiraz edildi',

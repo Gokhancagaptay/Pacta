@@ -47,7 +47,11 @@ class FakeRepo extends LedgerRepository {
   @override
   Future<AddedPerson> addByCode(String code) async {
     calls.add('addByCode $code');
-    return const AddedPerson(ledgerId: 'p_ece', name: 'Ece Kaya', created: true);
+    return const AddedPerson(
+      ledgerId: 'p_ece',
+      name: 'Ece Kaya',
+      created: true,
+    );
   }
 
   @override
@@ -58,7 +62,12 @@ class FakeRepo extends LedgerRepository {
   @override
   Future<void> deleteAccount() async {
     calls.add('deleteAccount');
+    final error = deleteError;
+    if (error != null) throw error;
   }
+
+  /// Verilirse deleteAccount bu hatayı fırlatır (bağlantı koptu vb.).
+  LedgerException? deleteError;
 
   @override
   Future<ReminderResult> sendReminder(String ledgerId) async {
@@ -107,7 +116,11 @@ Ledger ledger(
   'mode': 'shared',
   'sides': {
     'a': {'uid': 'gokhan', 'displayName': 'Gökhan', 'email': 'g@example.com'},
-    'b': {'uid': otherUid, 'displayName': otherName, 'email': '$otherUid@example.com'},
+    'b': {
+      'uid': otherUid,
+      'displayName': otherName,
+      'email': '$otherUid@example.com',
+    },
   },
   'balances': {'TRY': tryBalance},
   'pendingCount': 0,
@@ -117,27 +130,39 @@ Ledger ledger(
 // Ayşe'nin vadesi 5 gün geçmiş 500 ₺'si var; Gökhan, Deniz'e 3 gün sonra
 // 750 ₺ ödeyecek.
 final ledgers = [
-  ledger('p_ayse', 'ayse', 'Ayşe Yılmaz', 120000, due: [
-    {
-      'entryId': 'e-ayse',
-      'asset': 'TRY',
-      'debtorSide': 'b',
-      'openMinor': 50000,
-      'dueOn': '2026-09-20',
-      'description': 'Kira payı',
-    },
-  ]),
+  ledger(
+    'p_ayse',
+    'ayse',
+    'Ayşe Yılmaz',
+    120000,
+    due: [
+      {
+        'entryId': 'e-ayse',
+        'asset': 'TRY',
+        'debtorSide': 'b',
+        'openMinor': 50000,
+        'dueOn': '2026-09-20',
+        'description': 'Kira payı',
+      },
+    ],
+  ),
   ledger('p_can', 'can', 'Can Demir', 200000),
-  ledger('p_deniz', 'deniz', 'Deniz Aksoy', -75000, due: [
-    {
-      'entryId': 'e-deniz',
-      'asset': 'TRY',
-      'debtorSide': 'a',
-      'openMinor': 75000,
-      'dueOn': '2026-09-28',
-      'description': 'Tatil',
-    },
-  ]),
+  ledger(
+    'p_deniz',
+    'deniz',
+    'Deniz Aksoy',
+    -75000,
+    due: [
+      {
+        'entryId': 'e-deniz',
+        'asset': 'TRY',
+        'debtorSide': 'a',
+        'openMinor': 75000,
+        'dueOn': '2026-09-28',
+        'description': 'Tatil',
+      },
+    ],
+  ),
 ];
 
 // Karşı tarafın hesabını sildiği, kapalı defter (listelere eklenmez).
@@ -236,24 +261,25 @@ void main() {
     await initializeDateFormatting('tr_TR');
   });
 
-  testWidgets('ana sayfa onaylı bakiyeyi, bekleyen onayı ve vadeleri gösterir', (
-    tester,
-  ) async {
-    phoneSize(tester);
-    final repo = FakeRepo();
-    await tester.pumpWidget(app(const HomeShell(), repo));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'ana sayfa onaylı bakiyeyi, bekleyen onayı ve vadeleri gösterir',
+    (tester) async {
+      phoneSize(tester);
+      final repo = FakeRepo();
+      await tester.pumpWidget(app(const HomeShell(), repo));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Gökhan'), findsOneWidget);
-    expect(find.text('+2.450,00 ₺'), findsOneWidget);
-    expect(find.text('3.200,00 ₺'), findsOneWidget);
-    expect(find.text('Mert Kaya size borç yazdı'), findsOneWidget);
-    expect(find.text('Yaklaşan vadeler'), findsOneWidget);
-    expect(find.text('Alacağınız · Kira payı · 5 gün geçti'), findsOneWidget);
-    expect(find.text('Ödeyeceğiniz · Tatil · 3 gün sonra'), findsOneWidget);
-    // Kişi listesinde vade durumu satır altında.
-    expect(find.text('Vadesi geçti · 20 Eylül'), findsOneWidget);
-  });
+      expect(find.text('Gökhan'), findsOneWidget);
+      expect(find.text('+2.450,00 ₺'), findsOneWidget);
+      expect(find.text('3.200,00 ₺'), findsOneWidget);
+      expect(find.text('Mert Kaya size borç yazdı'), findsOneWidget);
+      expect(find.text('Yaklaşan vadeler'), findsOneWidget);
+      expect(find.text('Alacağınız · Kira payı · 5 gün geçti'), findsOneWidget);
+      expect(find.text('Ödeyeceğiniz · Tatil · 3 gün sonra'), findsOneWidget);
+      // Kişi listesinde vade durumu satır altında.
+      expect(find.text('Vadesi geçti · 20 Eylül'), findsOneWidget);
+    },
+  );
 
   testWidgets('Hareketler: onay doğru sürümle gönderilir', (tester) async {
     phoneSize(tester);
@@ -300,7 +326,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bakiye'), findsOneWidget);
     expect(find.text('Toplam'), findsOneWidget);
-    expect(find.text('+2.450,00 ₺'), findsNWidgets(2)); // özet kartı + toplam satırı
+    expect(
+      find.text('+2.450,00 ₺'),
+      findsNWidgets(2),
+    ); // özet kartı + toplam satırı
     expect(find.text('20 Eyl'), findsOneWidget);
 
     await tester.tap(find.text('Vadesi geçen (1)'));
@@ -340,7 +369,9 @@ void main() {
     expect(find.text('Kişi ekle'), findsWidgets); // panel açık kaldı
   });
 
-  testWidgets('Kişi ekle: kodla bulunan kişi onaylanıp eklenir', (tester) async {
+  testWidgets('Kişi ekle: kodla bulunan kişi onaylanıp eklenir', (
+    tester,
+  ) async {
     final repo = await openAddSheet(tester);
     await tester.enterText(
       find.widgetWithText(TextField, 'E-posta ya da Pacta kodu'),
@@ -391,7 +422,9 @@ void main() {
     tester,
   ) async {
     phoneSize(tester);
-    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_eski'), FakeRepo()));
+    await tester.pumpWidget(
+      app(const LedgerPage(ledgerId: 'p_eski'), FakeRepo()),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Silinmiş kullanıcı'), findsOneWidget);
@@ -411,7 +444,8 @@ void main() {
       app(
         DeleteAccountPage(
           passwordUser: true,
-          reauthenticate: ({String? password}) async => reauthAnswers.removeAt(0),
+          reauthenticate: ({String? password}) async =>
+              reauthAnswers.removeAt(0),
           signOut: () async => signedOut = true,
         ),
         repo,
@@ -420,11 +454,20 @@ void main() {
     await tester.pumpAndSettle();
 
     // Açıklamalar uzun; düğme sayfanın altında.
-    await tester.scrollUntilVisible(find.text('Hesabımı kalıcı olarak sil'), 300);
-    final button = find.widgetWithText(FilledButton, 'Hesabımı kalıcı olarak sil');
+    await tester.scrollUntilVisible(
+      find.text('Hesabımı kalıcı olarak sil'),
+      300,
+    );
+    final button = find.widgetWithText(
+      FilledButton,
+      'Hesabımı kalıcı olarak sil',
+    );
     expect(tester.widget<FilledButton>(button).onPressed, isNull);
     await tester.tap(find.byType(Checkbox));
-    await tester.enterText(find.widgetWithText(TextField, 'Şifreniz'), 'yanlis');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Şifreniz'),
+      'yanlis',
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(button);
@@ -435,6 +478,70 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(repo.calls, ['deleteAccount']);
+    expect(signedOut, isTrue);
+    expect(find.text('Hesabınız silindi. Görüşmek üzere.'), findsOneWidget);
+  });
+
+  Future<void> pumpDeletePage(
+    WidgetTester tester,
+    FakeRepo repo, {
+    required Future<bool> Function() isUserGone,
+    required Future<void> Function() signOut,
+  }) async {
+    phoneSize(tester);
+    await tester.pumpWidget(
+      app(
+        DeleteAccountPage(
+          passwordUser: true,
+          reauthenticate: ({String? password}) async => null,
+          signOut: signOut,
+          isUserGone: isUserGone,
+        ),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Hesabımı kalıcı olarak sil'),
+      300,
+    );
+    await tester.tap(find.byType(Checkbox));
+    await tester.enterText(find.widgetWithText(TextField, 'Şifreniz'), 'sifre');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Hesabımı kalıcı olarak sil'),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Hesap silme: bağlantı koptu ve hesap duruyorsa çıkış yapılmaz', (
+    tester,
+  ) async {
+    final repo = FakeRepo()
+      ..deleteError = const LedgerException('Bağlantı kurulamadı.');
+    var signedOut = false;
+    await pumpDeletePage(
+      tester,
+      repo,
+      isUserGone: () async => false,
+      signOut: () async => signedOut = true,
+    );
+    expect(find.text('Bağlantı kurulamadı.'), findsOneWidget);
+    expect(signedOut, isFalse);
+  });
+
+  testWidgets('Hesap silme: yanıt kaybolsa da hesap silindiyse çıkış yapılır', (
+    tester,
+  ) async {
+    final repo = FakeRepo()
+      ..deleteError = const LedgerException('Bağlantı kurulamadı.');
+    var signedOut = false;
+    await pumpDeletePage(
+      tester,
+      repo,
+      isUserGone: () async => true,
+      signOut: () async => signedOut = true,
+    );
     expect(signedOut, isTrue);
     expect(find.text('Hesabınız silindi. Görüşmek üzere.'), findsOneWidget);
   });
@@ -458,7 +565,10 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Aynı kişiye 3 günde bir hatırlatma gönderebilirsiniz.'), findsOneWidget);
+    expect(
+      find.text('Aynı kişiye 3 günde bir hatırlatma gönderebilirsiniz.'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Hatırlatma gönder'));
     await tester.pumpAndSettle();
@@ -466,7 +576,9 @@ void main() {
     expect(find.text('Hatırlatma gönderildi.'), findsOneWidget);
   });
 
-  testWidgets('kayıt ekle Türkçe tutarı kuruşa çevirip gönderir', (tester) async {
+  testWidgets('kayıt ekle Türkçe tutarı kuruşa çevirip gönderir', (
+    tester,
+  ) async {
     phoneSize(tester);
     final repo = FakeRepo();
     await tester.pumpWidget(
@@ -499,7 +611,10 @@ void main() {
     final repo = FakeRepo();
     await tester.pumpWidget(
       app(
-        const EntryComposerPage(ledgerId: 'p_ayse', initialMode: ComposerMode.received),
+        const EntryComposerPage(
+          ledgerId: 'p_ayse',
+          initialMode: ComposerMode.received,
+        ),
         repo,
       ),
     );

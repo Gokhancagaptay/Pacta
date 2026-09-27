@@ -274,7 +274,9 @@ class _HistoryTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          border: showDivider ? Border(bottom: BorderSide(color: c.line)) : null,
+          border: showDivider
+              ? Border(bottom: BorderSide(color: c.line))
+              : null,
         ),
         child: Row(
           children: [

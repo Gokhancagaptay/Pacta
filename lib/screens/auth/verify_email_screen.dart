@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../features/profile/delete_account_page.dart';
 import '../../services/auth_service.dart';
 
 /// E-postası doğrulanmamış hesap burada bekler. Bağlantıya dokunup dönünce
@@ -187,6 +188,16 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
             TextButton(
               onPressed: () => _auth.signOut(),
               child: const Text('Farklı hesapla giriş yap'),
+            ),
+            // Adres başkasına ait olabilir ya da kişi vazgeçmiş olabilir:
+            // doğrulamadan da hesap silinebilir.
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DeleteAccountPage(),
+                ),
+              ),
+              child: Text('Hesabı sil', style: TextStyle(color: c.debt)),
             ),
           ],
         ),

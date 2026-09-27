@@ -30,7 +30,9 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.pacta;
     final name = ref.watch(userProfileProvider).valueOrNull?.adSoyad?.trim();
-    final firstName = (name == null || name.isEmpty) ? null : name.split(' ').first;
+    final firstName = (name == null || name.isEmpty)
+        ? null
+        : name.split(' ').first;
     final totals = ref.watch(totalsProvider);
     final inbox = ref.watch(inboxProvider).valueOrNull ?? const [];
     final unread = (ref.watch(notificationsProvider).valueOrNull ?? const [])
@@ -63,12 +65,14 @@ class HomePage extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Merhaba,', style: TextStyle(fontSize: 13, color: c.muted)),
+                        Text(
+                          'Merhaba,',
+                          style: TextStyle(fontSize: 13, color: c.muted),
+                        ),
                         Text(
                           firstName ?? 'Hoş geldiniz',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -76,7 +80,9 @@ class HomePage extends ConsumerWidget {
                   IconButton(
                     tooltip: 'Bildirimler',
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const NotificationsPage(),
+                      ),
                     ),
                     icon: Badge(
                       isLabelVisible: unread > 0,
@@ -112,7 +118,10 @@ class HomePage extends ConsumerWidget {
                   ? null
                   : Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: StatusChip(label: '${inbox.length}', tone: ChipTone.pending),
+                      child: StatusChip(
+                        label: '${inbox.length}',
+                        tone: ChipTone.pending,
+                      ),
                     ),
             ),
             if (inbox.isEmpty)

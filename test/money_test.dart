@@ -47,7 +47,10 @@ void main() {
     test('Türkçe biçim ve işaret', () {
       expect(const Money(123450, Asset.tryLira).format(), '1.234,50 ₺');
       expect(const Money(-75000, Asset.tryLira).format(), '−750,00 ₺');
-      expect(const Money(270000, Asset.tryLira).format(signed: true), '+2.700,00 ₺');
+      expect(
+        const Money(270000, Asset.tryLira).format(signed: true),
+        '+2.700,00 ₺',
+      );
       expect(const Money(0, Asset.tryLira).format(signed: true), '0,00 ₺');
       expect(const Money(5, Asset.tryLira).format(withSymbol: false), '0,05');
       expect(const Money(2125, Asset.gramAltin).format(), '2,125 gr');
@@ -71,7 +74,13 @@ void main() {
   test('çok uzun tutar Türkçe hatayla reddedilir', () {
     expect(
       () => Money.parse('9' * 30, Asset.tryLira),
-      throwsA(isA<FormatException>().having((e) => e.message, 'mesaj', 'Tutar çok büyük.')),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'mesaj',
+          'Tutar çok büyük.',
+        ),
+      ),
     );
     expect(Money.parse('00012,5', Asset.tryLira).minor, 1250);
   });
@@ -84,9 +93,9 @@ void main() {
   });
 
   test('birimler contracts/assets.json ile aynı', () {
-    final contract = (jsonDecode(File('contracts/assets.json').readAsStringSync())
-            as List)
-        .cast<Map<String, dynamic>>();
+    final contract =
+        (jsonDecode(File('contracts/assets.json').readAsStringSync()) as List)
+            .cast<Map<String, dynamic>>();
     expect(
       contract.map((a) => [a['code'], a['scale'], a['symbol'], a['label']]),
       Asset.values.map((a) => [a.code, a.scale, a.symbol, a.label]),

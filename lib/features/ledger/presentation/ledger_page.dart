@@ -218,50 +218,50 @@ class LedgerPage extends ConsumerWidget {
                         ),
                       )
                     else
-                    Row(
-                      children: [
-                        _Action(
-                          icon: Icons.add_rounded,
-                          label: 'Kayıt ekle',
-                          onTap: () => _compose(context, ledger),
-                        ),
-                        const SizedBox(width: 8),
-                        _Action(
-                          icon: Icons.south_west_rounded,
-                          label: balance.isNegative
-                              ? 'Ödeme yaptım'
-                              : 'Ödeme aldım',
-                          onTap: () => _compose(
-                            context,
-                            ledger,
-                            mode: balance.isNegative
-                                ? ComposerMode.paid
-                                : ComposerMode.received,
+                      Row(
+                        children: [
+                          _Action(
+                            icon: Icons.add_rounded,
+                            label: 'Kayıt ekle',
+                            onTap: () => _compose(context, ledger),
                           ),
-                        ),
-                        if (plan.isRelevant) ...[
                           const SizedBox(width: 8),
                           _Action(
-                            icon: Icons.notifications_active_outlined,
-                            label: 'Hatırlat',
-                            onTap: () => showReminderSheet(
+                            icon: Icons.south_west_rounded,
+                            label: balance.isNegative
+                                ? 'Ödeme yaptım'
+                                : 'Ödeme aldım',
+                            onTap: () => _compose(
                               context,
-                              ledger: ledger,
-                              plan: plan,
-                              fromName: ledger.me(uid).displayName,
+                              ledger,
+                              mode: balance.isNegative
+                                  ? ComposerMode.paid
+                                  : ComposerMode.received,
                             ),
                           ),
-                        ] else if (ledger.isPrivate) ...[
-                          // Karşı taraf uygulamada değil: hatırlatma yerine davet.
-                          const SizedBox(width: 8),
-                          _Action(
-                            icon: Icons.share_rounded,
-                            label: 'Davet et',
-                            onTap: () => shareInvite(context, ref),
-                          ),
+                          if (plan.isRelevant) ...[
+                            const SizedBox(width: 8),
+                            _Action(
+                              icon: Icons.notifications_active_outlined,
+                              label: 'Hatırlat',
+                              onTap: () => showReminderSheet(
+                                context,
+                                ledger: ledger,
+                                plan: plan,
+                                fromName: ledger.me(uid).displayName,
+                              ),
+                            ),
+                          ] else if (ledger.isPrivate) ...[
+                            // Karşı taraf uygulamada değil: hatırlatma yerine davet.
+                            const SizedBox(width: 8),
+                            _Action(
+                              icon: Icons.share_rounded,
+                              label: 'Davet et',
+                              onTap: () => shareInvite(context, ref),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),

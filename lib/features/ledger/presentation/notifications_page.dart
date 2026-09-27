@@ -49,7 +49,8 @@ class NotificationsPage extends ConsumerWidget {
             ? const EmptyState(
                 icon: Icons.notifications_none_rounded,
                 title: 'Bildirim yok',
-                message: 'Kayıtlarınızla ilgili bir gelişme olunca burada görünür.',
+                message:
+                    'Kayıtlarınızla ilgili bir gelişme olunca burada görünür.',
               )
             : ListView(
                 padding: const EdgeInsets.only(top: 8, bottom: 32),
@@ -61,7 +62,9 @@ class NotificationsPage extends ConsumerWidget {
                           InkWell(
                             onTap: () {
                               final n = list[i];
-                              if (!n.isRead) repo.markNotificationRead(uid, n.id);
+                              if (!n.isRead) {
+                                repo.markNotificationRead(uid, n.id);
+                              }
                               if (n.ledgerId == null) return;
                               if (n.entryId != null) {
                                 openEntry(context, n.ledgerId!, n.entryId!);
@@ -85,7 +88,10 @@ class NotificationsPage extends ConsumerWidget {
                                   Container(
                                     width: 8,
                                     height: 8,
-                                    margin: const EdgeInsets.only(top: 7, right: 10),
+                                    margin: const EdgeInsets.only(
+                                      top: 7,
+                                      right: 10,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: list[i].isRead
                                           ? Colors.transparent
@@ -95,7 +101,8 @@ class NotificationsPage extends ConsumerWidget {
                                   ),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         if (list[i].title.isNotEmpty)
                                           Text(

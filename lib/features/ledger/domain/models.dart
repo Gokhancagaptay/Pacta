@@ -97,16 +97,15 @@ class Ledger {
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
     final sides = (m['sides'] as Map?)?.cast<String, dynamic>() ?? const {};
     final raw = (m['balances'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final reminders = (m['reminders'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final reminders =
+        (m['reminders'] as Map?)?.cast<String, dynamic>() ?? const {};
     return Ledger(
       id: id,
       isPrivate: m['mode'] == 'private',
       isClosed: m['status'] == 'closed',
       a: LedgerSide.fromMap((sides['a'] as Map?)?.cast<String, dynamic>()),
       b: LedgerSide.fromMap((sides['b'] as Map?)?.cast<String, dynamic>()),
-      balances: {
-        for (final e in raw.entries) e.key: (e.value as num).toInt(),
-      },
+      balances: {for (final e in raw.entries) e.key: (e.value as num).toInt()},
       pendingCount: (m['pendingCount'] as num?)?.toInt() ?? 0,
       lastEntryAt: _time(m['lastEntryAt']),
       dueItems: [
@@ -230,7 +229,9 @@ class LedgerEntry {
       version: (m['version'] as num?)?.toInt() ?? 1,
       proposedBy: _enum(Side.values, m['proposedBy'], Side.a),
       proposedByUid: (m['proposedByUid'] as String?) ?? '',
-      awaitingSide: awaiting == null ? null : _enum(Side.values, awaiting, Side.a),
+      awaitingSide: awaiting == null
+          ? null
+          : _enum(Side.values, awaiting, Side.a),
       autoConfirmed: m['autoConfirmed'] == true,
       reversedBy: m['reversedBy'] as String?,
       reversalPendingId: m['reversalPendingId'] as String?,
@@ -374,6 +375,7 @@ class LedgerEvent {
     required this.entryId,
     required this.version,
     required this.actorUid,
+    this.reason,
     this.at,
   });
 
@@ -382,6 +384,7 @@ class LedgerEvent {
     entryId: (m['entryId'] as String?) ?? '',
     version: (m['version'] as num?)?.toInt() ?? 1,
     actorUid: (m['actorUid'] as String?) ?? '',
+    reason: m['reason'] as String?,
     at: _time(m['at']),
   );
 
@@ -389,5 +392,8 @@ class LedgerEvent {
   final String entryId;
   final int version;
   final String actorUid;
+
+  /// Olayın nedeni (ör. "accountDeleted": kişi hesabını sildiği için).
+  final String? reason;
   final DateTime? at;
 }

@@ -84,9 +84,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   void _go(int index) => setState(() => _index = index);
 
-  void _addEntry() => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const EntryComposerPage()),
-  );
+  void _addEntry() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const EntryComposerPage()));
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +170,9 @@ class _NavBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        border: Border(top: BorderSide(color: scheme.outline.withValues(alpha: 0.4))),
+        border: Border(
+          top: BorderSide(color: scheme.outline.withValues(alpha: 0.4)),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -202,7 +204,11 @@ class _NavBar extends StatelessWidget {
                           child: const SizedBox(
                             width: 58,
                             height: 58,
-                            child: Icon(Icons.add_rounded, color: PactaTheme.onBrandFill, size: 28),
+                            child: Icon(
+                              Icons.add_rounded,
+                              color: PactaTheme.onBrandFill,
+                              size: 28,
+                            ),
                           ),
                         ),
                       ),

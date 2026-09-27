@@ -14,7 +14,6 @@ class _KayitEkraniState extends State<KayitEkrani> {
   final AuthService _authService = AuthService();
   final TextEditingController _adSoyadController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _telefonController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _agreed = false;
   bool _isPasswordObscured = true;
@@ -71,13 +70,6 @@ class _KayitEkraniState extends State<KayitEkrani> {
                     labelText: 'E-posta',
                     icon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
-                  ),
-                  SizedBox(height: size.height * 0.02),
-                  _buildTextField(
-                    controller: _telefonController,
-                    labelText: 'Telefon (isteğe bağlı)',
-                    icon: Icons.phone_outlined,
-                    keyboardType: TextInputType.phone,
                   ),
                   SizedBox(height: size.height * 0.02),
                   _buildTextField(
@@ -256,7 +248,6 @@ class _KayitEkraniState extends State<KayitEkrani> {
       _emailController.text.trim(),
       _passwordController.text.trim(),
       _adSoyadController.text.trim(),
-      _telefonController.text.trim(),
     );
     if (!mounted) return;
     if (errorMessage == null) {

@@ -75,7 +75,8 @@ class PersonRow {
     bool favorite = false,
   }) {
     final me = ledger.sideOf(uid) ?? Side.a;
-    final due = ledger.dueItems;
+    // Kapalı defterin (karşı taraf hesabını sildi) vadesi kapatılamaz.
+    final due = ledger.isClosed ? const <DueItem>[] : ledger.dueItems;
     return PersonRow(
       ledger: ledger,
       name: ledger.other(uid).displayName,
@@ -87,7 +88,10 @@ class PersonRow {
           if (m.asset != Asset.tryLira) m,
       ],
       nextDue: due.isEmpty ? null : due.first,
-      overdue: due.where((i) => i.dueOn < today).map((i) => i.signedFor(me)).toList(),
+      overdue: due
+          .where((i) => i.dueOn < today)
+          .map((i) => i.signedFor(me))
+          .toList(),
     );
   }
 
@@ -139,7 +143,8 @@ List<PersonRow> selectRows(
     for (final r in rows)
       if (r.matches(filter) && found(r)) r,
   ];
-  int byName(PersonRow x, PersonRow y) => trLower(x.name).compareTo(trLower(y.name));
+  int byName(PersonRow x, PersonRow y) =>
+      trLower(x.name).compareTo(trLower(y.name));
   switch (sort) {
     case PeopleSort.recent:
       break; // defterler zaten son harekete göre gelir
@@ -230,6 +235,7 @@ class DueSchedule {
   factory DueSchedule.of(List<Ledger> ledgers, String uid, LocalDate today) {
     final rows = <DueRow>[];
     for (final ledger in ledgers) {
+      if (ledger.isClosed) continue;
       final me = ledger.sideOf(uid) ?? Side.a;
       final name = ledger.other(uid).displayName;
       for (final item in ledger.dueItems) {
@@ -249,12 +255,18 @@ class DueSchedule {
     });
     final horizon = today.addDays(horizonDays);
     return DueSchedule(
-      overdue: [for (final r in rows) if (r.item.dueOn < today) r],
+      overdue: [
+        for (final r in rows)
+          if (r.item.dueOn < today) r,
+      ],
       upcoming: [
         for (final r in rows)
           if (!(r.item.dueOn < today) && !(horizon < r.item.dueOn)) r,
       ],
-      later: [for (final r in rows) if (horizon < r.item.dueOn) r],
+      later: [
+        for (final r in rows)
+          if (horizon < r.item.dueOn) r,
+      ],
     );
   }
 
@@ -268,9 +280,11 @@ class DueSchedule {
 /// "3 gün geçti", "Bugün", "Yarın", "5 gün sonra".
 String relativeDue(LocalDate due, LocalDate today) {
   // UTC: yaz saati geçişinde gün farkı kaymasın.
-  final days = DateTime.utc(due.year, due.month, due.day)
-      .difference(DateTime.utc(today.year, today.month, today.day))
-      .inDays;
+  final days = DateTime.utc(
+    due.year,
+    due.month,
+    due.day,
+  ).difference(DateTime.utc(today.year, today.month, today.day)).inDays;
   if (days == 0) return 'Bugün';
   if (days == 1) return 'Yarın';
   if (days == -1) return 'Dün';

@@ -35,7 +35,9 @@ class Money {
       if (parts.length != 2) throw FormatException('Geçersiz tutar: $input');
       whole = parts[0].replaceAll('.', '');
       fraction = parts[1];
-      if (fraction.contains('.')) throw FormatException('Geçersiz tutar: $input');
+      if (fraction.contains('.')) {
+        throw FormatException('Geçersiz tutar: $input');
+      }
     } else if (text.contains('.')) {
       final groups = text.split('.');
       final isThousands = groups.skip(1).every((g) => g.length == 3);
@@ -126,7 +128,9 @@ class Money {
 
   Money _same(Money other) {
     if (other.asset.code != asset.code) {
-      throw ArgumentError('Farklı birimler toplanamaz: $asset / ${other.asset}');
+      throw ArgumentError(
+        'Farklı birimler toplanamaz: $asset / ${other.asset}',
+      );
     }
     return other;
   }

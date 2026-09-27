@@ -32,6 +32,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
   final _description = TextEditingController();
   late ComposerMode _mode = widget.initialMode ?? ComposerMode.lent;
   late String? _ledgerId = widget.ledgerId;
+
   /// Aynı form tekrar gönderilirse aynı kimlik kullanılır (sunucu tek kayıt
   /// üretir). Başarısız denemeden sonra form değiştiyse yeni kimlik alınır.
   late String _entryId = ref.read(ledgerRepositoryProvider).newId();
@@ -126,7 +127,9 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       amount = Money.parse(_amount.text, _asset);
       if (amount.minor <= 0) throw const FormatException('Tutar girin.');
     } on FormatException catch (e) {
-      setState(() => _amountError = e.message.isEmpty ? 'Tutar girin.' : e.message);
+      setState(
+        () => _amountError = e.message.isEmpty ? 'Tutar girin.' : e.message,
+      );
       return;
     }
     setState(() {
@@ -147,16 +150,18 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
     _lastAttempt = attempt;
     EntryState? state;
     final ok = await runCommand(context, () async {
-      state = await ref.read(ledgerRepositoryProvider).createEntry(
-        ledgerId: ledgerId,
-        entryId: _entryId,
-        kind: _isPayment ? EntryKind.payment : EntryKind.debt,
-        iGave: _iGave,
-        amount: amount,
-        occurredOn: LocalDate.today(),
-        dueOn: _isPayment ? null : _dueOn,
-        description: _description.text.trim(),
-      );
+      state = await ref
+          .read(ledgerRepositoryProvider)
+          .createEntry(
+            ledgerId: ledgerId,
+            entryId: _entryId,
+            kind: _isPayment ? EntryKind.payment : EntryKind.debt,
+            iGave: _iGave,
+            amount: amount,
+            occurredOn: LocalDate.today(),
+            dueOn: _isPayment ? null : _dueOn,
+            description: _description.text.trim(),
+          );
     });
     if (!mounted) return;
     setState(() => _busy = false);
@@ -217,12 +222,24 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
           SegmentedButton<ComposerMode>(
             segments: _isPayment
                 ? const [
-                    ButtonSegment(value: ComposerMode.received, label: Text('Ödeme aldım')),
-                    ButtonSegment(value: ComposerMode.paid, label: Text('Ödeme yaptım')),
+                    ButtonSegment(
+                      value: ComposerMode.received,
+                      label: Text('Ödeme aldım'),
+                    ),
+                    ButtonSegment(
+                      value: ComposerMode.paid,
+                      label: Text('Ödeme yaptım'),
+                    ),
                   ]
                 : const [
-                    ButtonSegment(value: ComposerMode.lent, label: Text('Borç verdim')),
-                    ButtonSegment(value: ComposerMode.borrowed, label: Text('Borç aldım')),
+                    ButtonSegment(
+                      value: ComposerMode.lent,
+                      label: Text('Borç verdim'),
+                    ),
+                    ButtonSegment(
+                      value: ComposerMode.borrowed,
+                      label: Text('Borç aldım'),
+                    ),
                   ],
             selected: {_mode},
             showSelectedIcon: false,
@@ -236,7 +253,10 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
               leading: other == null
                   ? CircleAvatar(
                       backgroundColor: c.creditSoft,
-                      child: Icon(Icons.person_add_alt_1_rounded, color: c.credit),
+                      child: Icon(
+                        Icons.person_add_alt_1_rounded,
+                        color: c.credit,
+                      ),
                     )
                   : PersonAvatar(name: other.displayName, size: 38),
               title: Text(other?.displayName ?? 'Kişi seçin'),
@@ -247,7 +267,10 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
               trailing: widget.ledgerId == null
                   ? Text(
                       other == null ? 'Seç' : 'Değiştir',
-                      style: TextStyle(color: c.credit, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: c.credit,
+                        fontWeight: FontWeight.w600,
+                      ),
                     )
                   : null,
             ),
@@ -304,7 +327,10 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                   ),
                 ),
                 if (_dueOn != null)
-                  Text(_dueOn!.format(), style: TextStyle(fontSize: 12, color: c.muted)),
+                  Text(
+                    _dueOn!.format(),
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -400,13 +426,20 @@ class _PreviewCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.credit),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: c.credit,
+            ),
           ),
           const SizedBox(height: 4),
           Text(text, style: const TextStyle(height: 1.5)),
           if (note != null) ...[
             const SizedBox(height: 8),
-            Text(note!, style: TextStyle(fontSize: 12, color: c.muted, height: 1.4)),
+            Text(
+              note!,
+              style: TextStyle(fontSize: 12, color: c.muted, height: 1.4),
+            ),
           ],
         ],
       ),
@@ -423,13 +456,16 @@ class _PersonPickerSheet extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     // Hesabını silen kişinin defterine kayıt eklenemez.
     final ledgers = [
-      for (final l in ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[])
+      for (final l
+          in ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[])
         if (!l.isClosed) l,
     ];
     final favorites = ref.watch(favoriteLedgersProvider);
     return SafeArea(
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
         child: ListView(
           shrinkWrap: true,
           children: [
@@ -438,7 +474,9 @@ class _PersonPickerSheet extends ConsumerWidget {
               title: const Text('Yeni kişi ekle'),
               onTap: () async {
                 final id = await showAddPersonSheet(context);
-                if (id != null && context.mounted) Navigator.of(context).pop(id);
+                if (id != null && context.mounted) {
+                  Navigator.of(context).pop(id);
+                }
               },
             ),
             for (final l in ledgers)
@@ -447,7 +485,9 @@ class _PersonPickerSheet extends ConsumerWidget {
                 title: Text(l.other(uid).displayName),
                 subtitle: l.isPrivate
                     ? const Text('Özel defter')
-                    : (l.other(uid).email == null ? null : Text(l.other(uid).email!)),
+                    : (l.other(uid).email == null
+                          ? null
+                          : Text(l.other(uid).email!)),
                 trailing: favorites.contains(l.id)
                     ? Icon(Icons.star_rounded, color: context.pacta.pendingDot)
                     : null,

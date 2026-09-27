@@ -72,12 +72,12 @@ class AuthService {
   // Kullanıcı oturum durumunu dinleyen stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  /// Kayıt metodu: Email, şifre, ad soyad ve telefon ile yeni kullanıcı oluşturur
+  /// Kayıt: e-posta, şifre ve ad soyad. Telefon toplanmaz (kullanılan bir
+  /// özellik yok; telefonla giriş gelince eklenecek).
   Future<String?> signUpWithEmailAndPassword(
     String email,
     String password,
     String adSoyad,
-    String telefon,
   ) async {
     // Input validation
     if (email.isEmpty || password.isEmpty || adSoyad.isEmpty) {
@@ -99,7 +99,6 @@ class AuthService {
           uid: user.uid,
           email: user.email ?? email,
           adSoyad: adSoyad,
-          telefon: telefon,
         );
       }
       await _sendVerificationWithSettings(user);
@@ -341,6 +340,11 @@ class AuthService {
           password: password,
         );
       } else {
+        // Önce çıkış: yoksa son hesap sessizce yeniden kullanılır, seçici
+        // açılmaz (kilidi açık telefon koruması tek dokunuşa iner).
+        try {
+          await _googleSignIn.signOut();
+        } catch (_) {}
         final account = await _googleSignIn.signIn();
         if (account == null) return 'Google hesabı seçilmedi.';
         final auth = await account.authentication;
@@ -354,13 +358,41 @@ class AuthService {
       await user.getIdToken(true);
       return null;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-mismatch') {
-        return 'Farklı bir hesap seçtiniz. Bu hesabın Google hesabıyla doğrulayın.';
+      switch (e.code) {
+        case 'user-mismatch':
+          return 'Farklı bir hesap seçtiniz. Bu hesabın Google hesabıyla '
+              'doğrulayın.';
+        case 'invalid-credential':
+        case 'INVALID_LOGIN_CREDENTIALS':
+        case 'wrong-password':
+          return 'Şifre yanlış.';
+        case 'user-not-found':
+        case 'user-disabled':
+        case 'user-token-expired':
+          return 'Bu hesap artık yok. Çıkış yapıp yeniden deneyin.';
       }
       return _handleAuthError(e);
     } catch (e) {
       debugPrint('Yeniden doğrulama hatası: $e');
       return 'Doğrulama yapılamadı. Tekrar deneyin.';
+    }
+  }
+
+  /// Hesap sunucuda silinmiş mi (cihazda oturum kalmış olsa bile).
+  Future<bool> isCurrentUserGone() async {
+    final user = _auth.currentUser;
+    if (user == null) return true;
+    try {
+      await user.reload();
+      return false;
+    } on FirebaseAuthException catch (e) {
+      return const {
+        'user-not-found',
+        'user-disabled',
+        'user-token-expired',
+      }.contains(e.code);
+    } catch (_) {
+      return false; // bağlantı yok vb.: karar verilemez
     }
   }
 }

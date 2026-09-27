@@ -493,7 +493,7 @@ class _Body extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${EntryText.eventLabel(ev.type)} · '
+                                '${EntryText.eventLabel(ev.type, reason: ev.reason)} · '
                                 '${ev.actorUid == uid ? 'siz' : otherName}'
                                 '${ev.version > 1 ? ' (${ev.version}. sürüm)' : ''}',
                               ),

@@ -149,7 +149,9 @@ class LedgerRepository {
       .limit(20)
       .snapshots()
       .map(
-        (s) => [for (final d in s.docs) AppNotification.fromMap(d.id, d.data())],
+        (s) => [
+          for (final d in s.docs) AppNotification.fromMap(d.id, d.data()),
+        ],
       );
 
   Future<void> markNotificationRead(String uid, String notificationId) => _db
@@ -160,10 +162,8 @@ class LedgerRepository {
       .update({'isRead': true});
 
   /// Bu kişinin hatırlatmaları push olarak gelmez; bildirim listesinde kalır.
-  Future<void> setReminderMuted(String uid, String ledgerId, bool muted) => _db
-      .collection('users')
-      .doc(uid)
-      .set({
+  Future<void> setReminderMuted(String uid, String ledgerId, bool muted) =>
+      _db.collection('users').doc(uid).set({
         'reminderMutes': {ledgerId: muted ? true : FieldValue.delete()},
       }, SetOptions(merge: true));
 
@@ -273,8 +273,11 @@ class LedgerRepository {
     'suggestedAmountMinor': suggested?.minor,
   });
 
-  Future<void> reject(LedgerEntry e, {required String reason, String note = ''}) =>
-      _call('rejectEntry', {..._key(e), 'reason': reason, 'note': note});
+  Future<void> reject(
+    LedgerEntry e, {
+    required String reason,
+    String note = '',
+  }) => _call('rejectEntry', {..._key(e), 'reason': reason, 'note': note});
 
   Future<void> revise(
     LedgerEntry e, {
@@ -294,15 +297,13 @@ class LedgerRepository {
 
   Future<void> cancel(LedgerEntry e) => _call('cancelEntry', _key(e));
 
-  Future<void> reverse(LedgerEntry e, {String note = ''}) => _call(
-    'reverseEntry',
-    {
-      'ledgerId': e.ledgerId,
-      'entryId': e.id,
-      'reversalId': newId(),
-      'note': note,
-    },
-  );
+  Future<void> reverse(LedgerEntry e, {String note = ''}) =>
+      _call('reverseEntry', {
+        'ledgerId': e.ledgerId,
+        'entryId': e.id,
+        'reversalId': newId(),
+        'note': note,
+      });
 
   /// Karşı tarafa nazik bir uygulama içi hatırlatma; metni sunucu seçer.
   Future<ReminderResult> sendReminder(String ledgerId) async {
@@ -320,7 +321,10 @@ class LedgerRepository {
     'expectedVersion': e.version,
   };
 
-  Future<Map<String, dynamic>> _call(String name, Map<String, Object?> data) async {
+  Future<Map<String, dynamic>> _call(
+    String name,
+    Map<String, Object?> data,
+  ) async {
     try {
       final result = await _fn.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);

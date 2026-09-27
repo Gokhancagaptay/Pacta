@@ -30,7 +30,9 @@ class PeoplePage extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: table ? 'Liste görünümü' : 'Tablo görünümü',
-            icon: Icon(table ? Icons.view_agenda_rounded : Icons.table_rows_rounded),
+            icon: Icon(
+              table ? Icons.view_agenda_rounded : Icons.table_rows_rounded,
+            ),
             onPressed: () =>
                 ref.read(peopleTableViewProvider.notifier).state = !table,
           ),
@@ -41,7 +43,11 @@ class PeoplePage extends ConsumerWidget {
             onSelected: (s) => ref.read(peopleSortProvider.notifier).state = s,
             itemBuilder: (_) => [
               for (final s in PeopleSort.values)
-                CheckedPopupMenuItem(value: s, checked: s == sort, child: Text(s.label)),
+                CheckedPopupMenuItem(
+                  value: s,
+                  checked: s == sort,
+                  child: Text(s.label),
+                ),
             ],
           ),
           IconButton(
@@ -139,7 +145,10 @@ class _PeopleBody extends ConsumerWidget {
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                Text('Bu süzgece uyan kişi yok.', style: TextStyle(color: c.muted)),
+                Text(
+                  'Bu süzgece uyan kişi yok.',
+                  style: TextStyle(color: c.muted),
+                ),
                 TextButton(
                   onPressed: () {
                     ref.read(peopleFilterProvider.notifier).state =
@@ -273,9 +282,15 @@ class _TotalsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              cell('Alacağınız', AmountText(totals.receivable, color: c.credit)),
+              cell(
+                'Alacağınız',
+                AmountText(totals.receivable, color: c.credit),
+              ),
               cell('Borcunuz', AmountText(totals.payable, color: c.debt)),
-              cell('Net', AmountText(totals.net, signed: true, colorBySign: true)),
+              cell(
+                'Net',
+                AmountText(totals.net, signed: true, colorBySign: true),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -303,7 +318,11 @@ class _SummaryTable extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.pacta;
-    final small = TextStyle(fontSize: 12, color: c.muted, fontWeight: FontWeight.w600);
+    final small = TextStyle(
+      fontSize: 12,
+      color: c.muted,
+      fontWeight: FontWeight.w600,
+    );
 
     Widget line(
       List<Widget> cells, {
@@ -346,66 +365,78 @@ class _SummaryTable extends ConsumerWidget {
               onTap: () => openLedger(context, r.ledger.id),
               onLongPress: () => showPersonActions(context, ref, r.ledger),
               [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      if (r.favorite) ...[
-                        Icon(Icons.star_rounded, size: 14, color: c.pendingDot),
-                        const SizedBox(width: 2),
-                      ],
-                      Flexible(
-                        child: Text(
-                          r.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (r.favorite) ...[
+                          Icon(
+                            Icons.star_rounded,
+                            size: 14,
+                            color: c.pendingDot,
+                          ),
+                          const SizedBox(width: 2),
+                        ],
+                        Flexible(
+                          child: Text(
+                            r.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
                         ),
+                      ],
+                    ),
+                    if (r.email != null)
+                      Text(
+                        r.email!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: c.muted),
                       ),
-                    ],
-                  ),
-                  if (r.email != null)
-                    Text(
-                      r.email!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: c.muted),
-                    ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: AmountText(r.balance, signed: true, colorBySign: true),
-                  ),
-                  for (final m in r.others)
-                    Text(
-                      m.format(signed: true),
-                      style: TextStyle(fontSize: 11, color: c.muted),
-                    ),
-                ],
-              ),
-              Center(
-                child: r.pendingCount > 0
-                    ? StatusChip(label: '${r.pendingCount}', tone: ChipTone.pending)
-                    : Text('—', style: TextStyle(color: c.muted)),
-              ),
-              Text(
-                r.nextDue?.dueOn.formatCompact() ?? '—',
-                textAlign: TextAlign.end,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: r.hasOverdue
-                      ? c.debt
-                      : (r.nextDue == null ? c.muted : null),
-                  fontWeight: r.hasOverdue ? FontWeight.w600 : null,
+                  ],
                 ),
-              ),
-            ]),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: AmountText(
+                        r.balance,
+                        signed: true,
+                        colorBySign: true,
+                      ),
+                    ),
+                    for (final m in r.others)
+                      Text(
+                        m.format(signed: true),
+                        style: TextStyle(fontSize: 11, color: c.muted),
+                      ),
+                  ],
+                ),
+                Center(
+                  child: r.pendingCount > 0
+                      ? StatusChip(
+                          label: '${r.pendingCount}',
+                          tone: ChipTone.pending,
+                        )
+                      : Text('—', style: TextStyle(color: c.muted)),
+                ),
+                Text(
+                  r.nextDue?.dueOn.formatCompact() ?? '—',
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: r.hasOverdue
+                        ? c.debt
+                        : (r.nextDue == null ? c.muted : null),
+                    fontWeight: r.hasOverdue ? FontWeight.w600 : null,
+                  ),
+                ),
+              ],
+            ),
           line(divider: false, background: c.line.withValues(alpha: 0.5), [
             Text('Toplam', style: const TextStyle(fontWeight: FontWeight.w600)),
             Align(
@@ -432,4 +463,3 @@ class _SummaryTable extends ConsumerWidget {
     );
   }
 }
-

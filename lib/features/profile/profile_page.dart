@@ -22,19 +22,27 @@ class ProfilePage extends ConsumerWidget {
     final user = ref.watch(userProfileProvider).valueOrNull;
     final themeMode = ref.watch(themeProvider);
     final isPasswordUser =
-        ref.watch(authUserProvider).valueOrNull?.providerData.any(
-          (p) => p.providerId == 'password',
-        ) ??
+        ref
+            .watch(authUserProvider)
+            .valueOrNull
+            ?.providerData
+            .any((p) => p.providerId == 'password') ??
         false;
-    final name = (user?.adSoyad?.trim().isNotEmpty ?? false) ? user!.adSoyad! : 'Adınızı ekleyin';
+    final name = (user?.adSoyad?.trim().isNotEmpty ?? false)
+        ? user!.adSoyad!
+        : 'Adınızı ekleyin';
 
-    Widget link(IconData icon, String title, VoidCallback onTap, {Color? color}) =>
-        ListTile(
-          leading: Icon(icon, color: color),
-          title: Text(title, style: TextStyle(color: color)),
-          trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
-          onTap: onTap,
-        );
+    Widget link(
+      IconData icon,
+      String title,
+      VoidCallback onTap, {
+      Color? color,
+    }) => ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(title, style: TextStyle(color: color)),
+      trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
+      onTap: onTap,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profil')),
@@ -51,7 +59,13 @@ class ProfilePage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       Text(user?.email ?? '', style: TextStyle(color: c.muted)),
                     ],
                   ),
@@ -59,7 +73,9 @@ class ProfilePage extends ConsumerWidget {
                 if (user != null)
                   TextButton(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => EditProfileScreen(user: user)),
+                      MaterialPageRoute<void>(
+                        builder: (_) => EditProfileScreen(user: user),
+                      ),
                     ),
                     child: const Text('Düzenle'),
                   ),
@@ -82,7 +98,9 @@ class ProfilePage extends ConsumerWidget {
                   Icons.notifications_none_rounded,
                   'Bildirimler',
                   () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const NotificationSettingsScreen()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NotificationSettingsScreen(),
+                    ),
                   ),
                 ),
                 const Divider(indent: 56),
@@ -96,9 +114,18 @@ class ProfilePage extends ConsumerWidget {
                       SegmentedButton<ThemeMode>(
                         showSelectedIcon: false,
                         segments: const [
-                          ButtonSegment(value: ThemeMode.system, label: Text('Sistem')),
-                          ButtonSegment(value: ThemeMode.light, label: Text('Açık')),
-                          ButtonSegment(value: ThemeMode.dark, label: Text('Koyu')),
+                          ButtonSegment(
+                            value: ThemeMode.system,
+                            label: Text('Sistem'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            label: Text('Açık'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            label: Text('Koyu'),
+                          ),
                         ],
                         selected: {themeMode},
                         onSelectionChanged: (s) =>
@@ -119,7 +146,9 @@ class ProfilePage extends ConsumerWidget {
                     Icons.lock_outline_rounded,
                     'Şifre değiştir',
                     () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const ChangePasswordScreen()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ChangePasswordScreen(),
+                      ),
                     ),
                   ),
                   const Divider(indent: 56),
@@ -134,7 +163,9 @@ class ProfilePage extends ConsumerWidget {
                   Icons.person_remove_outlined,
                   'Hesabı sil',
                   () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const DeleteAccountPage()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DeleteAccountPage(),
+                    ),
                   ),
                   color: c.debt,
                 ),

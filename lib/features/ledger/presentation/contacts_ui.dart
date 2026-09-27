@@ -92,7 +92,11 @@ class PactaCodePage extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             if (name.isNotEmpty)
-              Text(name, textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
+              Text(
+                name,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.muted),
+              ),
             SelectableText(
               formatPactaCode(value),
               textAlign: TextAlign.center,
@@ -110,7 +114,9 @@ class PactaCodePage extends ConsumerWidget {
                       minimumSize: const Size.fromHeight(48),
                     ),
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: formatPactaCode(value)));
+                      Clipboard.setData(
+                        ClipboardData(text: formatPactaCode(value)),
+                      );
                       showSnack(context, 'Kod kopyalandı.');
                     },
                     icon: const Icon(Icons.copy_rounded),
@@ -185,8 +191,11 @@ class _ScanCodePageState extends State<ScanCodePage> {
       }
     }
     if (_hint == null) {
-      setState(() => _hint = 'Bu bir Pacta kodu değil. Profil > Pacta kodum '
-          'ekranındaki QR\'ı okutun.');
+      setState(
+        () => _hint =
+            'Bu bir Pacta kodu değil. Profil > Pacta kodum '
+            'ekranındaki QR\'ı okutun.',
+      );
     }
   }
 
@@ -280,9 +289,9 @@ Future<void> confirmAddByCode(
             Text(
               preview.name,
               textAlign: TextAlign.center,
-              style: Theme.of(sheet).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                sheet,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
@@ -292,7 +301,9 @@ Future<void> confirmAddByCode(
             ),
             const SizedBox(height: 16),
             FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
               onPressed: () => Navigator.of(sheet).pop(true),
               child: const Text('Ekle'),
             ),
@@ -341,20 +352,31 @@ Future<void> showPersonActions(
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: ledger.other(uid).email == null
                 ? null
                 : Text(ledger.other(uid).email!),
           ),
           ListTile(
-            leading: Icon(favorite ? Icons.star_rounded : Icons.star_border_rounded),
+            leading: Icon(
+              favorite ? Icons.star_rounded : Icons.star_border_rounded,
+            ),
             title: Text(favorite ? 'Favorilerden çıkar' : 'Favorilere ekle'),
             onTap: () => Navigator.of(sheet).pop('favorite'),
           ),
           if (ledger.isPrivate)
             ListTile(
-              leading: Icon(Icons.delete_outline_rounded, color: sheet.pacta.debt),
-              title: Text('Defteri sil', style: TextStyle(color: sheet.pacta.debt)),
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: sheet.pacta.debt,
+              ),
+              title: Text(
+                'Defteri sil',
+                style: TextStyle(color: sheet.pacta.debt),
+              ),
               onTap: () => Navigator.of(sheet).pop('delete'),
             )
           else
@@ -376,7 +398,9 @@ Future<void> showPersonActions(
       if (context.mounted) {
         showSnack(
           context,
-          favorite ? '$name favorilerden çıkarıldı.' : '$name favorilere eklendi.',
+          favorite
+              ? '$name favorilerden çıkarıldı.'
+              : '$name favorilere eklendi.',
         );
       }
     case 'hide':
@@ -397,12 +421,15 @@ Future<void> hidePerson(
   final repo = ref.read(ledgerRepositoryProvider);
   final name = ledger.other(uid).displayName;
   final open = ledger.balancesFor(uid).isNotEmpty || ledger.pendingCount > 0;
+  // Kapalı defterde (kişi hesabını sildi) yeni kayıt gelemez; geri gelmez.
+  final comesBack = ledger.isClosed
+      ? '"Listeden kaldırılanlar" bölümünden geri getirebilirsiniz.'
+      : '$name yeni bir kayıt eklerse yeniden görünür.';
   final confirmed = await _confirm(
     context,
     title: 'Listeden kaldırılsın mı?',
     message:
-        '$name listenizden kaldırılır. Hesap geçmişi silinmez; $name yeni '
-        'bir kayıt eklerse yeniden görünür.'
+        '$name listenizden kaldırılır. Hesap geçmişi silinmez; $comesBack'
         '${open ? '\n\nBu kişiyle açık bakiye ya da onay bekleyen kayıt '
                   'var; kaldırmak bunları silmez.' : ''}',
     action: 'Kaldır',
@@ -515,10 +542,13 @@ class _HiddenPeopleSheet extends ConsumerWidget {
             ListTile(
               leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
               title: Text(l.other(uid).displayName),
-              subtitle: l.other(uid).email == null ? null : Text(l.other(uid).email!),
+              subtitle: l.other(uid).email == null
+                  ? null
+                  : Text(l.other(uid).email!),
               trailing: TextButton(
-                onPressed: () =>
-                    ref.read(ledgerRepositoryProvider).setHidden(uid, l.id, false),
+                onPressed: () => ref
+                    .read(ledgerRepositoryProvider)
+                    .setHidden(uid, l.id, false),
                 child: const Text('Geri getir'),
               ),
             ),
