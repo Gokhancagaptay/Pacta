@@ -9,11 +9,25 @@ import {removeAccount} from "./account";
 //   adresiyle açılmış olabilir; hiçbir işlem yapamaz ama profil tutar).
 // - Bir taraf hesabını sildiği için kapanan ortak defterler, kapanıştan
 //   10 yıl sonra tamamen silinir (karşı tarafın nüshası; TBK 146).
+// - Silinen hesap işareti (deletedAccounts) de 10 yıl sonra silinir: o
+//   kimliği taşıyan son defter de o zamana kadar silinmiş olur.
 
 export const UNVERIFIED_DAYS = 30;
 export const CLOSED_LEDGER_YEARS = 10;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Takvim olarak n yıl öncesi.
+ * @param {Date} now An.
+ * @param {number} years Yıl.
+ * @return {Date} Sınır.
+ */
+function yearsBefore(now: Date, years: number): Date {
+  const cutoff = new Date(now);
+  cutoff.setFullYear(cutoff.getFullYear() - years);
+  return cutoff;
+}
 
 /**
  * Doğrulanmamış eski hesapları siler.
@@ -45,8 +59,7 @@ async function purgeUnverified(now: Date): Promise<number> {
  * @return {Promise<number>} Silinen defter sayısı.
  */
 async function purgeClosedLedgers(now: Date): Promise<number> {
-  const cutoff = new Date(now);
-  cutoff.setFullYear(cutoff.getFullYear() - CLOSED_LEDGER_YEARS);
+  const cutoff = yearsBefore(now, CLOSED_LEDGER_YEARS);
   let removed = 0;
   for (;;) {
     const snap = await db.collection("ledgers")
@@ -63,16 +76,38 @@ async function purgeClosedLedgers(now: Date): Promise<number> {
 }
 
 /**
+ * Saklama süresi dolan silme işaretlerini siler.
+ * @param {Date} now An.
+ * @return {Promise<number>} Silinen işaret sayısı.
+ */
+async function purgeTombstones(now: Date): Promise<number> {
+  const cutoff = yearsBefore(now, CLOSED_LEDGER_YEARS);
+  let removed = 0;
+  for (;;) {
+    const snap = await db.collection("deletedAccounts")
+      .where("deletedAt", "<", Timestamp.fromDate(cutoff))
+      .limit(400)
+      .get();
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    if (snap.size > 0) await batch.commit();
+    removed += snap.size;
+    if (snap.size < 400) return removed;
+  }
+}
+
+/**
  * Bakımın tamamı (testlerde saat verilebilir).
  * @param {Date} now An.
  * @return {Promise<object>} Özet.
  */
 export async function runMaintenance(
   now: Date
-): Promise<{unverified: number; closedLedgers: number}> {
+): Promise<{unverified: number; closedLedgers: number; tombstones: number}> {
   const unverified = await purgeUnverified(now);
   const closedLedgers = await purgeClosedLedgers(now);
-  return {unverified, closedLedgers};
+  const tombstones = await purgeTombstones(now);
+  return {unverified, closedLedgers, tombstones};
 }
 
 export const dailyMaintenance = onSchedule(

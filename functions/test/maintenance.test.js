@@ -30,7 +30,7 @@ describe("runMaintenance", () => {
     await db.collection("users").doc("eski").set({adSoyad: "Eski"});
 
     assert.deepEqual(await runMaintenance(later(DAY)),
-      {unverified: 0, closedLedgers: 0});
+      {unverified: 0, closedLedgers: 0, tombstones: 0});
     await auth.getUser("eski");
 
     const res = await runMaintenance(later(31 * DAY));
@@ -45,25 +45,29 @@ describe("runMaintenance", () => {
     assert.equal(await exists("users/ali"), true);
   });
 
-  it("kapalı ortak defteri 10 yıl sonra tamamen siler", async () => {
-    const ledgerId = await sharedLedger();
-    const e = await lend(ledgerId, "ali", 500);
-    await call(fns.confirmEntry, "ayse",
-      {ledgerId, entryId: e.entryId, expectedVersion: 1});
-    await call(fns.deleteAccount, "ali", {},
-      {authTime: Math.floor(Date.now() / 1000) - 30});
-    assert.equal((await ledgerDoc(ledgerId)).get("status"), "closed");
+  it("kapalı ortak defteri ve silme işaretini 10 yıl sonra siler",
+    async () => {
+      const ledgerId = await sharedLedger();
+      const e = await lend(ledgerId, "ali", 500);
+      await call(fns.confirmEntry, "ayse",
+        {ledgerId, entryId: e.entryId, expectedVersion: 1});
+      await call(fns.deleteAccount, "ali", {},
+        {authTime: Math.floor(Date.now() / 1000) - 30});
+      assert.equal((await ledgerDoc(ledgerId)).get("status"), "closed");
 
-    const nineYears = await runMaintenance(later(9 * 365 * DAY));
-    assert.equal(nineYears.closedLedgers, 0);
-    assert.equal((await ledgerDoc(ledgerId)).exists, true);
+      const nineYears = await runMaintenance(later(9 * 365 * DAY));
+      assert.equal(nineYears.closedLedgers, 0);
+      assert.equal(nineYears.tombstones, 0);
+      assert.equal((await ledgerDoc(ledgerId)).exists, true);
 
-    const res = await runMaintenance(later(3654 * DAY));
-    assert.equal(res.closedLedgers, 1);
-    assert.equal((await ledgerDoc(ledgerId)).exists, false);
-    const entries = await db.collection(`ledgers/${ledgerId}/entries`).get();
-    assert.equal(entries.size, 0);
-  });
+      const res = await runMaintenance(later(3654 * DAY));
+      assert.equal(res.closedLedgers, 1);
+      assert.equal(res.tombstones, 1);
+      assert.equal((await ledgerDoc(ledgerId)).exists, false);
+      const entries = await db.collection(`ledgers/${ledgerId}/entries`).get();
+      assert.equal(entries.size, 0);
+      assert.equal(await exists("deletedAccounts/ali"), false);
+    });
 
   it("açık defterlere dokunmaz", async () => {
     const ledgerId = await sharedLedger();
