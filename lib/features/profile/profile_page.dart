@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_lock.dart';
 import '../../app/theme.dart';
 import '../../core/legal.dart';
 import '../../core/ui/widgets.dart';
@@ -104,6 +106,33 @@ class ProfilePage extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (!kIsWeb) ...[
+                  const Divider(indent: 56),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.lock_outline_rounded),
+                    title: const Text('Uygulama kilidi'),
+                    subtitle: const Text(
+                      'Açarken parmak izi, yüz ya da telefon şifresi sorulur.',
+                    ),
+                    value: ref.watch(appLockProvider).enabled,
+                    onChanged: (value) async {
+                      final error = await ref
+                          .read(appLockProvider.notifier)
+                          .setEnabled(value);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            error ??
+                                (value
+                                    ? 'Uygulama kilidi açıldı.'
+                                    : 'Uygulama kilidi kapatıldı.'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
                 const Divider(indent: 56),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),

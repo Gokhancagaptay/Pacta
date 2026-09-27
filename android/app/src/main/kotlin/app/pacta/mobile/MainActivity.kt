@@ -1,5 +1,6 @@
 package app.pacta.mobile
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// Uygulama kilidi (local_auth) parmak izi penceresi için FragmentActivity.
+class MainActivity : FlutterFragmentActivity()

@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:pacta/app/app_lock.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/constants/app_constants.dart';
@@ -111,7 +112,7 @@ class MyApp extends ConsumerWidget {
             ),
           ),
         );
-        return child ?? const SizedBox.shrink();
+        return AppLockGate(child: child ?? const SizedBox.shrink());
       },
     );
   }
