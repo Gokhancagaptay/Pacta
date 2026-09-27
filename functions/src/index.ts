@@ -5,6 +5,7 @@
 export {
   cancelEntry,
   confirmEntry,
+  convertPrivateLedger,
   createEntry,
   createLedger,
   disputeEntry,

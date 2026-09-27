@@ -90,7 +90,7 @@ export function openDueItems(confirmed: DueSource[]): DueItem[] {
  * @param {DocumentData} d Kayıt.
  * @return {DueSource} Hesap girdisi.
  */
-function toSource(id: string, d: DocumentData): DueSource {
+export function toSource(id: string, d: DocumentData): DueSource {
   return {
     id,
     kind: d.kind,
