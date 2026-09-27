@@ -70,6 +70,22 @@ class FakeRepo extends LedgerRepository {
   LedgerException? deleteError;
 
   @override
+  Future<ConvertResult> convertPrivateLedger(
+    String ledgerId, {
+    String? email,
+    String? code,
+    bool includeDescriptions = false,
+  }) async {
+    calls.add('convert $ledgerId $email $code $includeDescriptions');
+    return const ConvertResult(
+      ledgerId: 'p_ayse',
+      name: 'Ayşe Yılmaz',
+      transferred: 2,
+      pending: 2,
+    );
+  }
+
+  @override
   Future<ReminderResult> sendReminder(String ledgerId) async {
     calls.add('remind $ledgerId');
     return const ReminderResult(
@@ -177,6 +193,41 @@ final closedLedger = Ledger.fromMap('p_eski', {
   'pendingCount': 0,
 });
 
+// Uygulaması olmayan Bakkal Ahmet: 300 ₺'si 1 Ekim vadeli, toplam 800 ₺.
+final privateLedger = Ledger.fromMap('v_bakkal', {
+  'mode': 'private',
+  'sides': {
+    'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+    'b': {'uid': null, 'displayName': 'Bakkal Ahmet'},
+  },
+  'balances': {'TRY': 80000},
+  'pendingCount': 0,
+  'dueItems': [
+    {
+      'entryId': 'e-bakkal',
+      'asset': 'TRY',
+      'debtorSide': 'b',
+      'openMinor': 30000,
+      'dueOn': '2026-10-01',
+      'description': 'Veresiye',
+    },
+  ],
+});
+
+// Ayşe'yle ortak deftere taşınmış eski özel defter: listelere ve
+// toplamlara girmez, yalnızca arşivden açılır.
+final archivedLedger = Ledger.fromMap('v_arsiv', {
+  'mode': 'private',
+  'status': 'closed',
+  'convertedTo': 'p_ayse',
+  'sides': {
+    'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+    'b': {'uid': null, 'displayName': 'Ayşe (eski)'},
+  },
+  'balances': {'TRY': 99900},
+  'pendingCount': 0,
+});
+
 final recent = [
   LedgerEntry.fromMap('e-can', {
     'ledgerId': 'p_can',
@@ -213,14 +264,21 @@ Widget app(Widget home, FakeRepo repo) => ProviderScope(
     authUserProvider.overrideWith((ref) => Stream.value(null)),
     currentUidProvider.overrideWith((ref) => 'gokhan'),
     ledgerRepositoryProvider.overrideWithValue(repo),
-    ledgersProvider.overrideWith((ref) => Stream.value(ledgers)),
+    ledgersProvider.overrideWith(
+      (ref) => Stream.value([...ledgers, archivedLedger]),
+    ),
     inboxProvider.overrideWith((ref) => Stream.value(inbox)),
     notificationsProvider.overrideWith((ref) => Stream.value(const [])),
     recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
     todayProvider.overrideWith((ref) => today),
     ledgerProvider.overrideWith(
       (ref, id) => Stream.value(
-        [...ledgers, closedLedger].firstWhere((l) => l.id == id),
+        [
+          ...ledgers,
+          closedLedger,
+          privateLedger,
+          archivedLedger,
+        ].firstWhere((l) => l.id == id),
       ),
     ),
     entriesProvider.overrideWith((ref, id) => Stream.value(const [])),
@@ -629,4 +687,62 @@ void main() {
     expect(repo.lastCreate?['iGave'], false);
     expect(repo.lastCreate?['amountMinor'], 30000);
   });
+
+  testWidgets(
+    'özel defter ortak deftere taşınır; gidecekler önceden gösterilir',
+    (tester) async {
+      phoneSize(tester);
+      final repo = FakeRepo();
+      await tester.pumpWidget(
+        app(const LedgerPage(ledgerId: 'v_bakkal'), repo),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining("Pacta'ya katıldı mı"), findsOneWidget);
+      await tester.tap(find.text('Taşı'));
+      await tester.pumpAndSettle();
+
+      // Önizleme: 300 ₺ vadeli + 500 ₺ vadesiz; not gönderilmiyor.
+      expect(find.text('Önceki kayıtlardan aktarıldı'), findsOneWidget);
+      expect(find.text('Önceki kayıtlardan kalan bakiye'), findsOneWidget);
+      expect(find.text('Veresiye'), findsNothing);
+      expect(find.text('Açıklamaları da gönder'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'ayse@example.com');
+      await tester.pump();
+      final button = find.widgetWithText(FilledButton, 'Ortak deftere taşı');
+      await tester.scrollUntilVisible(
+        button,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(
+        repo.calls,
+        contains('convert v_bakkal ayse@example.com null false'),
+      );
+      // Ortak deftere geçildi; eski özel kayıtlara bağlantı var.
+      expect(find.text('ayse@example.com'), findsOneWidget);
+      expect(find.textContaining('2 kayıt onay bekliyor'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'taşınmış özel defter yalnızca okunur, ortak deftere yönlendirir',
+    (tester) async {
+      phoneSize(tester);
+      await tester.pumpWidget(
+        app(const LedgerPage(ledgerId: 'v_arsiv'), FakeRepo()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('ortak deftere taşındı'), findsWidgets);
+      expect(find.text('Kayıt ekle'), findsNothing);
+      await tester.tap(find.text('Ortak defteri aç'));
+      await tester.pumpAndSettle();
+      expect(find.text('Özel defterdeki eski kayıtlar'), findsOneWidget);
+    },
+  );
 }

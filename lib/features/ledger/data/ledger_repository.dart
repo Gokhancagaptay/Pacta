@@ -28,6 +28,33 @@ class LedgerException implements Exception {
 }
 
 /// Eklenen kişi: açılan (ya da zaten olan) defter.
+/// Özel defter ortak deftere taşındı.
+class ConvertResult {
+  const ConvertResult({
+    required this.ledgerId,
+    required this.name,
+    required this.transferred,
+    required this.pending,
+  });
+
+  factory ConvertResult.fromMap(Map<String, dynamic> m) => ConvertResult(
+    ledgerId: m['ledgerId'] as String,
+    name: (m['displayName'] as String?) ?? '',
+    transferred: (m['transferred'] as num?)?.toInt() ?? 0,
+    pending: (m['pending'] as num?)?.toInt() ?? 0,
+  );
+
+  /// Ortak defter.
+  final String ledgerId;
+
+  /// Karşı tarafın adı (tekrar çağrıda boş olabilir).
+  final String name;
+
+  /// Aktarılan kayıt sayısı ve bunlardan onay bekleyenler.
+  final int transferred;
+  final int pending;
+}
+
 class AddedPerson {
   const AddedPerson({
     required this.ledgerId,
@@ -203,6 +230,23 @@ class LedgerRepository {
   /// Hesabı siler. Önce yeniden giriş yapılmış olmalı (sunucu eski oturumu
   /// reddeder: [LedgerException.message] "REAUTH_REQUIRED" ile başlar).
   Future<void> deleteAccount() => _call('deleteAccount', {});
+
+  /// Kişi Pacta'ya katılınca özel defteri ortak deftere taşır: açık bakiye
+  /// karşı tarafın onayına gider, özel defter arşivlenir. Kişi e-postası ya
+  /// da Pacta koduyla seçilir.
+  Future<ConvertResult> convertPrivateLedger(
+    String ledgerId, {
+    String? email,
+    String? code,
+    bool includeDescriptions = false,
+  }) async => ConvertResult.fromMap(
+    await _call('convertPrivateLedger', {
+      'ledgerId': ledgerId,
+      if (email != null) 'counterpartyEmail': email.trim(),
+      if (code != null) 'counterpartyCode': code,
+      'includeDescriptions': includeDescriptions,
+    }),
+  );
 
   /// Özel defteri kayıtlarıyla birlikte siler (ortak defter silinmez).
   Future<void> deletePrivateLedger(String ledgerId) =>

@@ -11,6 +11,7 @@ import '../domain/reminder.dart';
 import '../domain/summary.dart';
 import 'common.dart';
 import 'contacts_ui.dart';
+import 'convert_ledger_page.dart';
 import 'entry_composer_page.dart';
 
 /// Tek bir kişiyle olan defter: bakiye, hızlı eylemler, kayıtlar.
@@ -72,6 +73,7 @@ class LedgerPage extends ConsumerWidget {
                 .contains(ledger.id) ??
             false;
         final favorite = ref.watch(favoriteLedgersProvider).contains(ledger.id);
+        final archived = ref.watch(archivedLedgersProvider(ledger.id));
 
         final String sentence;
         if (balance.isZero) {
@@ -98,7 +100,12 @@ class LedgerPage extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(other.displayName, overflow: TextOverflow.ellipsis),
-                      if (ledger.isPrivate)
+                      if (ledger.isArchived)
+                        Text(
+                          'Arşiv · ortak deftere taşındı',
+                          style: TextStyle(fontSize: 12, color: c.muted),
+                        )
+                      else if (ledger.isPrivate)
                         Text(
                           'Özel defter · yalnızca siz görürsünüz',
                           style: TextStyle(fontSize: 12, color: c.muted),
@@ -135,6 +142,8 @@ class LedgerPage extends ConsumerWidget {
                   switch (value) {
                     case 'mute':
                       _toggleMute(context, ref, ledger, muted);
+                    case 'convert':
+                      _convert(context, ledger);
                     case 'person' when ledger.isPrivate:
                       deletePrivateLedger(
                         context,
@@ -147,6 +156,11 @@ class LedgerPage extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (_) => [
+                  if (ledger.isPrivate && !ledger.isClosed)
+                    const PopupMenuItem(
+                      value: 'convert',
+                      child: Text('Ortak deftere taşı'),
+                    ),
                   if (!ledger.isPrivate && !ledger.isClosed)
                     PopupMenuItem(
                       value: 'mute',
@@ -202,8 +216,23 @@ class LedgerPage extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 14),
-                    // Karşı taraf hesabını sildiyse defter yalnızca okunur.
-                    if (ledger.isClosed)
+                    // Taşınan özel defter ve karşı tarafı hesabını silen
+                    // defter yalnızca okunur.
+                    if (ledger.isArchived)
+                      _ClosedNote(
+                        text:
+                            'Bu defter ${other.displayName} ile ortak deftere '
+                            'taşındı. Eski kayıtlarınız burada, yalnızca '
+                            'sizde duruyor.',
+                        action: 'Ortak defteri aç',
+                        onAction: () => Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                LedgerPage(ledgerId: ledger.convertedTo!),
+                          ),
+                        ),
+                      )
+                    else if (ledger.isClosed)
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -265,6 +294,41 @@ class LedgerPage extends ConsumerWidget {
                   ],
                 ),
               ),
+              if (ledger.isPrivate && !ledger.isClosed)
+                SurfaceCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.group_add_outlined, color: c.credit),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '${other.displayName} Pacta\'ya katıldı mı? Ortak '
+                          'deftere taşıyın; kayıtları o da onaylasın.',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => _convert(context, ledger),
+                        child: const Text('Taşı'),
+                      ),
+                    ],
+                  ),
+                ),
+              for (final old in archived)
+                SurfaceCard(
+                  child: ListTile(
+                    leading: const Icon(Icons.inventory_2_outlined),
+                    title: const Text('Özel defterdeki eski kayıtlar'),
+                    subtitle: const Text('Yalnızca siz görürsünüz'),
+                    trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => LedgerPage(ledgerId: old.id),
+                      ),
+                    ),
+                  ),
+                ),
               if (ledger.dueItems.isNotEmpty) ...[
                 const SectionHeader(title: 'Vadeler'),
                 SurfaceCard(
@@ -342,6 +406,28 @@ class LedgerPage extends ConsumerWidget {
         ),
       ],
     ];
+  }
+
+  /// Taşıma başarılıysa bu sayfa ortak defterle değişir.
+  Future<void> _convert(BuildContext context, Ledger ledger) async {
+    final result = await openConvertLedgerPage(context, ledger);
+    if (result == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => LedgerPage(ledgerId: result.ledgerId),
+      ),
+    );
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          result.pending > 0
+              ? 'Ortak deftere taşındı. ${result.pending} kayıt onay bekliyor.'
+              : 'Ortak deftere taşındı.',
+        ),
+      ),
+    );
   }
 
   void _compose(BuildContext context, Ledger ledger, {ComposerMode? mode}) {
@@ -560,6 +646,41 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ClosedNote extends StatelessWidget {
+  const _ClosedNote({
+    required this.text,
+    required this.action,
+    required this.onAction,
+  });
+
+  final String text;
+  final String action;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      decoration: BoxDecoration(
+        color: c.line,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: TextStyle(color: c.muted)),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: onAction, child: Text(action)),
+          ),
+        ],
       ),
     );
   }

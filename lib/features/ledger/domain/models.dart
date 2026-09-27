@@ -92,6 +92,7 @@ class Ledger {
     this.dueItems = const [],
     this.lastReminderOn = const {},
     this.isClosed = false,
+    this.convertedTo,
   });
 
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
@@ -103,6 +104,7 @@ class Ledger {
       id: id,
       isPrivate: m['mode'] == 'private',
       isClosed: m['status'] == 'closed',
+      convertedTo: m['convertedTo'] as String?,
       a: LedgerSide.fromMap((sides['a'] as Map?)?.cast<String, dynamic>()),
       b: LedgerSide.fromMap((sides['b'] as Map?)?.cast<String, dynamic>()),
       balances: {for (final e in raw.entries) e.key: (e.value as num).toInt()},
@@ -126,8 +128,16 @@ class Ledger {
   final String id;
   final bool isPrivate;
 
-  /// Taraflardan biri hesabını sildi: geçmiş okunur, yeni kayıt eklenemez.
+  /// Taraflardan biri hesabını sildi ya da özel defter ortak deftere
+  /// taşındı: geçmiş okunur, yeni kayıt eklenemez.
   final bool isClosed;
+
+  /// Özel defter bu ortak deftere taşındı (bkz. [isArchived]).
+  final String? convertedTo;
+
+  /// Ortak deftere taşınmış özel defter: yalnızca arşivde görünür; listelere
+  /// ve toplamlara girmez (bakiye artık ortak defterde).
+  bool get isArchived => convertedTo != null;
   final LedgerSide a;
   final LedgerSide b;
 

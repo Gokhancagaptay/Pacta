@@ -83,6 +83,8 @@ class Totals {
     var payable = 0;
     final others = <String, int>{};
     for (final ledger in ledgers) {
+      // Taşınmış özel defterin bakiyesi ortak defterde sayılır.
+      if (ledger.isArchived) continue;
       for (final money in ledger.balancesFor(uid)) {
         if (money.asset == Asset.tryLira) {
           if (money.minor > 0) {
@@ -180,9 +182,18 @@ final hiddenLedgersProvider = Provider.autoDispose<List<Ledger>>((ref) {
   final all = ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[];
   return [
     for (final l in all)
-      if (isHiddenLedger(l, hidden)) l,
+      if (!l.isArchived && isHiddenLedger(l, hidden)) l,
   ];
 });
+
+/// Bu ortak deftere taşınmış özel defterler (eski kayıtlar sahibinde kalır).
+final archivedLedgersProvider = Provider.autoDispose
+    .family<List<Ledger>, String>(
+      (ref, sharedLedgerId) => [
+        for (final l in ref.watch(ledgersProvider).valueOrNull ?? const [])
+          if (l.convertedTo == sharedLedgerId) l,
+      ],
+    );
 
 /// Kişi tablosunun satırları (süzülmemiş, kaldırılanlar hariç).
 final personRowsProvider = Provider.autoDispose<AsyncValue<List<PersonRow>>>((

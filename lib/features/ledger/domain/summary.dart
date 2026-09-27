@@ -16,7 +16,8 @@ bool isHiddenLedger(Ledger ledger, Map<String, DateTime> hidden) {
   return last == null || !last.isAfter(at);
 }
 
-/// Listelerde gösterilecek defterler: kaldırılanlar çıkar, favoriler başa.
+/// Listelerde gösterilecek defterler: kaldırılanlar ve ortak deftere
+/// taşınmış özel defterler çıkar, favoriler başa.
 List<Ledger> visibleLedgers(
   List<Ledger> ledgers, {
   Set<String> favorites = const {},
@@ -24,7 +25,7 @@ List<Ledger> visibleLedgers(
 }) {
   final shown = [
     for (final l in ledgers)
-      if (!isHiddenLedger(l, hidden)) l,
+      if (!l.isArchived && !isHiddenLedger(l, hidden)) l,
   ];
   return [
     ...shown.where((l) => favorites.contains(l.id)),
