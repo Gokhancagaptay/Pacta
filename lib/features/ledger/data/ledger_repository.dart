@@ -222,6 +222,10 @@ class LedgerRepository {
   Future<String> myPactaCode() async =>
       (await _call('myPactaCode', {}))['code'] as String;
 
+  /// Yeni kod verir; eski kod, QR ve davet linkleri artık kimseyi bulmaz.
+  Future<String> rotatePactaCode() async =>
+      (await _call('myPactaCode', {'rotate': true}))['code'] as String;
+
   Future<String> openPrivateLedger(String name) async {
     final r = await _call('createLedger', {'privateName': name});
     return r['ledgerId'] as String;

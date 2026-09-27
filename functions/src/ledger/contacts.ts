@@ -122,12 +122,26 @@ export async function authInfo(uid: string): Promise<AuthInfo | null> {
   }
 }
 
-/** Kişinin Pacta kodu; yoksa oluşturulur. */
+/** Günde en fazla bu kadar kod yenilenir. */
+export const DAILY_CODE_ROTATIONS = 3;
+
+const MyCodeInput = z.object({rotate: z.boolean().default(false)}).strict();
+
+/**
+ * Kişinin Pacta kodu; yoksa oluşturulur. rotate: kod bir yerde yayıldıysa
+ * yenisi verilir, eski kod (QR ve davet linkleri de) artık kimseyi bulmaz.
+ * Kişiyi zaten ekleyenlerin defterleri etkilenmez.
+ */
 export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
+  const {rotate} = parse(MyCodeInput, req.data ?? {});
   const userRef = db.collection("users").doc(uid);
   const existing = (await userRef.get()).get("pactaCode") as string | undefined;
-  if (existing) return {code: existing};
+  if (existing && !rotate) return {code: existing};
+  if (rotate) {
+    await consumeDaily(`coderotations_${uid}`, DAILY_CODE_ROTATIONS,
+      "Kodunuzu bugün yeterince yenilediniz. Yarın tekrar deneyin.");
+  }
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const candidate = randomCode();
@@ -135,8 +149,12 @@ export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
     const code = await db.runTransaction(async (tx) => {
       const [user, taken] = [await tx.get(userRef), await tx.get(codeRef)];
       const current = user.get("pactaCode") as string | undefined;
-      if (current) return current;
+      if (current && !rotate) return current;
       if (taken.exists) return null;
+      if (current) {
+        const oldRef = db.collection("codes").doc(current);
+        if ((await tx.get(oldRef)).get("uid") === uid) tx.delete(oldRef);
+      }
       tx.set(codeRef, {uid, createdAt: FieldValue.serverTimestamp()});
       tx.set(userRef, {pactaCode: candidate}, {merge: true});
       return candidate;

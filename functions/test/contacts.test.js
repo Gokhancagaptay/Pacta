@@ -103,6 +103,33 @@ describe("Pacta kodu", () => {
       call(fns.createLedger, "ali", {counterpartyCode: "ZZZZZZ"}),
       "resource-exhausted");
   });
+
+  it("kod yenilenince eski kod kimseyi bulmaz; eklenmiş kişiler kalır",
+    async () => {
+      const {code: old} = await call(fns.myPactaCode, "ayse", {});
+      const {ledgerId} = await call(fns.createLedger, "ali",
+        {counterpartyCode: old});
+
+      const {code: fresh} = await call(fns.myPactaCode, "ayse",
+        {rotate: true});
+      assert.match(fresh, CODE);
+      assert.notEqual(fresh, old);
+      assert.equal((await db.collection("codes").doc(old).get()).exists,
+        false);
+      assert.equal((await db.doc("users/ayse").get()).get("pactaCode"), fresh);
+      await rejectsWith(call(fns.previewCode, "ali", {code: old}),
+        "not-found");
+      assert.equal(
+        (await call(fns.previewCode, "ali", {code: fresh})).displayName,
+        "Ayşe Yılmaz");
+      assert.equal((await ledgerDoc(ledgerId)).exists, true);
+
+      // Günde en fazla 3 yenileme.
+      await call(fns.myPactaCode, "ayse", {rotate: true});
+      await call(fns.myPactaCode, "ayse", {rotate: true});
+      await rejectsWith(call(fns.myPactaCode, "ayse", {rotate: true}),
+        "resource-exhausted", /yenilediniz/);
+    });
 });
 
 describe("kimlik ve kötüye kullanım korumaları", () => {

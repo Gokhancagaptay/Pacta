@@ -226,7 +226,9 @@ export async function deleteAccountData(
   }
   await db.recursiveDelete(userRef);
   await db.collection("publicProfiles").doc(uid).delete();
-  const counters = ["reminders", "codes", "ledgers", "entries", "revisions"];
+  const counters = [
+    "reminders", "codes", "coderotations", "ledgers", "entries", "revisions",
+  ];
   await Promise.all(counters.map((k) =>
     db.collection("rateLimits").doc(`${k}_${uid}`).delete()));
   await deleteQuery(db.collection("pushQueue").where("uid", "==", uid));

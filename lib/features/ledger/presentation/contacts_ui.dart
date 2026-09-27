@@ -153,10 +153,38 @@ class PactaCodePage extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton.icon(
+                onPressed: () => _rotate(context, ref),
+                icon: const Icon(Icons.autorenew_rounded),
+                label: const Text('Kodu yenile'),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// Kod istenmeyen bir yere yayıldıysa: yenisi verilir, eskisi çalışmaz.
+  Future<void> _rotate(BuildContext context, WidgetRef ref) async {
+    final ok = await _confirm(
+      context,
+      title: 'Kod yenilensin mi?',
+      message:
+          "Eski kodunuz, QR'ınız ve paylaştığınız davet linkleri artık "
+          'çalışmaz. Sizi zaten eklemiş kişiler etkilenmez.',
+      action: 'Yenile',
+    );
+    if (ok != true || !context.mounted) return;
+    final done = await runCommand(
+      context,
+      () => ref.read(ledgerRepositoryProvider).rotatePactaCode(),
+      success: 'Yeni kodunuz hazır.',
+    );
+    // Profil akışı yeni kodu getirir; beklemeden yenilenir.
+    if (done) ref.invalidate(myPactaCodeProvider);
   }
 }
 

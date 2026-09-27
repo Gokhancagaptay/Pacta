@@ -10,6 +10,7 @@ import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/features/ledger/data/ledger_repository.dart';
 import 'package:pacta/features/ledger/domain/models.dart';
 import 'package:pacta/features/ledger/domain/reminder.dart';
+import 'package:pacta/features/ledger/presentation/contacts_ui.dart';
 import 'package:pacta/features/ledger/presentation/entry_composer_page.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/features/ledger/presentation/ledger_page.dart';
@@ -68,6 +69,15 @@ class FakeRepo extends LedgerRepository {
 
   /// Verilirse deleteAccount bu hatayı fırlatır (bağlantı koptu vb.).
   LedgerException? deleteError;
+
+  @override
+  Future<String> myPactaCode() async => 'K7Q3XM';
+
+  @override
+  Future<String> rotatePactaCode() async {
+    calls.add('rotateCode');
+    return 'M4N5P6';
+  }
 
   @override
   Future<ConvertResult> convertPrivateLedger(
@@ -745,4 +755,26 @@ void main() {
       expect(find.text('Özel defterdeki eski kayıtlar'), findsOneWidget);
     },
   );
+
+  testWidgets('Pacta kodu onayla yenilenir', (tester) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    await tester.pumpWidget(app(const PactaCodePage(), repo));
+    await tester.pumpAndSettle();
+    expect(find.text('K7Q-3XM'), findsOneWidget);
+
+    await tester.tap(find.text('Kodu yenile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kod yenilensin mi?'), findsOneWidget);
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, isNot(contains('rotateCode')));
+
+    await tester.tap(find.text('Kodu yenile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yenile'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, contains('rotateCode'));
+    expect(find.text('Yeni kodunuz hazır.'), findsOneWidget);
+  });
 }
