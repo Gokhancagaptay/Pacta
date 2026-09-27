@@ -29,6 +29,14 @@ service cloud.firestore {
       return !('adSoyad' in d) || (d.adSoyad is string && d.adSoyad.size() <= 100);
     }
 
+    // Koşulların kabulü: hangi sürüm, ne zaman. Zaman istemciden değil
+    // sunucudan gelir (serverTimestamp), geriye tarih atılamaz.
+    function validTerms(d) {
+      return (!('termsVersion' in d) && !('termsAcceptedAt' in d))
+        || (d.termsVersion is string && d.termsVersion.size() <= 32
+          && d.termsAcceptedAt == request.time);
+    }
+
     // Hesap silme başladı (Cloud Functions yazar): eski oturum profili ve
     // herkese açık adı yeniden oluşturamaz.
     function notDeleted(uid) {
@@ -48,6 +56,7 @@ service cloud.firestore {
         && (!('uid' in request.resource.data) || request.resource.data.uid == uid)
         && !('pactaCode' in request.resource.data)
         && validName(request.resource.data)
+        && validTerms(request.resource.data)
         && notDeleted(uid);
       allow update: if isSelf(uid)
         && !changed(['pactaCode'])
@@ -55,7 +64,9 @@ service cloud.firestore {
           || (!('email' in resource.data) && request.resource.data.email == tokenEmail()))
         && (!changed(['uid'])
           || (!('uid' in resource.data) && request.resource.data.uid == uid))
-        && (!changed(['adSoyad']) || validName(request.resource.data));
+        && (!changed(['adSoyad']) || validName(request.resource.data))
+        && (!changed(['termsVersion', 'termsAcceptedAt'])
+          || validTerms(request.resource.data));
       allow delete: if false;
 
       // v2: onay bekleyenler ve bildirimler Cloud Functions tarafından yazılır.

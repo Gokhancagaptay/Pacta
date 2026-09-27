@@ -238,6 +238,47 @@ export async function deleteAccountData(
 }
 
 /**
+ * Auth çağrısı; hesap zaten yoksa sorun sayılmaz.
+ * @param {Promise<void>} op Çağrı.
+ */
+async function ignoreMissingUser(op: Promise<void>): Promise<void> {
+  try {
+    await op;
+  } catch (error) {
+    if ((error as {code?: string}).code !== "auth/user-not-found") {
+      throw error;
+    }
+  }
+}
+
+export type RemovalReason = "user" | "unverified" | "request";
+
+/**
+ * Hesabı tamamen siler: silme işareti, oturumların iptali, veriler, giriş
+ * hesabı. Uygulama içi silme, günlük bakım (doğrulanmamış hesaplar) ve
+ * e-postayla gelen talepler (functions/scripts) aynı yolu kullanır.
+ * Tekrar çağrılabilir.
+ * @param {string} uid Silinecek kişi.
+ * @param {RemovalReason} reason Neden (silme işaretine yazılır).
+ * @return {Promise<object>} Özet.
+ */
+export async function removeAccount(
+  uid: string,
+  reason: RemovalReason
+): Promise<{closedLedgers: number; deletedLedgers: number}> {
+  await db.collection("deletedAccounts").doc(uid)
+    .set({deletedAt: FieldValue.serverTimestamp(), reason}, {merge: true});
+  await ignoreMissingUser(admin.auth().revokeRefreshTokens(uid));
+  const summary = await deleteAccountData(uid);
+  await ignoreMissingUser(admin.auth().deleteUser(uid));
+  // Silme sürerken açılmış olabilecek defterler için son tarama.
+  const late = await settleLedgers(uid);
+  await pushOnly(late.notices);
+  logger.info("[account] Hesap silindi", {uid, reason, ...summary});
+  return summary;
+}
+
+/**
  * Oturumdaki kişinin hesabını siler. İstemci önce yeniden giriş yapar
  * (şifre ya da Google); eski oturumla silme reddedilir. Tekrar
  * çağrılabilir (silme işareti komutları engeller, bu çağrıyı değil).
@@ -247,27 +288,7 @@ export const deleteAccount = onCall<unknown>(
   async (req) => {
     const uid = requireRecentLogin(req, REAUTH_WINDOW_SECONDS,
       accountClock.now());
-    await db.collection("deletedAccounts").doc(uid)
-      .set({deletedAt: FieldValue.serverTimestamp()}, {merge: true});
-    try {
-      await admin.auth().revokeRefreshTokens(uid);
-    } catch (error) {
-      if ((error as {code?: string}).code !== "auth/user-not-found") {
-        throw error;
-      }
-    }
-    const summary = await deleteAccountData(uid);
-    try {
-      await admin.auth().deleteUser(uid);
-    } catch (error) {
-      if ((error as {code?: string}).code !== "auth/user-not-found") {
-        throw error;
-      }
-    }
-    // Silme sürerken açılmış olabilecek defterler için son tarama.
-    const late = await settleLedgers(uid);
-    await pushOnly(late.notices);
-    logger.info("[account] Hesap silindi", {uid, ...summary});
+    const summary = await removeAccount(uid, "user");
     return {deleted: true, ...summary};
   }
 );

@@ -32,8 +32,9 @@ module.exports = {
   },
   overrides: [
     {
-      // Emulator testleri CommonJS; küçük yardımcılar için JSDoc gerekmez.
-      files: ["test/**/*.js"],
+      // Testler ve yönetici betikleri CommonJS; küçük yardımcılar için
+      // JSDoc gerekmez.
+      files: ["test/**/*.js", "scripts/**/*.js"],
       rules: {
         "require-jsdoc": 0,
         "valid-jsdoc": 0,

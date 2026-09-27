@@ -165,6 +165,26 @@ describe("users", () => {
     await assertFails(getDoc(doc(veli, "deletedAccounts/veli")));
   });
 
+  it("koşul kabulü yalnızca sunucu saatiyle yazılır", async () => {
+    await assertFails(updateDoc(doc(ali(), "users/ali"),
+      {termsVersion: "2026-09-27", termsAcceptedAt: Timestamp.now()}));
+    await assertFails(updateDoc(doc(ali(), "users/ali"),
+      {termsVersion: "2026-09-27"}));
+    await assertFails(updateDoc(doc(ali(), "users/ali"),
+      {termsAcceptedAt: serverTimestamp()}));
+    await assertFails(updateDoc(doc(ali(), "users/ali"),
+      {termsVersion: "x".repeat(33), termsAcceptedAt: serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(ali(), "users/ali"),
+      {termsVersion: "2026-09-27", termsAcceptedAt: serverTimestamp()}));
+    // Profil henüz yokken de kabul yazılabilir (Google ile ilk giriş).
+    const veli = env
+      .authenticatedContext("veli", {email: "veli@example.com"})
+      .firestore();
+    await assertSucceeds(setDoc(doc(veli, "users/veli"),
+      {termsVersion: "2026-09-27", termsAcceptedAt: serverTimestamp()},
+      {merge: true}));
+  });
+
   it("profil yalnızca giriş e-postasıyla oluşturulur", async () => {
     const veli = env
       .authenticatedContext("veli", {email: "veli@example.com"})
