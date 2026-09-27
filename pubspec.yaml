@@ -76,6 +76,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/google_logo.png
+    # Poppins uygulamaya gömülü (400/500/600/700): açılışta Google Fonts'tan
+    # indirilmez, çevrimdışı da aynı görünür. Lisans: OFL.txt.
+    - assets/google_fonts/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
