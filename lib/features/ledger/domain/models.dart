@@ -93,6 +93,8 @@ class Ledger {
     this.lastReminderOn = const {},
     this.isClosed = false,
     this.convertedTo,
+    this.chainSeq = 0,
+    this.chainHash = '',
   });
 
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
@@ -105,6 +107,8 @@ class Ledger {
       isPrivate: m['mode'] == 'private',
       isClosed: m['status'] == 'closed',
       convertedTo: m['convertedTo'] as String?,
+      chainSeq: ((m['head'] as Map?)?['seq'] as num?)?.toInt() ?? 0,
+      chainHash: ((m['head'] as Map?)?['chainHash'] as String?) ?? '',
       a: LedgerSide.fromMap((sides['a'] as Map?)?.cast<String, dynamic>()),
       b: LedgerSide.fromMap((sides['b'] as Map?)?.cast<String, dynamic>()),
       balances: {for (final e in raw.entries) e.key: (e.value as num).toInt()},
@@ -138,6 +142,11 @@ class Ledger {
   /// Ortak deftere taşınmış özel defter: yalnızca arşivde görünür; listelere
   /// ve toplamlara girmez (bakiye artık ortak defterde).
   bool get isArchived => convertedTo != null;
+
+  /// Onaylı kayıt zincirinin başı: kaç onay işlendi ve son özet. Ekstrede
+  /// yazılır; sonradan araya kayıt sokulmadığı buradan doğrulanır.
+  final int chainSeq;
+  final String chainHash;
   final LedgerSide a;
   final LedgerSide b;
 

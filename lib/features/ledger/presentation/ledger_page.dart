@@ -13,6 +13,7 @@ import 'common.dart';
 import 'contacts_ui.dart';
 import 'convert_ledger_page.dart';
 import 'entry_composer_page.dart';
+import 'statement_export.dart';
 
 /// Tek bir kişiyle olan defter: bakiye, hızlı eylemler, kayıtlar.
 class LedgerPage extends ConsumerWidget {
@@ -144,6 +145,10 @@ class LedgerPage extends ConsumerWidget {
                       _toggleMute(context, ref, ledger, muted);
                     case 'convert':
                       _convert(context, ledger);
+                    case 'pdf':
+                      exportStatement(context, ref, ledger, ExportFormat.pdf);
+                    case 'csv':
+                      exportStatement(context, ref, ledger, ExportFormat.csv);
                     case 'person' when ledger.isPrivate:
                       deletePrivateLedger(
                         context,
@@ -156,6 +161,11 @@ class LedgerPage extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'pdf',
+                    child: Text('Ekstre (PDF)'),
+                  ),
+                  const PopupMenuItem(value: 'csv', child: Text('Tablo (CSV)')),
                   if (ledger.isPrivate && !ledger.isClosed)
                     const PopupMenuItem(
                       value: 'convert',
