@@ -17,6 +17,7 @@ Onaylanmış kayıt değiştirilemez; düzeltme ters kayıtla yapılır ve geçm
 - **Kişiler listesi:** favoriler, listeden kaldırma, tablo görünümü, süzgeçler ve toplamlar.
 - **Hareketler:** yaklaşan vadeler ve tüm defterlerdeki son kayıtlar.
 - **Birimler:** TL, dolar, euro, gram altın, çeyrek altın. Her birim ayrı bakiye olarak tutulur.
+- **Hesap silme:** uygulama içinden. Ortak geçmiş karşı tarafta "Silinmiş kullanıcı" olarak kalır, 10 yıl sonra silinir.
 
 ## Mimari
 
@@ -36,7 +37,11 @@ lib/
   features/profile/    profil
   screens/auth/        giriş, kayıt, e-posta doğrulama
   services/            kimlik, profil, push, derin link
-functions/src/ledger/  komutlar, vade hesabı, hatırlatmalar, kişi/kod işlemleri
+functions/src/ledger/  komutlar, vade hesabı, hatırlatmalar, kişi/kod işlemleri,
+                       hesap silme, günlük bakım (saklama süreleri)
+functions/scripts/     yönetici betikleri (e-postayla gelen hesap silme talebi)
+web/                   davet sayfası (/u), yasal sayfalar (/gizlilik, /kosullar, /hesap-sil)
+docs/magaza/           mağaza veri beyanları ve yükleme öncesi kontrol listesi
 firestore.rules        güvenlik kuralları (testleri: firestore-tests/)
 contracts/             Dart ve TypeScript'in ortak birim tanımları ve hash test vektörleri
 ```
@@ -55,7 +60,7 @@ Sunucu ve kural testleri Firebase emulator'ünde çalışır (Java 11+ gerekir):
 cd functions && npm ci && npm run lint && npm run build
 cd ../firestore-tests && npm ci
 npm run emulator:test     # güvenlik kuralları
-npm run functions:test    # defter komutları, hatırlatmalar, kişi ekleme
+npm run functions:test    # defter komutları, hatırlatmalar, kişi ekleme, hesap silme, bakım
 ```
 
 Her gönderimde GitHub Actions bu adımların hepsini çalıştırır.
@@ -68,5 +73,6 @@ Her gönderimde GitHub Actions bu adımların hepsini çalıştırır.
   npx firebase deploy --only firestore,functions,hosting --project <proje>
   ```
   Hosting için önce `flutter build web` çalıştırılmalıdır.
+- **Yasal metinler:** `web/gizlilik`, `web/kosullar` ve `web/hesap-sil` şu an taslaktır. Hukukçu onayı ve doldurulacak alanlar tamamlanmadan hosting yayınlanmaz. Metin kullanıcıdan yeniden onay isteyecek şekilde değişirse `AppConstants.termsVersion` güncellenir. Mağaza formları için: `docs/magaza/veri-beyanlari.md`.
 
 Pacta yalnızca kayıt aracıdır: borç vermez, tahsilat yapmaz, para tutmaz.
