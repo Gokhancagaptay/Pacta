@@ -1,4 +1,4 @@
-import {Timestamp} from "firebase-admin/firestore";
+import {QueryDocumentSnapshot, Timestamp} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import {admin, db, REGION} from "../common/firebase";
@@ -29,14 +29,41 @@ function yearsBefore(now: Date, years: number): Date {
   return cutoff;
 }
 
+/** Bir aşamanın sonucu: silinen ve silinemeyen kayıt sayısı. */
+interface PurgeResult {
+  removed: number;
+  failed: number;
+}
+
+/**
+ * Bir kaydı silmeyi dener; hata bütün bakımı durdurmaz (ertesi gün tekrar
+ * denenir).
+ * @param {string} what Günlükte görünecek kayıt.
+ * @param {function} op Silme.
+ * @param {PurgeResult} result Sayaç.
+ */
+async function attempt(
+  what: string,
+  op: () => Promise<unknown>,
+  result: PurgeResult
+): Promise<void> {
+  try {
+    await op();
+    result.removed++;
+  } catch (error) {
+    result.failed++;
+    logger.error("[maintenance] Silinemedi", {what, error: String(error)});
+  }
+}
+
 /**
  * Doğrulanmamış eski hesapları siler.
  * @param {Date} now An.
- * @return {Promise<number>} Silinen hesap sayısı.
+ * @return {Promise<PurgeResult>} Sonuç.
  */
-async function purgeUnverified(now: Date): Promise<number> {
+async function purgeUnverified(now: Date): Promise<PurgeResult> {
   const cutoff = now.getTime() - UNVERIFIED_DAYS * DAY_MS;
-  let removed = 0;
+  const result = {removed: 0, failed: 0};
   let pageToken: string | undefined;
   do {
     const page = await admin.auth().listUsers(1000, pageToken);
@@ -45,69 +72,107 @@ async function purgeUnverified(now: Date): Promise<number> {
         .some((p) => p.providerId === "password");
       const created = Date.parse(user.metadata.creationTime);
       if (!byPassword || user.emailVerified || created > cutoff) continue;
-      await removeAccount(user.uid, "unverified");
-      removed++;
+      await attempt(`user ${user.uid}`,
+        () => removeAccount(user.uid, "unverified"), result);
     }
     pageToken = page.pageToken;
   } while (pageToken);
-  return removed;
+  return result;
 }
 
 /**
- * Saklama süresi dolan kapalı ortak defterleri siler.
+ * Saklama süresi dolan kapalı ortak defterleri siler. Sorgu imleçle
+ * ilerler: silinemeyen defter aynı sayfayı tekrar getirip döngüye sokmaz.
  * @param {Date} now An.
- * @return {Promise<number>} Silinen defter sayısı.
+ * @return {Promise<PurgeResult>} Sonuç.
  */
-async function purgeClosedLedgers(now: Date): Promise<number> {
-  const cutoff = yearsBefore(now, CLOSED_LEDGER_YEARS);
-  let removed = 0;
+async function purgeClosedLedgers(now: Date): Promise<PurgeResult> {
+  const cutoff = Timestamp.fromDate(yearsBefore(now, CLOSED_LEDGER_YEARS));
+  const result = {removed: 0, failed: 0};
+  let last: QueryDocumentSnapshot | undefined;
   for (;;) {
-    const snap = await db.collection("ledgers")
+    let query = db.collection("ledgers")
       .where("status", "==", "closed")
-      .where("closedAt", "<", Timestamp.fromDate(cutoff))
-      .limit(100)
-      .get();
+      .where("closedAt", "<", cutoff)
+      .orderBy("closedAt")
+      .limit(100);
+    if (last) query = query.startAfter(last);
+    const snap = await query.get();
     for (const doc of snap.docs) {
-      await db.recursiveDelete(doc.ref);
-      removed++;
+      await attempt(`ledger ${doc.id}`, () => db.recursiveDelete(doc.ref),
+        result);
     }
-    if (snap.size < 100) return removed;
+    if (snap.size < 100) return result;
+    last = snap.docs[snap.docs.length - 1];
   }
 }
 
 /**
  * Saklama süresi dolan silme işaretlerini siler.
  * @param {Date} now An.
- * @return {Promise<number>} Silinen işaret sayısı.
+ * @return {Promise<PurgeResult>} Sonuç.
  */
-async function purgeTombstones(now: Date): Promise<number> {
-  const cutoff = yearsBefore(now, CLOSED_LEDGER_YEARS);
-  let removed = 0;
+async function purgeTombstones(now: Date): Promise<PurgeResult> {
+  const cutoff = Timestamp.fromDate(yearsBefore(now, CLOSED_LEDGER_YEARS));
+  const result = {removed: 0, failed: 0};
+  let last: QueryDocumentSnapshot | undefined;
   for (;;) {
-    const snap = await db.collection("deletedAccounts")
-      .where("deletedAt", "<", Timestamp.fromDate(cutoff))
-      .limit(400)
-      .get();
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    if (snap.size > 0) await batch.commit();
-    removed += snap.size;
-    if (snap.size < 400) return removed;
+    let query = db.collection("deletedAccounts")
+      .where("deletedAt", "<", cutoff)
+      .orderBy("deletedAt")
+      .limit(400);
+    if (last) query = query.startAfter(last);
+    const snap = await query.get();
+    if (snap.size > 0) {
+      const batch = db.batch();
+      snap.docs.forEach((doc) => batch.delete(doc.ref));
+      try {
+        await batch.commit();
+        result.removed += snap.size;
+      } catch (error) {
+        result.failed += snap.size;
+        logger.error("[maintenance] Silme işaretleri silinemedi",
+          {error: String(error)});
+      }
+    }
+    if (snap.size < 400) return result;
+    last = snap.docs[snap.docs.length - 1];
   }
 }
 
 /**
- * Bakımın tamamı (testlerde saat verilebilir).
+ * Bakımın tamamı (testlerde saat verilebilir). Aşamalar birbirinden
+ * bağımsızdır: biri hata verse de diğerleri çalışır.
  * @param {Date} now An.
- * @return {Promise<object>} Özet.
+ * @return {Promise<object>} Silinen sayıları ve silinemeyenler.
  */
-export async function runMaintenance(
-  now: Date
-): Promise<{unverified: number; closedLedgers: number; tombstones: number}> {
-  const unverified = await purgeUnverified(now);
-  const closedLedgers = await purgeClosedLedgers(now);
-  const tombstones = await purgeTombstones(now);
-  return {unverified, closedLedgers, tombstones};
+export async function runMaintenance(now: Date): Promise<{
+  unverified: number;
+  closedLedgers: number;
+  tombstones: number;
+  failed: number;
+}> {
+  const stage = async (
+    name: string,
+    run: (now: Date) => Promise<PurgeResult>
+  ): Promise<PurgeResult> => {
+    try {
+      return await run(now);
+    } catch (error) {
+      logger.error("[maintenance] Aşama yarıda kaldı",
+        {stage: name, error: String(error)});
+      return {removed: 0, failed: 1};
+    }
+  };
+  const unverified = await stage("unverified", purgeUnverified);
+  const closed = await stage("closedLedgers", purgeClosedLedgers);
+  const tombstones = await stage("tombstones", purgeTombstones);
+  return {
+    unverified: unverified.removed,
+    closedLedgers: closed.removed,
+    tombstones: tombstones.removed,
+    failed: unverified.failed + closed.failed + tombstones.failed,
+  };
 }
 
 export const dailyMaintenance = onSchedule(

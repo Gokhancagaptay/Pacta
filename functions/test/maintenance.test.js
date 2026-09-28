@@ -30,7 +30,7 @@ describe("runMaintenance", () => {
     await db.collection("users").doc("eski").set({adSoyad: "Eski"});
 
     assert.deepEqual(await runMaintenance(later(DAY)),
-      {unverified: 0, closedLedgers: 0, tombstones: 0});
+      {unverified: 0, closedLedgers: 0, tombstones: 0, failed: 0});
     await auth.getUser("eski");
 
     const res = await runMaintenance(later(31 * DAY));

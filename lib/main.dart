@@ -62,7 +62,17 @@ Future<void> main() async {
 
   // Uygulama hemen açılır; bildirim ve link servisleri (izin sorusu, ağ)
   // açılışı bekletmez. İnternet yokken de açılış takılmaz.
-  runApp(const ProviderScope(child: MyApp()));
+  // Kilit ayarı önceden okunur: kilit açıksa uygulama ilk karesinden
+  // itibaren kilitli açılır (içerik bir an bile görünmez).
+  final lockEnabled = await AppLockController.readEnabled();
+  runApp(
+    ProviderScope(
+      overrides: [
+        appLockInitiallyEnabledProvider.overrideWithValue(lockEnabled),
+      ],
+      child: const MyApp(),
+    ),
+  );
 
   if (Firebase.apps.isNotEmpty) {
     unawaited(

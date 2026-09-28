@@ -72,7 +72,16 @@ class AppLockState {
 /// [AppLockController.grace] süresinden uzun kaldıktan sonra cihaz
 /// doğrulaması ister. Ayar yalnızca bu cihazda tutulur.
 class AppLockController extends StateNotifier<AppLockState> {
-  AppLockController(this._auth, this._clock) : super(const AppLockState());
+  /// [initiallyEnabled] verilirse ayar önceden okunmuştur (main): uygulama
+  /// ilk karesinden itibaren kilitli açılır, içerik bir an bile görünmez.
+  AppLockController(this._auth, this._clock, {bool? initiallyEnabled})
+    : _loaded = initiallyEnabled != null,
+      super(
+        AppLockState(
+          enabled: initiallyEnabled ?? false,
+          locked: initiallyEnabled ?? false,
+        ),
+      );
 
   static const prefsKey = 'appLock.enabled';
 
@@ -83,9 +92,19 @@ class AppLockController extends StateNotifier<AppLockState> {
   final DateTime Function() _clock;
   DateTime? _backgroundSince;
   bool _authenticating = false;
-  bool _loaded = false;
+  bool _loaded;
 
-  /// Açılışta ayarı okur; kilit açıksa uygulama kilitli başlar.
+  /// Kayıtlı ayar (main, runApp'tan önce okur).
+  static Future<bool> readEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(prefsKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ayar önceden okunmadıysa okur; kilit açıksa uygulama kilitlenir.
   Future<void> load() async {
     if (_loaded) return;
     _loaded = true;
@@ -133,7 +152,10 @@ class AppLockController extends StateNotifier<AppLockState> {
   }
 
   /// Oturum kapanınca kilit ekranı kalkar (giriş ekranında kilit yok).
-  void release() => state = AppLockState(enabled: state.enabled);
+  void release() {
+    _backgroundSince = null;
+    state = AppLockState(enabled: state.enabled);
+  }
 
   /// Kilidi açar/kapatır; her ikisi de cihaz doğrulaması ister (telefonu
   /// eline alan biri kilidi kapatamasın). Sonuç kullanıcıya gösterilecek
@@ -160,10 +182,14 @@ class AppLockController extends StateNotifier<AppLockState> {
   }
 }
 
+/// main'de runApp'tan önce okunan ayar (null: okunmadı, gate okur).
+final appLockInitiallyEnabledProvider = Provider<bool?>((ref) => null);
+
 final appLockProvider = StateNotifierProvider<AppLockController, AppLockState>(
   (ref) => AppLockController(
     ref.watch(deviceAuthProvider),
     ref.watch(appLockClockProvider),
+    initiallyEnabled: ref.watch(appLockInitiallyEnabledProvider),
   ),
 );
 

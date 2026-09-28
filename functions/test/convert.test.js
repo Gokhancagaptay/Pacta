@@ -174,6 +174,25 @@ describe("convertPrivateLedger", () => {
       assert.equal((await ledgerDoc(privateId)).get("status"), "active");
     });
 
+  it("aynı anda iki kişiye taşınırsa ikisi de gerçek hedefi döner",
+    async () => {
+      await require("firebase-admin").auth().createUser(
+        {uid: "veli", email: "veli@example.com", emailVerified: true});
+      await db.collection("users").doc("veli").set({adSoyad: "Veli"});
+      const privateId = await privateLedger();
+      await lend(privateId, "ali", 1000);
+      const [x, y] = await Promise.all([
+        call(fns.convertPrivateLedger, "ali",
+          {ledgerId: privateId, counterpartyUid: "ayse"}),
+        call(fns.convertPrivateLedger, "ali",
+          {ledgerId: privateId, counterpartyUid: "veli"}),
+      ]);
+      const target = (await ledgerDoc(privateId)).get("convertedTo");
+      assert.equal(x.ledgerId, target);
+      assert.equal(y.ledgerId, target);
+      assert.equal(x.transferred + y.transferred, 1);
+    });
+
   it("boş özel defter: kişi eklenir, defter arşivlenir", async () => {
     const privateId = await privateLedger();
     const res = await call(fns.convertPrivateLedger, "ali",

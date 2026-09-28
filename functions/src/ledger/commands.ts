@@ -1159,8 +1159,10 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
 
   const result = await db.runTransaction(async (tx) => {
     const priv = await tx.get(privateRef);
-    if (priv.get("convertedTo")) {
-      return {transferred: 0, pending: 0};
+    // Aynı defter aynı anda başka birine taşındıysa gerçek hedef döner.
+    const already = priv.get("convertedTo") as string | undefined;
+    if (already) {
+      return {ledgerId: already, transferred: 0, pending: 0};
     }
     if (priv.get("status") === "closed") {
       fail("failed-precondition", "Defter kapalı.");
@@ -1227,14 +1229,14 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
         entryId: null,
       });
     }
-    return {transferred: lines.length, pending};
+    return {ledgerId: shared.ledgerId, transferred: lines.length, pending};
   });
 
   await deliver(notices);
+  const same = result.ledgerId === shared.ledgerId;
   return {
-    ledgerId: shared.ledgerId,
-    created: shared.created,
-    displayName: shared.displayName,
     ...result,
+    created: same && shared.created,
+    displayName: same ? shared.displayName : "",
   };
 });

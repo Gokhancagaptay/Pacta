@@ -82,17 +82,20 @@ void main() {
     });
   });
 
-  Widget app(FakeDeviceAuth auth, {bool signedIn = true}) => ProviderScope(
-    overrides: [
-      deviceAuthProvider.overrideWithValue(auth),
-      signedInProvider.overrideWithValue(signedIn),
-    ],
-    child: MaterialApp(
-      theme: PactaTheme.light,
-      builder: (context, child) => AppLockGate(child: child!),
-      home: const Scaffold(body: Text('Bakiyeler')),
-    ),
-  );
+  Widget app(FakeDeviceAuth auth, {bool signedIn = true, bool? preloaded}) =>
+      ProviderScope(
+        overrides: [
+          deviceAuthProvider.overrideWithValue(auth),
+          signedInProvider.overrideWithValue(signedIn),
+          if (preloaded != null)
+            appLockInitiallyEnabledProvider.overrideWithValue(preloaded),
+        ],
+        child: MaterialApp(
+          theme: PactaTheme.light,
+          builder: (context, child) => AppLockGate(child: child!),
+          home: const Scaffold(body: Text('Bakiyeler')),
+        ),
+      );
 
   testWidgets('kilitliyken içerik gizli; doğrulanınca açılır', (tester) async {
     SharedPreferences.setMockInitialValues({AppLockController.prefsKey: true});
@@ -120,5 +123,32 @@ void main() {
     expect(find.text('Pacta kilitli'), findsNothing);
     expect(find.text('Bakiyeler'), findsOneWidget);
     expect(auth.calls, 0);
+  });
+
+  testWidgets('ayar önceden okunduysa içerik ilk karede bile görünmez', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final auth = FakeDeviceAuth()..results.add(false);
+    await tester.pumpWidget(app(auth, preloaded: true));
+    // İlk kare: henüz hiçbir eşzamansız iş bitmedi.
+    expect(find.text('Pacta kilitli'), findsOneWidget);
+    expect(find.text('Bakiyeler'), findsNothing);
+    await tester.pumpAndSettle();
+  });
+
+  test('çıkışta arka plan sayacı sıfırlanır', () async {
+    var now = DateTime(2026, 9, 28, 10);
+    final lock = AppLockController(
+      FakeDeviceAuth(),
+      () => now,
+      initiallyEnabled: true,
+    );
+    await lock.unlock();
+    lock.onBackground();
+    lock.release();
+    now = now.add(const Duration(minutes: 5));
+    lock.onForeground();
+    expect(lock.state.locked, isFalse);
   });
 }
