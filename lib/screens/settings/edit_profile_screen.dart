@@ -1,14 +1,15 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pacta/app/theme.dart';
+import 'package:pacta/core/ui/widgets.dart';
 import 'package:pacta/models/user_model.dart';
-import 'package:pacta/services/auth_service.dart';
+import 'package:pacta/screens/auth/auth_widgets.dart';
 import 'package:pacta/services/firestore_service.dart';
-import 'package:pacta/screens/settings/change_password_screen.dart';
-import 'package:pacta/screens/settings/notification_settings_screen.dart';
 
+/// Adı düzenler. E-posta giriş kimliğidir, değiştirilemez (firestore.rules).
 class EditProfileScreen extends StatefulWidget {
-  final UserModel user;
   const EditProfileScreen({super.key, required this.user});
+
+  final UserModel user;
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -16,348 +17,105 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _nameController;
-  late TextEditingController _emailController;
-  final FirestoreService _firestoreService = FirestoreService();
-  final AuthService _authService = AuthService();
-  bool _isLoading = false;
-
-  bool get _isPasswordUser =>
-      FirebaseAuth.instance.currentUser?.providerData.any(
-        (p) => p.providerId == 'password',
-      ) ??
-      false;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.user.adSoyad);
-    _emailController = TextEditingController(text: widget.user.email);
-  }
+  late final _name = TextEditingController(text: widget.user.adSoyad ?? '');
+  bool _busy = false;
+  String? _error;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
+    _name.dispose();
     super.dispose();
   }
 
-  Future<void> _saveProfile() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      try {
-        // E-posta giriş kimliğidir; burada değiştirilemez (firestore.rules).
-        final updatedData = <String, dynamic>{};
-        if (_nameController.text != widget.user.adSoyad) {
-          updatedData['adSoyad'] = _nameController.text;
-        }
-
-        if (updatedData.isNotEmpty) {
-          await _firestoreService.updateUser(widget.user.uid, updatedData);
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profil başarıyla güncellendi!')),
-        );
-      } catch (e) {
-        debugPrint('Profil kaydedilemedi: $e');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profil kaydedilemedi. Tekrar deneyin.'),
-          ),
-        );
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    final name = _name.text.trim();
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    if (name == (widget.user.adSoyad ?? '').trim()) {
+      navigator.pop();
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await FirestoreService().updateUser(widget.user.uid, {'adSoyad': name});
+      if (!mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Adınız güncellendi.')),
+      );
+    } catch (e) {
+      debugPrint('Profil kaydedilemedi: $e');
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error =
+            'Kaydedilemedi. İnternet bağlantınızı kontrol edip tekrar '
+            'deneyin.';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF181A20) : const Color(0xFFF7F8FC);
-    final textMain = isDark ? Colors.white : const Color(0xFF1A202C);
-
+    final c = context.pacta;
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text(
-          'Profili Düzenle',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: textMain,
-            fontSize: size.width * 0.05,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: bgColor,
-        iconTheme: IconThemeData(color: textMain),
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: size.width * 0.04),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildProfileHeader(),
-              SizedBox(height: size.height * 0.03),
-              _buildSectionTitle('Profil Bilgileri'),
-              _buildProfileInfoCard(),
-              SizedBox(height: size.height * 0.03),
-              _buildSectionTitle('Güvenlik ve Diğer Ayarlar'),
-              _buildSettingsCard(),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: _buildSaveButton(),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    final size = MediaQuery.of(context).size;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: size.width * 0.02,
-        bottom: size.height * 0.01,
-      ),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
-          fontSize: size.width * 0.03,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader() {
-    final size = MediaQuery.of(context).size;
-    final textMain = Theme.of(context).brightness == Brightness.dark
-        ? Colors.white
-        : const Color(0xFF1A202C);
-    return Column(
-      children: [
-        SizedBox(height: size.height * 0.02),
-        // Fotoğraf yükleme yok; baş harf gösterilir.
-        Center(
-          child: CircleAvatar(
-            radius: size.width * 0.125,
-            backgroundColor: Colors.green.shade100,
-            child: Text(
-              widget.user.adSoyad?.isNotEmpty ?? false
-                  ? widget.user.adSoyad![0].toUpperCase()
-                  : '?',
-              style: TextStyle(
-                fontSize: size.width * 0.1,
-                fontWeight: FontWeight.bold,
-                color: Colors.green.shade700,
+      appBar: AppBar(title: const Text('Profili düzenle')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [
+            Center(
+              child: ValueListenableBuilder(
+                valueListenable: _name,
+                builder: (_, value, _) => PersonAvatar(
+                  name: value.text.trim().isEmpty ? '?' : value.text,
+                  size: 72,
+                ),
               ),
             ),
-          ),
-        ),
-        SizedBox(height: size.height * 0.02),
-        Text(
-          _nameController.text,
-          style: TextStyle(
-            fontSize: size.width * 0.055,
-            fontWeight: FontWeight.bold,
-            color: textMain,
-          ),
-        ),
-        SizedBox(height: size.height * 0.005),
-        Text(
-          _emailController.text,
-          style: TextStyle(
-            fontSize: size.width * 0.04,
-            color: Colors.grey.shade600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProfileInfoCard() {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-
-    return Card(
-      elevation: 0,
-      color: cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(size.width * 0.03),
-      ),
-      child: Column(
-        children: [
-          _buildTextField(
-            controller: _nameController,
-            icon: Icons.person_outline,
-            label: 'Ad Soyad',
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTextField(
-            controller: _emailController,
-            icon: Icons.mail_outline,
-            label: 'E-posta',
-            readOnly: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required IconData icon,
-    required String label,
-    bool readOnly = false,
-  }) {
-    final size = MediaQuery.of(context).size;
-    return ListTile(
-      contentPadding: EdgeInsets.symmetric(horizontal: size.width * 0.04),
-      leading: Icon(
-        icon,
-        color: Colors.green.shade600,
-        size: size.width * 0.06,
-      ),
-      title: TextFormField(
-        controller: controller,
-        readOnly: readOnly,
-        // Kurallar adı 100 karakterle sınırlar.
-        maxLength: readOnly ? null : 100,
-        decoration: InputDecoration(
-          labelText: label,
-          counterText: '',
-          border: InputBorder.none,
-          labelStyle: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: size.width * 0.04,
-          ),
-        ),
-        onChanged: (value) => setState(() {}),
-      ),
-    );
-  }
-
-  Widget _buildSettingsCard() {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-    return Card(
-      elevation: 0,
-      color: cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(size.width * 0.03),
-      ),
-      child: Column(
-        children: [
-          // Google ile açılmış hesabın şifresi yoktur.
-          if (_isPasswordUser) ...[
-            _buildSettingsTile(
-              icon: Icons.lock_outline,
-              title: 'Şifreyi Değiştir',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ChangePasswordScreen(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1, indent: 56),
-          ],
-          _buildSettingsTile(
-            icon: Icons.notifications_outlined,
-            title: 'Bildirim Ayarları',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationSettingsScreen(),
+            const SizedBox(height: 24),
+            Form(
+              key: _formKey,
+              child: TextFormField(
+                controller: _name,
+                enabled: !_busy,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.done,
+                maxLength: 80,
+                onFieldSubmitted: (_) => _save(),
+                validator: (v) =>
+                    (v ?? '').trim().isEmpty ? 'Adınızı girin.' : null,
+                decoration: const InputDecoration(
+                  labelText: 'Ad soyad',
+                  helperText: 'Kayıt tuttuğunuz kişiler bu adı görür.',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
-              );
-            },
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildSettingsTile(
-            icon: Icons.logout,
-            title: 'Çıkış Yap',
-            textColor: Colors.red,
-            onTap: () async {
-              final navigator = Navigator.of(context);
-              await _authService.signOut();
-              // Giriş ekranını AuthWrapper gösterir; en alttaki sayfaya dönülür.
-              navigator.popUntil((route) => route.isFirst);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsTile({
-    required IconData icon,
-    required String title,
-    Color? textColor,
-    required VoidCallback onTap,
-  }) {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final defaultColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(
-        icon,
-        color: textColor ?? defaultColor,
-        size: size.width * 0.06,
-      ),
-      title: Text(
-        title,
-        style: TextStyle(color: textColor, fontSize: size.width * 0.042),
-      ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: Colors.grey.withValues(alpha: 0.5),
-        size: size.width * 0.06,
-      ),
-    );
-  }
-
-  Widget _buildSaveButton() {
-    final size = MediaQuery.of(context).size;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        size.width * 0.04,
-        size.width * 0.04,
-        size.width * 0.04,
-        MediaQuery.of(context).padding.bottom + size.height * 0.02,
-      ),
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _saveProfile,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green.shade600,
-          foregroundColor: Colors.white,
-          minimumSize: Size(double.infinity, size.height * 0.065),
-          shape: const StadiumBorder(),
-          textStyle: TextStyle(
-            fontSize: size.width * 0.04,
-            fontWeight: FontWeight.bold,
-          ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(Icons.mail_outline_rounded, size: 18, color: c.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${widget.user.email} · giriş adresiniz, değiştirilemez',
+                    style: TextStyle(color: c.muted, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (_error != null) FormErrorBox(_error!),
+            BusyButton(label: 'Kaydet', busy: _busy, onPressed: _save),
+          ],
         ),
-        child: _isLoading
-            ? SizedBox(
-                height: size.width * 0.06,
-                width: size.width * 0.06,
-                child: const CircularProgressIndicator(color: Colors.white),
-              )
-            : const Text('Değişiklikleri Kaydet'),
       ),
     );
   }

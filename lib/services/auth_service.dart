@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pacta/constants/app_constants.dart';
-import 'package:pacta/constants/strings.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pacta/services/firestore_service.dart';
 
@@ -19,6 +18,9 @@ import 'package:pacta/services/firestore_service.dart';
 ///
 /// Tüm metotlar Türkçe error mesajları ve proper validation içerir.
 class AuthService {
+  /// Google hesap seçimi kapatıldı: hata olarak gösterilmez.
+  static const googleCancelled = 'Google hesabı seçilmedi.';
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreService _firestoreService = FirestoreService();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
@@ -35,7 +37,7 @@ class AuthService {
   /// Giriş yapılmadan kullanıcı listesi sorgulanamaz (firestore.rules); e-postanın
   /// kayıtlı olup olmadığını Firebase Auth kendisi değerlendirir.
   Future<String?> sendPasswordResetEmail(String email) async {
-    if (email.isEmpty) return 'Lütfen e-posta adresinizi girin.';
+    if (email.isEmpty) return 'E-posta adresinizi girin.';
     try {
       final normalized = email.trim().toLowerCase();
 
@@ -69,7 +71,6 @@ class AuthService {
     }
   }
 
-  // Kullanıcı oturum durumunu dinleyen stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   /// Kayıt: e-posta, şifre ve ad soyad. Telefon toplanmaz (kullanılan bir
@@ -79,7 +80,6 @@ class AuthService {
     String password,
     String adSoyad,
   ) async {
-    // Input validation
     if (email.isEmpty || password.isEmpty || adSoyad.isEmpty) {
       return 'Gerekli alanlar boş bırakılamaz.';
     }
@@ -104,7 +104,7 @@ class AuthService {
         );
       }
       await _sendVerificationWithSettings(user);
-      return null; // Success (doğrulama bekleniyor)
+      return null; // doğrulama bekleniyor
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
@@ -113,12 +113,11 @@ class AuthService {
     }
   }
 
-  /// Giriş yapma metodu
+  /// E-posta ve şifreyle giriş; hata varsa Türkçe mesaj döner.
   Future<String?> signInWithEmailAndPassword(
     String email,
     String password,
   ) async {
-    // Input validation
     if (email.isEmpty || password.isEmpty) {
       return 'E-posta ve şifre boş bırakılamaz.';
     }
@@ -131,7 +130,7 @@ class AuthService {
         email: email.trim(),
         password: password,
       );
-      return null; // Success
+      return null;
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
@@ -199,7 +198,7 @@ class AuthService {
     }
   }
 
-  /// Firebase Auth hatalarını Türkçe mesajlara çeviren yardımcı metod
+  /// Firebase Auth hatalarını kullanıcıya gösterilecek Türkçe mesaja çevirir.
   String _handleAuthError(FirebaseAuthException e) {
     switch (e.code) {
       // E-posta numaralandırma koruması açıkken Firebase "kullanıcı yok",
@@ -209,9 +208,9 @@ class AuthService {
       case 'INVALID_LOGIN_CREDENTIALS':
       case 'user-not-found':
       case 'wrong-password':
-        return 'E-posta ya da şifre hatalı. Bu hesabı Google ile açtıysanız '
-            '"${AppStrings.loginWithGoogle}" düğmesini kullanın. Şifrenizi '
-            'unuttuysanız "${AppStrings.forgotPassword}" bağlantısına dokunun.';
+        return 'E-posta ya da şifre hatalı. Hesabı Google ile açtıysanız '
+            '"Google ile devam et"i kullanın; şifrenizi unuttuysanız '
+            '"Şifremi unuttum"a dokunun.';
       case 'account-exists-with-different-credential':
         return 'Bu e-posta adresi başka bir giriş yöntemiyle kayıtlı. E-posta '
             've şifrenizle giriş yapın.';
@@ -220,28 +219,31 @@ class AuthService {
       case 'email-already-in-use':
         return 'Bu e-posta adresi zaten kullanımda.';
       case 'weak-password':
-        return 'Şifre çok zayıf. Lütfen daha güçlü bir şifre seçin.';
+        return 'Bu şifre çok zayıf. Daha uzun ya da tahmin edilmesi zor bir '
+            'şifre seçin.';
       case 'invalid-email':
         return 'Geçersiz e-posta adresi.';
       case 'too-many-requests':
-        return 'Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.';
+        return 'Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin.';
       case 'network-request-failed':
         return 'İnternet bağlantınızı kontrol edin.';
       case 'invalid-continue-uri':
       case 'unauthorized-continue-uri':
-        return 'Doğrulama bağlantısı alanı bu proje için yetkili değil. Firebase Console > Authentication > Settings > Authorized domains bölümünden izin verin.';
+        // Yapılandırma hatası: kullanıcıya konsol talimatı gösterilmez.
+        debugPrint('E-posta bağlantısı alanı yetkili değil: ${e.code}');
+        return 'E-posta şu an gönderilemiyor. Biraz sonra tekrar deneyin.';
       default:
-        return e.message ?? 'Bilinmeyen bir hata oluştu.';
+        // Firebase'in İngilizce mesajı kullanıcıya gösterilmez.
+        debugPrint('Kimlik hatası: ${e.code} ${e.message}');
+        return 'İşlem tamamlanamadı. Tekrar deneyin.';
     }
   }
 
-  /// Google ile giriş metodu
+  /// Google ile giriş; hata varsa Türkçe mesaj döner.
   Future<String?> googleSignIn() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        return 'Google hesabı seçilmedi.';
-      }
+      if (googleUser == null) return googleCancelled;
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
@@ -252,7 +254,7 @@ class AuthService {
 
       // Profil AuthWrapper'da oluşturulur/tamamlanır.
       await _auth.signInWithCredential(credential);
-      return null; // Success
+      return null;
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
     } catch (e) {
@@ -286,18 +288,17 @@ class AuthService {
     await _auth.signOut();
   }
 
-  /// Şifre değiştirme metodu
+  /// Mevcut şifreyle yeniden doğrulayıp şifreyi değiştirir.
   Future<String?> changePassword(
     String currentPassword,
     String newPassword,
   ) async {
-    // Input validation
     if (currentPassword.isEmpty || newPassword.isEmpty) {
       return 'Mevcut şifre ve yeni şifre boş bırakılamaz.';
     }
 
-    if (newPassword.length < 6) {
-      return 'Yeni şifre en az 6 karakter olmalıdır.';
+    if (newPassword.length < 8) {
+      return 'Yeni şifre en az 8 karakter olmalı.';
     }
 
     try {
@@ -313,8 +314,16 @@ class AuthService {
 
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(newPassword);
-      return null; // Success
+      return null;
     } on FirebaseAuthException catch (e) {
+      // Burada tek olası "hatalı giriş" mevcut şifredir.
+      if (const {
+        'invalid-credential',
+        'INVALID_LOGIN_CREDENTIALS',
+        'wrong-password',
+      }.contains(e.code)) {
+        return 'Mevcut şifre yanlış.';
+      }
       return _handleAuthError(e);
     } catch (e) {
       debugPrint('Unexpected error during password change: $e');

@@ -116,7 +116,7 @@ class MyApp extends ConsumerWidget {
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                'Bir hata oluştu. Lütfen uygulamayı yeniden başlatın.',
+                'Bu ekran açılamadı. Uygulamayı kapatıp yeniden açın.',
                 textAlign: TextAlign.center,
               ),
             ),

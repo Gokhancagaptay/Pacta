@@ -1,9 +1,12 @@
-// lib/screens/auth/kayit_ekrani.dart
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pacta/app/theme.dart';
 import 'package:pacta/core/legal.dart';
+import 'package:pacta/screens/auth/auth_widgets.dart';
 import 'package:pacta/services/auth_service.dart';
 
+/// E-postayla kayıt. Başarılı kayıttan sonra en alttaki sayfaya dönülür;
+/// AuthWrapper e-posta doğrulama ekranını gösterir.
 class KayitEkrani extends StatefulWidget {
   const KayitEkrani({super.key});
 
@@ -12,276 +15,173 @@ class KayitEkrani extends StatefulWidget {
 }
 
 class _KayitEkraniState extends State<KayitEkrani> {
-  final AuthService _authService = AuthService();
-  final TextEditingController _adSoyadController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  late final _auth = AuthService();
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   bool _agreed = false;
-  bool _isPasswordObscured = true;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signUp() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_agreed) {
+      setState(
+        () => _error =
+            'Devam etmek için Kullanım Koşulları\'nı kabul '
+            'edin.',
+      );
+      return;
+    }
+    TextInput.finishAutofillContext();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await _auth.signUpWithEmailAndPassword(
+      _email.text.trim(),
+      _password.text,
+      _name.text.trim(),
+    );
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = error;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.of(context).size;
-    final textMain = isDark ? Colors.white : const Color(0xFF111827);
-    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-    final green = const Color(0xFF4ADE80);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(''),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: textMain,
-        iconTheme: IconThemeData(color: textMain, size: size.width * 0.07),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: size.width * 0.07),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Hesap Oluştur 👤',
-                    style: TextStyle(
-                      fontSize: size.width * 0.08,
-                      fontWeight: FontWeight.bold,
-                      color: textMain,
-                    ),
-                  ),
-                  SizedBox(height: size.height * 0.01),
-                  Text(
-                    'Kayıt olmak için bilgilerini doldur.',
-                    style: TextStyle(
-                      fontSize: size.width * 0.045,
-                      color: textSec,
-                    ),
-                  ),
-                  SizedBox(height: size.height * 0.04),
-                  _buildTextField(
-                    controller: _adSoyadController,
-                    labelText: 'Ad Soyad',
-                    icon: Icons.person_outline,
-                  ),
-                  SizedBox(height: size.height * 0.02),
-                  _buildTextField(
-                    controller: _emailController,
-                    labelText: 'E-posta',
-                    icon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  SizedBox(height: size.height * 0.02),
-                  _buildTextField(
-                    controller: _passwordController,
-                    labelText: 'Şifre',
-                    icon: Icons.lock_outline,
-                    obscureText: _isPasswordObscured,
-                    suffixIcon: _isPasswordObscured
-                        ? Icons.visibility_off
-                        : Icons.visibility,
-                    onSuffixTap: () {
-                      setState(() {
-                        _isPasswordObscured = !_isPasswordObscured;
-                      });
-                    },
-                  ),
-                  SizedBox(height: size.height * 0.02),
-                  _buildAgreementCheckbox(),
-                  SizedBox(height: size.height * 0.025),
-                  SizedBox(
-                    width: double.infinity,
-                    height: size.height * 0.065,
-                    child: ElevatedButton(
-                      onPressed: _agreed ? _signUp : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            size.width * 0.04,
-                          ),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        'Kayıt Ol',
-                        style: TextStyle(
-                          fontSize: size.width * 0.05,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: size.height * 0.025),
-                  _buildLoginRedirect(),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String labelText,
-    required IconData icon,
-    bool obscureText = false,
-    IconData? suffixIcon,
-    TextInputType keyboardType = TextInputType.text,
-    VoidCallback? onSuffixTap,
-  }) {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-    final cardColor = isDark ? const Color(0xFF23262F) : Colors.white;
-    final green = const Color(0xFF4ADE80);
-    final textMain = isDark ? Colors.white : const Color(0xFF111827);
-
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: labelText,
-        labelStyle: TextStyle(color: textSec, fontSize: size.width * 0.042),
-        prefixIcon: Icon(icon, color: textSec, size: size.width * 0.06),
-        suffixIcon: suffixIcon != null
-            ? IconButton(
-                onPressed: onSuffixTap,
-                icon: Icon(suffixIcon, color: textSec, size: size.width * 0.06),
-              )
-            : null,
-        filled: true,
-        fillColor: cardColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(size.width * 0.04),
-          borderSide: BorderSide(
-            color: isDark ? Colors.white24 : Colors.grey.shade300,
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(size.width * 0.04),
-          borderSide: BorderSide(
-            color: isDark ? Colors.white24 : Colors.grey.shade300,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(size.width * 0.04),
-          borderSide: BorderSide(color: green, width: 2),
-        ),
-      ),
-      obscureText: obscureText,
-      keyboardType: keyboardType,
-      style: TextStyle(fontSize: size.width * 0.045, color: textMain),
-    );
-  }
-
-  Widget _buildAgreementCheckbox() {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-    final green = const Color(0xFF4ADE80);
-
-    Widget pageLink(LegalPage page) => TextButton(
-      style: TextButton.styleFrom(
-        minimumSize: const Size(0, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        foregroundColor: green,
-      ),
-      onPressed: () => openLegalPage(context, page),
-      child: Text(page.title, style: TextStyle(fontSize: size.width * 0.036)),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final c = context.pacta;
+    return AuthScaffold(
+      appBar: AppBar(),
       children: [
-        Row(
-          children: [
-            Checkbox(
-              value: _agreed,
-              onChanged: (val) {
-                setState(() {
-                  _agreed = val ?? false;
-                });
-              },
-              activeColor: green,
-              checkColor: Colors.white,
-              side: BorderSide(
-                color: isDark ? Colors.white24 : Colors.grey.shade300,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(size.width * 0.015),
-              ),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        const AuthHeader(
+          showMark: false,
+          title: 'Hesap oluşturun',
+          subtitle:
+              'Kayıttan sonra e-postanıza bir doğrulama bağlantısı '
+              'gelecek.',
+        ),
+        Form(
+          key: _formKey,
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: _name,
+                  enabled: !_busy,
+                  textCapitalization: TextCapitalization.words,
+                  autofillHints: const [AutofillHints.name],
+                  textInputAction: TextInputAction.next,
+                  maxLength: 80,
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Adınızı girin.' : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Ad soyad',
+                    helperText: 'Kayıt tuttuğunuz kişiler bu adı görür.',
+                    counterText: '',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _email,
+                  enabled: !_busy,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.email],
+                  textInputAction: TextInputAction.next,
+                  validator: validateEmail,
+                  decoration: const InputDecoration(
+                    labelText: 'E-posta',
+                    prefixIcon: Icon(Icons.mail_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                PasswordField(
+                  controller: _password,
+                  enabled: !_busy,
+                  label: 'Şifre',
+                  helperText: 'En az $minPasswordLength karakter.',
+                  autofillHints: const [AutofillHints.newPassword],
+                  validator: validateNewPassword,
+                  onSubmitted: (_) => _signUp(),
+                ),
+              ],
             ),
-            SizedBox(width: size.width * 0.015),
-            Expanded(
-              child: Text(
-                "Kullanım Koşulları'nı okudum ve kabul ediyorum. 18 "
-                'yaşından büyüğüm.',
-                style: TextStyle(fontSize: size.width * 0.038, color: textSec),
+          ),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _busy ? null : () => setState(() => _agreed = !_agreed),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _agreed,
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _agreed = v ?? false),
+                ),
+                const SizedBox(width: 4),
+                const Expanded(
+                  child: Text(
+                    "Kullanım Koşulları'nı okudum ve kabul ediyorum. 18 "
+                    'yaşından büyüğüm.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Aydınlatma metni onaya bağlanmaz; okunmak üzere sunulur.
+        Wrap(
+          spacing: 4,
+          children: [
+            for (final page in [LegalPage.terms, LegalPage.privacy])
+              TextButton(
+                style: TextButton.styleFrom(
+                  textStyle: Theme.of(context).textTheme.bodyMedium,
+                ),
+                onPressed: () => openLegalPage(context, page),
+                child: Text(page.title),
               ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_error != null) FormErrorBox(_error!),
+        BusyButton(label: 'Hesap oluştur', busy: _busy, onPressed: _signUp),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('Zaten hesabınız var mı?', style: TextStyle(color: c.muted)),
+            TextButton(
+              // Kayıt ekranı giriş ekranının üstünde açılır.
+              onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
+              child: const Text('Giriş yapın'),
             ),
           ],
         ),
-        // Aydınlatma metni onaya bağlanmaz; yalnızca okunmak üzere sunulur.
-        Wrap(
-          children: [pageLink(LegalPage.terms), pageLink(LegalPage.privacy)],
-        ),
       ],
     );
-  }
-
-  Widget _buildLoginRedirect() {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSec = isDark ? Colors.white70 : const Color(0xFF6B7280);
-    final green = const Color(0xFF4ADE80);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          'Zaten bir hesabın var mı?',
-          style: TextStyle(fontSize: size.width * 0.042, color: textSec),
-        ),
-        TextButton(
-          // Kayıt ekranı giriş ekranının üstünde açılır; geri dönmek yeterli.
-          onPressed: () => Navigator.of(context).maybePop(),
-          child: Text(
-            'Giriş Yap',
-            style: TextStyle(
-              fontSize: size.width * 0.045,
-              color: green,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _signUp() async {
-    final String? errorMessage = await _authService.signUpWithEmailAndPassword(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
-      _adSoyadController.text.trim(),
-    );
-    if (!mounted) return;
-    if (errorMessage == null) {
-      // Oturum açıldı ama e-posta doğrulanmadı: en alttaki sayfaya dönülür,
-      // AuthWrapper doğrulama ekranını gösterir (bağlantı orada yeniden
-      // gönderilebilir, doğrulanınca otomatik devam edilir).
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Kayıt başarısız: $errorMessage'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 }

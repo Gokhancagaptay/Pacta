@@ -51,7 +51,9 @@ class UserModel {
   final String? etiket;
   final List<String>? aramaAnahtarlari;
   final List<String>? favoriteContacts;
-  final NotificationSettings notificationSettings; // YENİ: Bildirim ayarları
+
+  /// Push bildirimi tercihleri.
+  final NotificationSettings notificationSettings;
 
   /// Hatırlatmaları sessize alınan defterler (push gelmez, bildirim listesi kalır).
   final Set<String> reminderMutes;
@@ -94,7 +96,7 @@ class UserModel {
       'etiket': etiket,
       'aramaAnahtarlari': aramaAnahtarlari ?? [],
       'favoriteContacts': favoriteContacts ?? [],
-      'notificationSettings': notificationSettings.toMap(), // YENİ
+      'notificationSettings': notificationSettings.toMap(),
     };
   }
 
@@ -111,7 +113,7 @@ class UserModel {
       favoriteContacts: List<String>.from(map['favoriteContacts'] ?? []),
       notificationSettings: NotificationSettings.fromMap(
         map['notificationSettings'],
-      ), // YENİ
+      ),
       reminderMutes: {
         for (final e in ((map['reminderMutes'] as Map?) ?? const {}).entries)
           if (e.value == true) e.key as String,
