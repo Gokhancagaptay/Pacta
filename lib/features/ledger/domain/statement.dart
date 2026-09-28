@@ -131,7 +131,7 @@ class Statement {
           e.proposedBy == me ? mine.displayName : other.displayName,
         ],
     ];
-    return '\uFEFF${rows.map((r) => r.map(_csvCell).join(';')).join('\r\n')}'
+    return '\uFEFF${rows.map((r) => r.map(csvCell).join(';')).join('\r\n')}'
         '\r\n';
   }
 
@@ -156,7 +156,8 @@ String plainAmount(Money m) {
   return negative ? '-$number' : number;
 }
 
-String _csvCell(String value) {
+/// CSV hücresi: ayraç/tırnak kaçışı ve formül enjeksiyonuna karşı koruma.
+String csvCell(String value) {
   // Formül olarak çalıştırılmasın (=, +, -, @ ile başlayan metin); sayılar
   // (tutar sütunu) olduğu gibi kalır.
   var v = value;

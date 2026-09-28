@@ -8,6 +8,7 @@ import '../domain/summary.dart';
 import 'add_person_sheet.dart';
 import 'common.dart';
 import 'contacts_ui.dart';
+import 'statement_export.dart';
 
 export 'add_person_sheet.dart' show showAddPersonSheet;
 
@@ -16,26 +17,16 @@ export 'add_person_sheet.dart' show showAddPersonSheet;
 class PeoplePage extends ConsumerWidget {
   const PeoplePage({super.key});
 
-  /// Bu sayıdan fazla kişi varsa arama kutusu görünür.
-  static const searchThreshold = 6;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(personRowsProvider);
     final table = ref.watch(peopleTableViewProvider);
     final sort = ref.watch(peopleSortProvider);
+    final hasPeople = rows.valueOrNull?.isNotEmpty ?? false;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Kişiler'),
         actions: [
-          IconButton(
-            tooltip: table ? 'Liste görünümü' : 'Tablo görünümü',
-            icon: Icon(
-              table ? Icons.view_agenda_rounded : Icons.table_rows_rounded,
-            ),
-            onPressed: () =>
-                ref.read(peopleTableViewProvider.notifier).state = !table,
-          ),
           PopupMenuButton<PeopleSort>(
             tooltip: 'Sırala',
             icon: const Icon(Icons.sort_rounded),
@@ -55,6 +46,21 @@ class PeoplePage extends ConsumerWidget {
             icon: const Icon(Icons.person_add_alt_1_rounded),
             onPressed: () => _add(context),
           ),
+          if (hasPeople)
+            PopupMenuButton<ExportFormat>(
+              tooltip: 'Dışa aktar',
+              onSelected: (f) => exportPeopleSummary(context, ref, f),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: ExportFormat.pdf,
+                  child: Text('Özeti dışa aktar (PDF)'),
+                ),
+                PopupMenuItem(
+                  value: ExportFormat.csv,
+                  child: Text('Özeti dışa aktar (CSV)'),
+                ),
+              ],
+            ),
         ],
       ),
       body: rows.when(
@@ -102,15 +108,10 @@ class _PeopleBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.pacta;
     final filter = ref.watch(peopleFilterProvider);
-    final searchable = all.length >= PeoplePage.searchThreshold;
-    final rows = selectRows(
-      all,
-      filter: filter,
-      sort: ref.watch(peopleSortProvider),
-      // Arama kutusu görünmüyorsa eski sorgu listeyi süzmez.
-      query: searchable ? ref.watch(peopleQueryProvider) : '',
-    );
-    final totals = SummaryTotals.of(rows);
+    final searchable = all.length >= peopleSearchThreshold;
+    final selected = ref.watch(selectedPersonRowsProvider).valueOrNull;
+    final rows = selected?.rows ?? const <PersonRow>[];
+    final totals = selected?.totals ?? SummaryTotals.of(rows);
 
     return ListView(
       padding: const EdgeInsets.only(top: 4, bottom: 24),
@@ -139,7 +140,27 @@ class _PeopleBody extends ConsumerWidget {
           ),
         ),
         _TotalsCard(totals: totals),
-        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: SegmentedButton<bool>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.view_agenda_outlined),
+                label: Text('Liste'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.table_rows_outlined),
+                label: Text('Tablo'),
+              ),
+            ],
+            selected: {table},
+            onSelectionChanged: (s) =>
+                ref.read(peopleTableViewProvider.notifier).state = s.first,
+          ),
+        ),
         if (rows.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),

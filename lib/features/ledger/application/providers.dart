@@ -226,5 +226,29 @@ final peopleQueryProvider = StateProvider<String>((ref) {
   return '';
 });
 
+/// Bu sayıdan fazla kişi varsa Kişiler ekranında arama kutusu görünür.
+const peopleSearchThreshold = 6;
+
+/// Kişiler ekranında görünen satırlar (süzgeç, sıralama, arama uygulanmış)
+/// ve toplamları; ekran ve dışa aktarma aynı listeyi kullanır.
+final selectedPersonRowsProvider =
+    Provider.autoDispose<
+      AsyncValue<({List<PersonRow> rows, SummaryTotals totals})>
+    >((ref) {
+      final filter = ref.watch(peopleFilterProvider);
+      final sort = ref.watch(peopleSortProvider);
+      final query = ref.watch(peopleQueryProvider);
+      return ref.watch(personRowsProvider).whenData((all) {
+        final rows = selectRows(
+          all,
+          filter: filter,
+          sort: sort,
+          // Arama kutusu görünmüyorsa eski sorgu listeyi süzmez.
+          query: all.length >= peopleSearchThreshold ? query : '',
+        );
+        return (rows: rows, totals: SummaryTotals.of(rows));
+      });
+    });
+
 /// Kişiler ekranı tablo görünümünde mi.
 final peopleTableViewProvider = StateProvider<bool>((ref) => false);

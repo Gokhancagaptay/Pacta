@@ -6,7 +6,9 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../core/money/money.dart';
 import '../domain/entry_text.dart';
 import '../domain/models.dart';
+import '../domain/people_summary.dart';
 import '../domain/statement.dart';
+import '../domain/summary.dart';
 
 const _green = PdfColor.fromInt(0xFF16A34A);
 const _red = PdfColor.fromInt(0xFFDC2626);
@@ -300,6 +302,184 @@ Future<Uint8List> buildStatementPdf(
               style: small,
             ),
           ),
+      ],
+    ),
+  );
+  return doc.save();
+}
+
+/// Kişiler özeti (görünen satırlar): kişi, TL bakiye, diğer birimler,
+/// bekleyen, sonraki vade; en altta toplamlar.
+Future<Uint8List> buildPeopleSummaryPdf(
+  PeopleSummary summary, {
+  required DateTime now,
+  required String ownerName,
+}) async {
+  final regular = pw.Font.ttf(
+    await rootBundle.load('assets/google_fonts/Poppins-Regular.ttf'),
+  );
+  final bold = pw.Font.ttf(
+    await rootBundle.load('assets/google_fonts/Poppins-SemiBold.ttf'),
+  );
+  final doc = pw.Document(
+    title: 'Pacta kişiler özeti',
+    author: 'Pacta',
+    creator: 'Pacta',
+    theme: pw.ThemeData.withFont(base: regular, bold: bold),
+  );
+  final created = DateFormat('d MMMM y HH:mm', 'tr_TR').format(now);
+  final date = DateFormat('dd.MM.yyyy');
+  const small = pw.TextStyle(fontSize: 8, color: _muted);
+  const body = pw.TextStyle(fontSize: 9);
+
+  pw.Widget amount(Money m, {double size = 9}) => pw.Text(
+    m.format(signed: true),
+    textAlign: pw.TextAlign.right,
+    style: pw.TextStyle(
+      fontSize: size,
+      color: m.minor == 0 ? null : (m.minor > 0 ? _green : _red),
+    ),
+  );
+
+  pw.Widget pad(pw.Widget child) =>
+      pw.Padding(padding: const pw.EdgeInsets.all(5), child: child);
+
+  pw.Widget head(String text, {bool right = false}) => pad(
+    pw.Text(
+      text,
+      textAlign: right ? pw.TextAlign.right : null,
+      style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+    ),
+  );
+
+  final t = summary.totals;
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(36, 36, 36, 40),
+      footer: (context) => pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              'Tutarlar sizin açınızdan: + alacağınız, - borcunuz. Bakiyeye '
+              'yalnızca onaylı kayıtlar girer.',
+              style: small,
+            ),
+          ),
+          pw.Text(
+            'Sayfa ${context.pageNumber}/${context.pagesCount}',
+            style: small,
+          ),
+        ],
+      ),
+      build: (context) => [
+        pw.Text(
+          'Kişiler özeti',
+          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.Text(
+          '$ownerName · $created · '
+          '${summary.filter == PeopleFilter.all ? 'Tüm kişiler' : summary.filter.label} '
+          '(${summary.rows.length})',
+          style: small,
+        ),
+        pw.SizedBox(height: 12),
+        pw.Row(
+          children: [
+            for (final (label, value) in [
+              ('Alacağınız', t.receivable),
+              ('Borcunuz', -t.payable),
+              ('Net', t.net),
+            ])
+              pw.Expanded(
+                child: pw.Container(
+                  margin: const pw.EdgeInsets.only(right: 8),
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    color: _soft,
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(label, style: small),
+                      pw.Align(
+                        alignment: pw.Alignment.centerLeft,
+                        child: amount(value, size: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        pw.SizedBox(height: 14),
+        pw.Table(
+          border: const pw.TableBorder(
+            horizontalInside: pw.BorderSide(color: _line, width: 0.5),
+            bottom: pw.BorderSide(color: _line, width: 0.5),
+          ),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(3),
+            1: pw.FixedColumnWidth(80),
+            2: pw.FlexColumnWidth(2),
+            3: pw.FixedColumnWidth(48),
+            4: pw.FixedColumnWidth(62),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _soft),
+              children: [
+                head('Kişi'),
+                head('TL bakiye', right: true),
+                head('Diğer birimler', right: true),
+                head('Bekleyen', right: true),
+                head('Sonraki vade', right: true),
+              ],
+            ),
+            for (final r in summary.rows)
+              pw.TableRow(
+                children: [
+                  pad(
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(r.name, style: body),
+                        if (r.email != null) pw.Text(r.email!, style: small),
+                      ],
+                    ),
+                  ),
+                  pad(amount(r.balance)),
+                  pad(
+                    pw.Text(
+                      r.others.map((m) => m.format(signed: true)).join('\n'),
+                      textAlign: pw.TextAlign.right,
+                      style: body,
+                    ),
+                  ),
+                  pad(
+                    pw.Text(
+                      r.pendingCount > 0 ? '${r.pendingCount}' : '-',
+                      textAlign: pw.TextAlign.right,
+                      style: body,
+                    ),
+                  ),
+                  pad(
+                    pw.Text(
+                      r.nextDue == null
+                          ? '-'
+                          : date.format(r.nextDue!.dueOn.toDateTime()),
+                      textAlign: pw.TextAlign.right,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        color: r.hasOverdue ? _red : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ],
     ),
   );

@@ -391,7 +391,7 @@ void main() {
     await tester.tap(find.text('Kişiler').last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Tablo görünümü'));
+    await tester.tap(find.text('Tablo'));
     await tester.pumpAndSettle();
     expect(find.text('Bakiye'), findsOneWidget);
     expect(find.text('Toplam'), findsOneWidget);
