@@ -37,7 +37,10 @@
     "public": "build/web",
     "ignore": [
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "gizlilik/**",
+      "kosullar/**",
+      "hesap-sil/**"
     ],
     "headers": [
       {

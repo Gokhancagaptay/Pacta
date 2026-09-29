@@ -52,6 +52,15 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 - [ ] B'ye tek bildirim; B onaylayınca bakiye ortak defterde.
 - [ ] Eski özel defter listede görünmüyor, toplamda iki kez sayılmıyor; ortak defterdeki "Özel defterdeki eski kayıtlar" açılıyor.
 
+## 7b. ⭐ Uygulamasız web onayı (sunucu ve hosting kurulduktan sonra)
+- [ ] Özel defterde bir kayıt → "Karşı taraftan onay iste": açıklama anahtarı, paylaşım menüsü açılıyor; mesajda tutar, link ve son geçerlilik tarihi var.
+- [ ] Linki uygulaması olmayan bir telefonda / bilgisayarda aç: doğrulamadan önce yalnızca gönderenin adı görünüyor.
+- [ ] E-posta yaz → gelen bağlantıya aynı cihazda dokun → kayıt açılıyor (tutar, tarih, açıklama). Başka cihazda açınca e-posta yeniden soruluyor.
+- [ ] Onayla / İtiraz et (önerilen tutarla) / Reddet: sayfada makbuz; uygulamada bildirim, kayıtta durum kartı ("Karşı taraf onayladı", gizlenmiş e-posta).
+- [ ] Aynı linki başka bir e-postayla açınca "başka bir adrese bağlı" diyor.
+- [ ] "Onay linkini yeniden gönder" sonrası eski link "Bu link yenilendi" diyor.
+- [ ] Linki doğrulayan kişi sonra aynı e-postayla uygulamaya kaydolabiliyor ("kullanımda" hatası yok).
+
 ## 8. Dışa aktarma (kişi)
 - [ ] Defter menüsü → "Ekstre (PDF)": Türkçe harfler, ₺, bakiye ve kayıtlar doğru.
 - [ ] "Tablo (CSV)" Excel / Google E-Tablolar'da sütunlara ayrılmış açılıyor; WhatsApp/e-postayla gönderilebiliyor.
