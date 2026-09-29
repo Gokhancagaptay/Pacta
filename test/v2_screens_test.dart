@@ -108,8 +108,9 @@ class FakeRepo extends LedgerRepository {
   Future<WebLink> requestWebConfirmation(
     LedgerEntry e, {
     bool includeDescription = true,
+    String? recipientEmail,
   }) async {
-    calls.add('webLink ${e.id} $includeDescription');
+    calls.add('webLink ${e.id} $includeDescription $recipientEmail');
     return (
       url: 'https://pacta-76686.web.app/o/${'a' * 32}',
       expiresOn: const LocalDate(2026, 10, 9),
@@ -958,12 +959,30 @@ void main() {
       await tester.tap(find.text('Link oluştur ve paylaş'));
       await tester.pumpAndSettle();
 
-      expect(repo.calls, contains('webLink e-bakkal false'));
+      expect(repo.calls, contains('webLink e-bakkal false null'));
       // Paylaşım menüsü açılamazsa link panoya kopyalanır.
       expect(find.textContaining('Link kopyalandı'), findsOneWidget);
       expect(copied, contains('500,00 ₺'));
       expect(copied, contains('https://pacta-76686.web.app/o/'));
       expect(copied, contains('9 Ekim 2026'));
+    });
+
+    testWidgets('alıcı e-postası denetlenir ve linke bağlanır', (tester) async {
+      final repo = FakeRepo();
+      final share = shareWebLink;
+      addTearDown(() => shareWebLink = share);
+      shareWebLink = (_) async {};
+      await openDetail(tester, repo, bakkalEntry());
+      await tester.tap(find.text('Karşı taraftan onay iste'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'ahmet');
+      await tester.tap(find.text('Link oluştur ve paylaş'));
+      await tester.pumpAndSettle();
+      expect(find.text('Geçerli bir e-posta adresi yazın.'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'ahmet@gmail.com');
+      await tester.tap(find.text('Link oluştur ve paylaş'));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('webLink e-bakkal true ahmet@gmail.com'));
     });
 
     testWidgets('itiraz gerekçe, önerilen tutar ve e-postayla görünür', (

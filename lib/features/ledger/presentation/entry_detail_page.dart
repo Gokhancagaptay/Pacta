@@ -228,18 +228,19 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
   /// Onay linkini oluşturur ve paylaşım menüsünü açar (WhatsApp, SMS...).
   /// Paylaşım açılamazsa link panoya kopyalanır.
   Future<void> _askWeb(LedgerEntry e) async {
-    final includeDescription = await showModalBottomSheet<bool>(
+    final choice = await showModalBottomSheet<_WebChoice>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _WebConfirmSheet(entry: e),
     );
-    if (includeDescription == null || !mounted) return;
+    if (choice == null || !mounted) return;
     setState(() => _busy = true);
     var copied = false;
     await runCommand(context, () async {
       final link = await _repo.requestWebConfirmation(
         e,
-        includeDescription: includeDescription,
+        includeDescription: choice.includeDescription,
+        recipientEmail: choice.email,
       );
       final text = webConfirmMessage(e, link);
       try {
@@ -627,6 +628,7 @@ class _WebConfirmationCard extends StatelessWidget {
             ? '$otherName yanıt vermedi. Yeni link gönderebilirsiniz.'
             : '$otherName linki açıp e-posta adresini doğrulayınca kaydı '
                   'onaylayabilir ya da itiraz edebilir.'
+                  '${web.recipientMasked == null ? '' : ' Link yalnızca ${web.recipientMasked} adresiyle açılır.'}'
                   '${web.expiresAt == null ? '' : ' Link ${day.format(web.expiresAt!)} tarihine kadar geçerli.'}',
       ?reason,
       if (web.note.isNotEmpty) '“${web.note}”',
@@ -634,7 +636,8 @@ class _WebConfirmationCard extends StatelessWidget {
         'Önerilen tutar: '
             '${Money(web.suggestedAmountMinor!, entry.asset).format()}',
       if (web.emailMasked != null)
-        'E-postayla doğrulandı: ${web.emailMasked}'
+        '${web.recipientSet ? 'Belirttiğiniz adresle doğrulandı' : 'E-postayla doğrulandı'}: '
+            '${web.emailMasked}'
             '${web.respondedAt == null ? '' : ' · ${day.format(web.respondedAt!)}'}',
       if (web.state != WebConfirmationState.requested)
         'Özel defterinizin bakiyesi bu yanıtla değişmez.',
@@ -668,8 +671,11 @@ class _WebConfirmationCard extends StatelessWidget {
   }
 }
 
-/// Onay linki oluşturmadan önce: nasıl çalıştığı ve açıklamanın gidip
-/// gitmeyeceği. Açıklamanın gönderilip gönderilmeyeceğini döner.
+/// Onay linki seçimleri: açıklama gitsin mi, link hangi adrese bağlansın.
+typedef _WebChoice = ({bool includeDescription, String? email});
+
+/// Onay linki oluşturmadan önce: nasıl çalıştığı, açıklamanın gidip
+/// gitmeyeceği ve isteğe bağlı alıcı e-postası.
 class _WebConfirmSheet extends StatefulWidget {
   const _WebConfirmSheet({required this.entry});
 
@@ -681,6 +687,28 @@ class _WebConfirmSheet extends StatefulWidget {
 
 class _WebConfirmSheetState extends State<_WebConfirmSheet> {
   bool _includeDescription = true;
+  final _email = TextEditingController();
+  String? _emailError;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final email = _email.text.trim();
+    if (email.isNotEmpty &&
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _emailError = 'Geçerli bir e-posta adresi yazın.');
+      return;
+    }
+    Navigator.pop<_WebChoice>(context, (
+      includeDescription:
+          widget.entry.description.isNotEmpty && _includeDescription,
+      email: email.isEmpty ? null : email,
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -688,7 +716,12 @@ class _WebConfirmSheetState extends State<_WebConfirmSheet> {
     final hasDescription = widget.entry.description.isNotEmpty;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          0,
+          20,
+          16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -722,10 +755,22 @@ class _WebConfirmSheetState extends State<_WebConfirmSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-            const SizedBox(height: 8),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: 'Karşı tarafın e-postası (isteğe bağlı)',
+                helperText:
+                    'Yazarsanız link yalnızca bu adresle açılır; onay daha '
+                    'güçlü kanıt olur.',
+                helperMaxLines: 2,
+                errorText: _emailError,
+              ),
+            ),
+            const SizedBox(height: 12),
             FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, hasDescription && _includeDescription),
+              onPressed: _submit,
               child: const Text('Link oluştur ve paylaş'),
             ),
           ],

@@ -67,6 +67,7 @@
     <section id="closed" hidden>
       <h1 id="closedTitle">Bu link geçerli değil</h1>
       <p id="closedText"></p>
+      <button class="secondary" id="otherAddress" type="button" hidden>Farklı adresle doğrula</button>
     </section>
 
     <section id="verify" hidden>
@@ -218,9 +219,10 @@
       {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
   };
 
-  function closed(title, text) {
+  function closed(title, text, retry = false) {
     $('closedTitle').textContent = title;
     $('closedText').textContent = text;
+    $('otherAddress').hidden = !retry;
     show('closed');
   }
 
@@ -229,7 +231,7 @@
     expired: ['Linkin süresi doldu', 'Onay linkleri 14 gün geçerlidir. Gönderen kişiden yeni link isteyin.'],
     revoked: ['Bu link yenilendi', 'Gönderen kişi yeni bir link oluşturdu. Size gönderilen son linki açın.'],
     withdrawn: ['Kayıt değişti', 'Kayıt düzeltildi ya da kaldırıldı; bu link artık geçerli değil.'],
-    otherEmail: ['Bu link başka bir adrese bağlı', 'Bu onay isteği başka bir e-posta adresiyle açıldı. Size ait değilse gönderen kişiye haber verin.'],
+    otherEmail: ['Bu link başka bir adrese bağlı', 'Bu onay isteği başka bir e-posta adresine bağlı. Yanlış adres yazdıysanız doğru adresle yeniden doğrulayın; link size ait değilse gönderen kişiye haber verin.'],
     answered: ['Bu istek yanıtlandı', 'Bu kayıt için yanıt verildi. Yanıtı veren sizseniz aynı e-posta adresiyle doğrulayarak görebilirsiniz.'],
   };
 
@@ -241,7 +243,7 @@
     if (status !== 'open') {
       const [title, text] = CLOSED[status] || CLOSED.invalid;
       if (status === 'otherEmail') signOut(auth);
-      return closed(title, text);
+      return closed(title, text, status === 'otherEmail');
     }
     if (!result.sentence) return renderVerify(result, false);
     renderDetail(result);
@@ -252,7 +254,10 @@
     $('verifyText').textContent = answered
       ? 'Bu istek yanıtlandı. Yanıtı görmek için yanıt verdiğiniz e-posta adresini doğrulayın.'
       : `${result.ownerName}, sizinle ilgili bir borç kaydını Pacta'da tuttu ve doğruluğunu ` +
-        'onaylamanızı istiyor. Kaydı görmek için e-posta adresinizi doğrulayın.';
+        'onaylamanızı istiyor. Kaydı görmek için e-posta adresinizi doğrulayın.' +
+        (result.recipientMasked
+          ? ` Link ${result.recipientMasked} adresi için oluşturuldu; o adresi yazın.`
+          : '');
     show('verify');
   }
 
@@ -365,6 +370,10 @@
   });
 
   $('resend').addEventListener('click', () => show('verify'));
+  $('otherAddress').addEventListener('click', () => {
+    $('email').value = '';
+    renderVerify(view, false);
+  });
 
   $('askForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();

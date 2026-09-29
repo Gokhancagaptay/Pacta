@@ -37,6 +37,18 @@ Toplanan veri türleri (hiçbiri paylaşılmıyor, hiçbiri isteğe bağlı değ
 | Uygulama bilgileri ve performansı → Kilitlenme günlükleri | Uygulama işlevselliği, Analiz |
 | Cihaz veya diğer kimlikler (bildirim anahtarı, Crashlytics kurulum kimliği) | Uygulama işlevselliği |
 
+**Web onay sayfası (`/o/…`, 2026-09-29 eklendi).** Uygulamayı kullanmayan
+karşı taraf, özel defterdeki bir kaydı web'de onaylar. Bu kişi uygulama
+kullanıcısı değildir; Play formu uygulama kullanıcılarını kapsar, ama gizlilik
+politikası ve KVKK aydınlatma metni şunları anlatmalıdır ⚖️:
+
+| Veri | Neden | Ne kadar süre |
+|---|---|---|
+| Karşı tarafın e-posta adresi (tam hâli sunucuda, kayıt sahibine gizlenmiş hâli) | Yanıtın o kişiye ait olduğunun kanıtı | Kayıt, özel defter ya da sahibin hesabı silinene kadar |
+| IP adresi, tarayıcı bilgisi (user-agent), yanıt zamanı | Kanıt, kötüye kullanımı önleme | Aynı |
+| Geçici giriş kaydı (Firebase Auth, e-posta bağlantısıyla) | E-posta doğrulaması | Yanıttan hemen sonra; yanıt yoksa 1 gün içinde silinir |
+| Yanıtlanmayan onay isteği | Link çalışsın diye | Süresi dolduktan 30 gün sonra silinir |
+
 Toplanmayanlar: konum, kişiler (rehber), fotoğraf/video, sesli kayıt, takvim,
 web geçmişi, reklam kimliği, ödeme bilgisi, kredi puanı. Kamera QR okumak için
 kullanılır; görüntü cihazdan çıkmaz, "toplanan veri" sayılmaz.

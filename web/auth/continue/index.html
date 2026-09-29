@@ -4,9 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pacta - E-posta Doğrulama</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
     <style>
       :root {
         --bg: #0f172a;
@@ -18,7 +15,7 @@
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
         background: linear-gradient(180deg, #0b1220, #0f172a);
         color: var(--text);
         min-height: 100vh;
@@ -85,10 +82,12 @@
       // Firebase JS SDK’sı olmadan burada doğrulamayı tamamlayamayız.
       // İşlem zaten mail linkinde Firebase tarafından yapılır.
       // Bu sayfa sadece sonuç mesajını dostane göstermek ve App Links ile uygulamayı açmak içindir.
+      // Firebase'in e-posta işleyicisi işlemi tamamlayıp buraya parametresiz
+      // yönlendirir: bu bir hata değil, işlem bitmiştir.
       if (!mode || !oobCode) {
-        title.textContent = 'Geçersiz bağlantı';
-        title.classList.add('err');
-        desc.textContent = 'Bağlantı hatalı veya eksik. Lütfen e-postanı yeniden kontrol et.';
+        title.textContent = 'İşlem tamamlandı';
+        title.classList.add('ok');
+        desc.textContent = 'Pacta uygulamasına dönüp devam edebilirsiniz.';
       } else if (mode === 'verifyEmail') {
         title.textContent = 'Doğrulama linki işlendi';
         title.classList.add('ok');

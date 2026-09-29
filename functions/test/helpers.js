@@ -55,6 +55,13 @@ async function lend(ledgerId, uid, amountMinor, extra = {}) {
   return {entryId, ...res};
 }
 
+/** Koşulları kabul etmiş kullanıcı profili. */
+const profile = (adSoyad) => ({
+  adSoyad,
+  termsVersion: "2026-09-27",
+  termsAcceptedAt: new Date("2026-09-27T12:00:00Z"),
+});
+
 /** Her testten önce veritabanını boşaltır, üç kullanıcı ekler. */
 function useEmulator() {
   before(() => {
@@ -84,9 +91,9 @@ function useEmulator() {
       ]);
     }
     await Promise.all([
-      db.collection("users").doc("ali").set({adSoyad: "Ali Veli"}),
-      db.collection("users").doc("ayse").set({adSoyad: "Ayşe Yılmaz"}),
-      db.collection("users").doc("mallory").set({adSoyad: "Mallory"}),
+      db.collection("users").doc("ali").set(profile("Ali Veli")),
+      db.collection("users").doc("ayse").set(profile("Ayşe Yılmaz")),
+      db.collection("users").doc("mallory").set(profile("Mallory")),
     ]);
   });
 
@@ -104,6 +111,7 @@ module.exports = {
   ledgerDoc,
   limitDay,
   notifications,
+  profile,
   rejectsWith,
   sharedLedger,
   today,

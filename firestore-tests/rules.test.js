@@ -356,6 +356,14 @@ describe("v2 defterler", () => {
     await assertFails(setDoc(doc(ali(), "rateLimits/reminders_ali"),
       {day: "2026-09-25", count: 0}));
   });
+
+  it("web onay istekleri ve misafir işaretleri istemciye kapalı", async () => {
+    await assertFails(getDocs(collection(ali(), "webRequests")));
+    await assertFails(getDoc(doc(anon(), "webRequests/abc")));
+    await assertFails(setDoc(doc(ali(), "webRequests/abc"), {state: "open"}));
+    await assertFails(getDoc(doc(ali(), "webGuests/ali")));
+    await assertFails(deleteDoc(doc(ali(), "webGuests/ali")));
+  });
 });
 
 describe("eski v1 koleksiyonları", () => {

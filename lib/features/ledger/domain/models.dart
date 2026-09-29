@@ -236,6 +236,8 @@ class WebConfirmation {
     this.requestedAt,
     this.respondedAt,
     this.expiresAt,
+    this.recipientSet = false,
+    this.recipientMasked,
   });
 
   factory WebConfirmation.fromMap(Map<String, dynamic> m) => WebConfirmation(
@@ -251,6 +253,8 @@ class WebConfirmation {
     requestedAt: _time(m['requestedAt']),
     respondedAt: _time(m['respondedAt']),
     expiresAt: _time(m['expiresAt']),
+    recipientSet: m['recipientSet'] == true,
+    recipientMasked: m['recipientMasked'] as String?,
   );
 
   final WebConfirmationState state;
@@ -267,6 +271,12 @@ class WebConfirmation {
 
   /// Link bu andan sonra yanıt kabul etmez.
   final DateTime? expiresAt;
+
+  /// Sahip alıcının e-postasını belirtti: link yalnızca o adresle açılır.
+  final bool recipientSet;
+
+  /// Belirtilen adresin gizlenmiş hâli.
+  final String? recipientMasked;
 
   /// Link gönderildi ama yanıt gelmeden süresi doldu.
   bool isExpired(DateTime now) =>

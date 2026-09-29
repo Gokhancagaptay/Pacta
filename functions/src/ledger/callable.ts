@@ -23,11 +23,17 @@ export function fail(code: FunctionsErrorCode, message: string): never {
 }
 
 /**
- * Oturum açmış ve e-postası doğrulanmış kullanıcı. Doğrulanmamış bir
- * e-postayla (başkasının adresi olabilir) işlem yapılamaz. Telefonla giriş
- * (Faz 2c) e-posta taşımaz; o kimlik SMS ile doğrulanmıştır.
- * Hesabı silinmiş kişinin eski oturumu (belirteç ~1 saat geçerli kalır)
- * hiçbir komut çalıştıramaz; silme başında yazılan işarete bakılır.
+ * Oturum açmış, e-postası doğrulanmış, Pacta profili olan ve koşulları
+ * kabul etmiş kullanıcı. Doğrulanmamış bir e-postayla (başkasının adresi
+ * olabilir) işlem yapılamaz. Telefonla giriş (Faz 2c) e-posta taşımaz; o
+ * kimlik SMS ile doğrulanmıştır.
+ * - Hesabı silinmiş kişinin eski oturumu (belirteç ~1 saat geçerli kalır)
+ *   hiçbir komut çalıştıramaz; silme başında yazılan işarete bakılır.
+ * - Web onayı için e-posta bağlantısıyla açılan misafir oturumu (profili
+ *   yok, webGuests işaretli) uygulama komutu çalıştıramaz.
+ * - Koşulların kabulü uygulamadan bağımsız olarak burada da aranır; tam
+ *   sürüm eşleşmesini uygulama zorlar.
+ * Üç belge tek turda okunur.
  * @param {CallableRequest<unknown>} req İstek.
  * @return {Promise<string>} Oturumdaki kullanıcı.
  */
@@ -35,16 +41,28 @@ export async function requireUid(
   req: CallableRequest<unknown>
 ): Promise<string> {
   if (!req.auth) fail("unauthenticated", "Giriş yapmalısınız.");
+  const uid = req.auth.uid;
   const token = req.auth.token;
   const byPhone = token.firebase?.sign_in_provider === "phone";
   if (token.email_verified !== true && !byPhone) {
     fail("permission-denied",
       "Devam etmek için e-posta adresinizi doğrulamalısınız.");
   }
-  if (await isDeletedAccount(req.auth.uid)) {
-    fail("permission-denied", "Bu hesap silindi.");
+  const [profile, deleted, guest] = await db.getAll(
+    db.collection("users").doc(uid),
+    db.collection("deletedAccounts").doc(uid),
+    db.collection("webGuests").doc(uid),
+  );
+  if (deleted.exists) fail("permission-denied", "Bu hesap silindi.");
+  if (guest.exists || !profile.exists) {
+    fail("failed-precondition",
+      "Profiliniz hazırlanıyor. Uygulamayı yeniden açıp tekrar deneyin.");
   }
-  return req.auth.uid;
+  if (!profile.get("termsAcceptedAt")) {
+    fail("failed-precondition",
+      "TERMS_REQUIRED: Devam etmek için Kullanım Koşulları'nı kabul edin.");
+  }
+  return uid;
 }
 
 /**

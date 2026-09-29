@@ -44,6 +44,14 @@
     ],
     "headers": [
       {
+        "source": "/o/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-store" },
+          { "key": "X-Frame-Options", "value": "DENY" },
+          { "key": "Referrer-Policy", "value": "no-referrer" }
+        ]
+      },
+      {
         "source": "/.well-known/assetlinks.json",
         "headers": [
           { "key": "Cache-Control", "value": "public, max-age=300" },

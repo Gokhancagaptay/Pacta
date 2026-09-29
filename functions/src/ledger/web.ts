@@ -66,6 +66,10 @@ const RequestInput = z.object({
   ledgerId: Id,
   entryId: Id,
   includeDescription: z.boolean().default(true),
+  /** Verilirse link yalnızca bu adresle açılır (sahip kendi başka adresiyle
+   * onaylayamaz). */
+  recipientEmail: z.string().trim().toLowerCase().email("Geçerli bir " +
+    "e-posta adresi girin.").max(254).optional(),
 }).strict();
 
 const OpenInput = z.object({token: Token}).strict();
@@ -110,7 +114,10 @@ interface WebResponse {
   email: string;
   uid: string;
   userAgent: string;
+  /** Sunucunun gördüğü adres (Google ön ucu). */
   ip: string;
+  /** x-forwarded-for zincirinin tamamı; ilk değeri istemci uydurabilir. */
+  forwardedFor: string;
 }
 
 interface WebRequest {
@@ -131,6 +138,8 @@ interface WebRequest {
   state: "open" | "answered" | "revoked";
   expiresAt: Timestamp;
   boundEmail: string | null;
+  /** Sahip alıcının e-postasını baştan belirtti (boundEmail o adres). */
+  recipientSet?: boolean;
   response: WebResponse | null;
 }
 
@@ -261,14 +270,24 @@ async function markGuest(uid: string): Promise<void> {
 
 /**
  * Misafir giriş hesabını siler. Kişi bu arada Pacta hesabı açtıysa (profili
- * varsa) hesaba dokunulmaz, yalnızca işaret kalkar.
+ * varsa) ya da bir defterin tarafıysa hesaba dokunulmaz, yalnızca işaret
+ * kalkar: yanlışlıkla gerçek bir hesap silinmez.
  * @param {string} uid Oturum.
  * @return {Promise<boolean>} Misafir miydi.
  */
 export async function removeGuest(uid: string): Promise<boolean> {
   const guestRef = db.collection("webGuests").doc(uid);
   if (!(await guestRef.get()).exists) return false;
-  if (!(await db.collection("users").doc(uid).get()).exists) {
+  const [profile, ledgers] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("ledgers").where("memberUids", "array-contains", uid)
+      .limit(1).get(),
+  ]);
+  if (!ledgers.empty) {
+    logger.warn("[web] Misafir işaretli hesap bir defterin tarafı; " +
+      "silinmedi", {uid});
+  }
+  if (!profile.exists && ledgers.empty) {
     try {
       await admin.auth().deleteUser(uid);
     } catch (error) {
@@ -356,7 +375,9 @@ export const requestWebConfirmation = onCall<unknown>(OPTS, async (req) => {
       // Yanıtlanınca kalkar; yanıtlanan istek kayıtla birlikte saklanır.
       purgeAfter: Timestamp.fromMillis(
         expiresAt.toMillis() + PURGE_AFTER_DAYS * DAY_MS),
-      boundEmail: null,
+      // Alıcı belirtildiyse istek baştan o adrese bağlıdır.
+      boundEmail: input.recipientEmail ?? null,
+      recipientSet: input.recipientEmail !== undefined,
       response: null,
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -366,6 +387,10 @@ export const requestWebConfirmation = onCall<unknown>(OPTS, async (req) => {
         requestKey: ref.id,
         requestedAt: FieldValue.serverTimestamp(),
         expiresAt,
+        recipientSet: input.recipientEmail !== undefined,
+        recipientMasked: input.recipientEmail ?
+          maskEmail(input.recipientEmail) :
+          null,
       },
     });
     tx.set(ledgerRef.collection("events").doc(), {
@@ -401,7 +426,14 @@ export const openWebConfirmation = onCall<unknown>(OPTS, async (req) => {
     if (!snap.exists) return {status: "invalid"};
     const r = snap.data() as WebRequest;
     const status = await liveStatus(tx, r, now);
-    const base = {status, ownerName: r.ownerName};
+    // Alıcı belirtildiyse sayfa doğrulanacak adresi gizlenmiş olarak söyler.
+    const base = {
+      status,
+      ownerName: r.ownerName,
+      ...(r.recipientSet && r.boundEmail ?
+        {recipientMasked: maskEmail(r.boundEmail)} :
+        {}),
+    };
     if (status === "answered") {
       // Yanıtı yalnızca yanıtlayan görür.
       return user && user.email === r.boundEmail ?
@@ -425,7 +457,9 @@ export const openWebConfirmation = onCall<unknown>(OPTS, async (req) => {
     return {...base, ...details(r, user.email)};
   });
 
-  if (user && result.status === "open") await markGuest(user.uid);
+  // Durum ne olursa olsun: e-posta bağlantısıyla açılan her profilsiz
+  // oturum misafirdir ve temizlenir.
+  if (user) await markGuest(user.uid);
   return result;
 });
 
@@ -462,8 +496,8 @@ export const respondWebConfirmation = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
   const headers = req.rawRequest?.headers ?? {};
   const userAgent = String(headers["user-agent"] ?? "").slice(0, 300);
-  const forwarded = String(headers["x-forwarded-for"] ?? "").split(",")[0];
-  const ip = (forwarded || req.rawRequest?.ip || "").trim().slice(0, 64);
+  const forwardedFor = String(headers["x-forwarded-for"] ?? "").slice(0, 300);
+  const ip = String(req.rawRequest?.ip ?? "").slice(0, 64);
 
   const result = await db.runTransaction(async (tx) => {
     // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
@@ -485,7 +519,7 @@ export const respondWebConfirmation = onCall<unknown>(OPTS, async (req) => {
     }
     if (r.boundEmail && r.boundEmail !== user.email) {
       fail("permission-denied",
-        "Bu link başka bir e-posta adresiyle açıldı.");
+        "Bu link başka bir e-posta adresine bağlı.");
     }
 
     const reason = input.action === "confirm" ? null : input.reason;
@@ -507,6 +541,7 @@ export const respondWebConfirmation = onCall<unknown>(OPTS, async (req) => {
         uid: user.uid,
         userAgent,
         ip,
+        forwardedFor,
         at: FieldValue.serverTimestamp(),
       },
     });
@@ -595,8 +630,14 @@ export async function purgeWebData(
       Timestamp.fromMillis(now.getTime() - GUEST_HOURS * 60 * 60 * 1000))
     .get();
   for (const doc of stale.docs) {
-    await removeGuest(doc.id);
-    guests++;
+    // Biri düşerse diğerleri yine temizlenir; ertesi gün tekrar denenir.
+    try {
+      await removeGuest(doc.id);
+      guests++;
+    } catch (error) {
+      logger.error("[web] Misafir silinemedi",
+        {uid: doc.id, error: String(error)});
+    }
   }
   return {requests, guests};
 }

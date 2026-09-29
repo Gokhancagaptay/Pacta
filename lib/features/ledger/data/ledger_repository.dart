@@ -363,14 +363,17 @@ class LedgerRepository {
 
   /// Özel defterdeki kayıt için karşı tarafa gönderilecek onay linki. Aynı
   /// kayıt için önceki link geçersiz olur. Açıklama istenmezse gitmez.
+  /// [recipientEmail] verilirse link yalnızca o adresle açılır.
   Future<WebLink> requestWebConfirmation(
     LedgerEntry e, {
     bool includeDescription = true,
+    String? recipientEmail,
   }) async {
     final r = await _call('requestWebConfirmation', {
       'ledgerId': e.ledgerId,
       'entryId': e.id,
       'includeDescription': includeDescription,
+      'recipientEmail': ?recipientEmail,
     });
     return (
       url: r['url'] as String,

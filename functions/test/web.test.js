@@ -14,7 +14,11 @@ const {
   rejectsWith,
   useEmulator,
 } = require("./helpers");
-const {webClock, purgeWebData} = require("../lib/ledger/web.js");
+const {
+  webClock,
+  purgeWebData,
+  removeGuest,
+} = require("../lib/ledger/web.js");
 const {runMaintenance} = require("../lib/ledger/maintenance.js");
 
 useEmulator();
@@ -27,6 +31,7 @@ const web = (fn, data, {uid, email, verified = true} = {}) =>
     data,
     auth: uid ? {uid, token: {email, email_verified: verified}} : undefined,
     rawRequest: {
+      ip: "198.51.100.7",
       headers: {"user-agent": "Test/1.0", "x-forwarded-for": "203.0.113.5"},
     },
   });
@@ -182,7 +187,9 @@ describe("respondWebConfirmation", () => {
 
       const req = (await db.collection("webRequests").get()).docs[0];
       assert.equal(req.get("response.email"), "ahmet@example.com");
-      assert.equal(req.get("response.ip"), "203.0.113.5");
+      // Sunucunun gördüğü adres; istemcinin yazabildiği zincir ayrı durur.
+      assert.equal(req.get("response.ip"), "198.51.100.7");
+      assert.equal(req.get("response.forwardedFor"), "203.0.113.5");
       assert.equal(req.get("response.userAgent"), "Test/1.0");
       assert.equal(req.get("purgeAfter"), undefined);
 
@@ -269,5 +276,78 @@ describe("temizlik", () => {
     await request(ledgerId, entryId);
     await call(fns.deletePrivateLedger, "ali", {ledgerId});
     assert.equal((await db.collection("webRequests").get()).size, 0);
+  });
+});
+
+describe("sertleştirme", () => {
+  it("misafir oturum uygulama komutu çalıştıramaz", async () => {
+    const {ledgerId, entryId} = await privateEntry();
+    const {token} = await request(ledgerId, entryId);
+    await createGuest();
+    await web(fns.openWebConfirmation, {token}, guest);
+    await rejectsWith(call(fns.createLedger, "misafir",
+      {privateName: "Deneme"}), "failed-precondition", /Profiliniz/);
+  });
+
+  it("profili olmayan ya da koşulları kabul etmeyen komut çalıştıramaz",
+    async () => {
+      await rejectsWith(call(fns.myPactaCode, "yeni", {}),
+        "failed-precondition", /Profiliniz/);
+      await db.doc("users/mallory").set({adSoyad: "Mallory"});
+      await rejectsWith(call(fns.myPactaCode, "mallory", {}),
+        "failed-precondition", /TERMS_REQUIRED/);
+    });
+
+  it("alıcı e-postası belirtilince link yalnızca o adresle açılır",
+    async () => {
+      const {ledgerId, entryId} = await privateEntry();
+      const {token} = await request(ledgerId, entryId,
+        {recipientEmail: "Ahmet@Example.com"});
+      assert.deepEqual(await web(fns.openWebConfirmation, {token}), {
+        status: "open", ownerName: "Ali Veli",
+        recipientMasked: "a***@example.com",
+      });
+      const other = {uid: "baska", email: "b@example.com"};
+      assert.equal(
+        (await web(fns.openWebConfirmation, {token}, other)).status,
+        "otherEmail");
+      await rejectsWith(web(fns.respondWebConfirmation,
+        {token, action: "confirm"}, other), "permission-denied");
+
+      await createGuest();
+      const view = await web(fns.openWebConfirmation, {token}, guest);
+      assert.equal(view.status, "open");
+      await web(fns.respondWebConfirmation, {token, action: "confirm"}, guest);
+      const entry = await entryDoc(ledgerId, entryId);
+      assert.equal(entry.get("webConfirmation.recipientSet"), true);
+      assert.equal(entry.get("webConfirmation.state"), "confirmed");
+      await rejectsWith(request(ledgerId, entryId), "failed-precondition");
+    });
+
+  it("geçersiz alıcı e-postası reddedilir", async () => {
+    const {ledgerId, entryId} = await privateEntry();
+    await rejectsWith(request(ledgerId, entryId, {recipientEmail: "yok"}),
+      "invalid-argument");
+  });
+
+  it("süresi dolmuş linki açan misafir de işaretlenir", async (t) => {
+    const {ledgerId, entryId} = await privateEntry();
+    const {token} = await request(ledgerId, entryId);
+    await createGuest();
+    t.mock.method(webClock, "now", () => new Date(Date.now() + 15 * DAY));
+    assert.equal(
+      (await web(fns.openWebConfirmation, {token}, guest)).status, "expired");
+    assert.equal((await db.doc("webGuests/misafir").get()).exists, true);
+  });
+
+  it("bir defterin tarafı olan hesap misafir diye silinmez", async () => {
+    const auth = require("firebase-admin").auth();
+    await auth.createUser({uid: "hayalet", email: "h@example.com",
+      emailVerified: true});
+    await db.doc("webGuests/hayalet").set({createdAt: new Date()});
+    await db.doc("ledgers/p_hayalet1").set({memberUids: ["hayalet"]});
+    assert.equal(await removeGuest("hayalet"), true);
+    await auth.getUser("hayalet");
+    assert.equal((await db.doc("webGuests/hayalet").get()).exists, false);
   });
 });
