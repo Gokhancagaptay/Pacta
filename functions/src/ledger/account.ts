@@ -273,14 +273,21 @@ export async function removeAccount(
   uid: string,
   reason: RemovalReason
 ): Promise<{closedLedgers: number; deletedLedgers: number}> {
-  await db.collection("deletedAccounts").doc(uid)
-    .set({deletedAt: FieldValue.serverTimestamp(), reason}, {merge: true});
+  // pending: silme yarıda kalırsa (zaman aşımı) günlük bakım tamamlar.
+  const marker = db.collection("deletedAccounts").doc(uid);
+  await marker.set(
+    {deletedAt: FieldValue.serverTimestamp(), reason, pending: true},
+    {merge: true});
   await ignoreMissingUser(admin.auth().revokeRefreshTokens(uid));
   const summary = await deleteAccountData(uid);
   await ignoreMissingUser(admin.auth().deleteUser(uid));
   // Silme sürerken açılmış olabilecek defterler için son tarama.
   const late = await settleLedgers(uid);
   await pushOnly(late.notices);
+  await marker.update({
+    pending: false,
+    completedAt: FieldValue.serverTimestamp(),
+  });
   logger.info("[account] Hesap silindi", {uid, reason, ...summary});
   return summary;
 }

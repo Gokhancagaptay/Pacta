@@ -30,7 +30,8 @@ describe("runMaintenance", () => {
     await db.collection("users").doc("eski").set({adSoyad: "Eski"});
 
     assert.deepEqual(await runMaintenance(later(DAY)),
-      {unverified: 0, closedLedgers: 0, tombstones: 0, web: 0, failed: 0});
+      {unverified: 0, closedLedgers: 0, tombstones: 0, web: 0, resumed: 0,
+        failed: 0});
     await auth.getUser("eski");
 
     const res = await runMaintenance(later(31 * DAY));
@@ -75,5 +76,26 @@ describe("runMaintenance", () => {
     const res = await runMaintenance(later(3654 * DAY));
     assert.equal(res.closedLedgers, 0);
     assert.equal((await ledgerDoc(ledgerId)).exists, true);
+  });
+});
+
+describe("yarım kalan hesap silme", () => {
+  it("bakım bir saatten eski yarım silmeyi tamamlar", async () => {
+    const ledgerId = (await call(fns.createLedger, "ali",
+      {privateName: "Bakkal"})).ledgerId;
+    // Silme başlamış, işaret yazılmış ama işlem yarıda kalmış.
+    await db.doc("deletedAccounts/ali").set({
+      deletedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      reason: "user",
+      pending: true,
+    });
+    const res = await runMaintenance(new Date());
+    assert.equal(res.resumed, 1);
+    assert.equal(await exists("users/ali"), false);
+    assert.equal((await ledgerDoc(ledgerId)).exists, false);
+    const marker = await db.doc("deletedAccounts/ali").get();
+    assert.equal(marker.get("pending"), false);
+    await assert.rejects(require("firebase-admin").auth().getUser("ali"),
+      (e) => e.code === "auth/user-not-found");
   });
 });

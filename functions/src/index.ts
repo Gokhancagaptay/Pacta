@@ -22,6 +22,7 @@ export {
   setBlocked,
 } from "./ledger/contacts";
 export {onLedgerEntryWritten} from "./ledger/due";
+export {onUserProfileWritten} from "./ledger/profile";
 export {dailyMaintenance} from "./ledger/maintenance";
 export {dailyReminders, sendReminder} from "./ledger/reminders";
 export {

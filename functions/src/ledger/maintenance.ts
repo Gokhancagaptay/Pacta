@@ -2,7 +2,7 @@ import {QueryDocumentSnapshot, Timestamp} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import {admin, db, REGION} from "../common/firebase";
-import {removeAccount} from "./account";
+import {RemovalReason, removeAccount} from "./account";
 import {purgeWebData} from "./web";
 
 // Günlük bakım (gizlilik politikasındaki saklama süreleri):
@@ -73,8 +73,13 @@ async function purgeUnverified(now: Date): Promise<PurgeResult> {
     for (const user of page.users) {
       const byPassword = user.providerData
         .some((p) => p.providerId === "password");
+      // Telefonla doğrulanmış hesap (Faz 2c) e-postası doğrulanmasa da
+      // doğrulanmış sayılır (callable.ts, contacts.ts ile aynı).
+      const byPhone = user.providerData.some((p) => p.providerId === "phone");
       const created = Date.parse(user.metadata.creationTime);
-      if (!byPassword || user.emailVerified || created > cutoff) continue;
+      if (!byPassword || byPhone || user.emailVerified || created > cutoff) {
+        continue;
+      }
       await attempt(`user ${user.uid}`,
         () => removeAccount(user.uid, "unverified"), result);
     }
@@ -108,6 +113,32 @@ async function purgeClosedLedgers(now: Date): Promise<PurgeResult> {
     if (snap.size < 100) return result;
     last = snap.docs[snap.docs.length - 1];
   }
+}
+
+/** Yarıda kalan silme bu kadar sonra yeniden denenir. */
+const RESUME_AFTER_MS = 60 * 60 * 1000;
+
+/**
+ * Yarıda kalmış hesap silmelerini tamamlar: silme işareti yazılmış ama
+ * işlem (zaman aşımı, hata) bitmemiş; kişi kilitli, verisi ve giriş hesabı
+ * duruyor.
+ * @param {Date} now An.
+ * @return {Promise<PurgeResult>} Sonuç.
+ */
+async function resumeDeletions(now: Date): Promise<PurgeResult> {
+  const result = {removed: 0, failed: 0};
+  const snap = await db.collection("deletedAccounts")
+    .where("pending", "==", true)
+    .limit(50)
+    .get();
+  for (const doc of snap.docs) {
+    const at = (doc.get("deletedAt") as Timestamp | undefined)?.toMillis() ?? 0;
+    if (now.getTime() - at < RESUME_AFTER_MS) continue;
+    const reason = (doc.get("reason") as RemovalReason | undefined) ?? "user";
+    await attempt(`deletion ${doc.id}`,
+      () => removeAccount(doc.id, reason), result);
+  }
+  return result;
 }
 
 /**
@@ -154,6 +185,7 @@ export async function runMaintenance(now: Date): Promise<{
   closedLedgers: number;
   tombstones: number;
   web: number;
+  resumed: number;
   failed: number;
 }> {
   const stage = async (
@@ -168,6 +200,7 @@ export async function runMaintenance(now: Date): Promise<{
       return {removed: 0, failed: 1};
     }
   };
+  const resumed = await stage("resume", resumeDeletions);
   const unverified = await stage("unverified", purgeUnverified);
   const closed = await stage("closedLedgers", purgeClosedLedgers);
   const tombstones = await stage("tombstones", purgeTombstones);
@@ -180,7 +213,9 @@ export async function runMaintenance(now: Date): Promise<{
     closedLedgers: closed.removed,
     tombstones: tombstones.removed,
     web: web.removed,
-    failed: unverified.failed + closed.failed + tombstones.failed + web.failed,
+    resumed: resumed.removed,
+    failed: unverified.failed + closed.failed + tombstones.failed +
+      web.failed + resumed.failed,
   };
 }
 

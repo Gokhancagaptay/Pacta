@@ -154,7 +154,13 @@ export function affectsDue(
 }
 
 export const onLedgerEntryWritten = onDocumentWritten(
-  {document: "ledgers/{ledgerId}/entries/{entryId}", region: REGION},
+  // retry: çakışma ya da geçici hatada vade listesi eski kalmasın; hesap
+  // her seferinde baştan yapıldığı için tekrar zararsızdır.
+  {
+    document: "ledgers/{ledgerId}/entries/{entryId}",
+    region: REGION,
+    retry: true,
+  },
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
