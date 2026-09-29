@@ -7,9 +7,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('Poppins 400/500/600/700 uygulamaya gömülü', () async {
-    final assets = (await AssetManifest.loadFromAssetBundle(
-      rootBundle,
-    )).listAssets();
+    final assets = (await AssetManifest.loadFromAssetBundle(rootBundle))
+        .listAssets();
     for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
       expect(assets, contains('assets/google_fonts/Poppins-$weight.ttf'));
     }

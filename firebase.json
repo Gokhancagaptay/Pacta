@@ -34,10 +34,10 @@
     "singleProjectMode": true
   },
   "hosting": {
-    "public": "build/web",
+    "public": "hosting",
     "ignore": [
-      "**/.*",
       "**/node_modules/**",
+      "**/.DS_Store",
       "gizlilik/**",
       "kosullar/**",
       "hesap-sil/**"
@@ -61,8 +61,7 @@
     ],
     "rewrites": [
       { "source": "/u/**", "destination": "/u/index.html" },
-      { "source": "/o/**", "destination": "/o/index.html" },
-      { "source": "**", "destination": "/index.html" }
+      { "source": "/o/**", "destination": "/o/index.html" }
     ]
   },
   "functions": [

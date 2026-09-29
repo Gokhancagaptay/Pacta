@@ -3,7 +3,7 @@
     <!-- Yedekleme kapalı: Firestore önbelleği, oturum ve kilit ayarı Google
          Drive yedeğine ya da cihaz aktarımına girmez. -->
     <application
-        android:label="pacta"
+        android:label="Pacta"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

@@ -7,7 +7,10 @@ Onaylanmış kayıt değiştirilemez; düzeltme ters kayıtla yapılır ve geçm
 ## Özellikler
 
 - **Ortak defter:** kişi başına tek defter, onaylı bakiye, onay bekleyenler.
-- **Kayıtlar:** borç verdim / aldım, ödeme yaptım / aldım. Karşı taraf onaylar, itiraz eder ya da reddeder. Kaydı giren onaydan önce düzeltebilir ya da geri çekebilir.
+- **Kayıtlar:** borç verdim / aldım, ödeme yaptım / aldım. Karşı taraf onaylar, itiraz eder ya da reddeder. Kaydı giren onaydan önce düzenleyebilir ya da geri çekebilir.
+- **Uygulamasız onay:** özel defterdeki bir kayıt için onay linki (/o). Karşı taraf e-postasını doğrulayıp web'de onaylar, itiraz eder ya da reddeder.
+- **Engelleme:** kişi, karşı tarafın kendisine kayıt ve hatırlatma göndermesini engelleyebilir.
+- **Uygulama kilidi:** parmak izi / yüz / telefon PIN'i; kilit açıkken ekran görüntüsü alınmaz.
 - **Aleyhe kayıt:** kaydı girenin aleyhine olan kayıt (ör. alacaklının "ödeme aldım" kaydı) onay beklemeden işlenir. Uygulamayı kullanmayan kişiler için özel defter.
 - **Vadeler ve hatırlatmalar:**
   - Açık vadeler ödemeler en eski borçtan düşülerek hesaplanır.
@@ -31,16 +34,21 @@ Onaylanmış kayıt değiştirilemez; düzeltme ters kayıtla yapılır ve geçm
 
 ```
 lib/
-  app/                 tema (Güven Yeşili)
+  app/                 tema (Güven Yeşili), uygulama kilidi, açılış servisleri
   core/                para (kuruş cinsinden tamsayı), tarih, Türkçe metin, ortak bileşenler
   features/ledger/     domain · data (LedgerRepository) · application (sağlayıcılar) · presentation
   features/profile/    profil
-  screens/auth/        giriş, kayıt, e-posta doğrulama
+  screens/auth/        giriş, kayıt, e-posta doğrulama, koşullar
+  screens/settings/    profil düzenleme, bildirim ayarları, şifre
   services/            kimlik, profil, push, derin link
 functions/src/ledger/  komutlar, vade hesabı, hatırlatmalar, kişi/kod işlemleri,
                        hesap silme, günlük bakım (saklama süreleri)
 functions/scripts/     yönetici betikleri (e-postayla gelen hesap silme talebi)
-web/                   davet sayfası (/u), yasal sayfalar (/gizlilik, /kosullar, /hesap-sil)
+hosting/               Firebase Hosting'in yayınladığı statik sayfalar: tanıtım, 404,
+                       davet (/u), uygulamasız web onayı (/o), e-posta işleyicisi
+                       (/auth/continue), yasal sayfalar (/gizlilik, /kosullar,
+                       /hesap-sil; taslak, yayın dışı), assetlinks.json
+web/                   yalnızca Flutter web derlemesi için (yayınlanmıyor)
 docs/magaza/           mağaza veri beyanları ve yükleme öncesi kontrol listesi
 firestore.rules        güvenlik kuralları (testleri: firestore-tests/)
 contracts/             Dart ve TypeScript'in ortak birim tanımları ve hash test vektörleri
@@ -67,12 +75,12 @@ Her gönderimde GitHub Actions bu adımların hepsini çalıştırır.
 
 ## Yayın
 
-- **Android yayın sürümü:** `android/key.properties` ve yükleme anahtarı gerekir. İkisi de depoya girmez; anahtar yoksa yayın derlemesi durur.
+- **Android yayın sürümü:** `android/key.properties` ve yükleme anahtarı gerekir. İkisi de depoya girmez; anahtar yoksa yayın derlemesi durur. Her yüklemede `pubspec.yaml` içindeki derleme numarası (`+N`) artırılır: `flutter build appbundle --release`.
 - **Sunucu kurulumu:** `firestore-tests/` içinde çalıştırılır.
   ```bash
   npx firebase deploy --only firestore,functions,hosting --project <proje>
   ```
-  Hosting için önce `flutter build web` çalıştırılmalıdır.
-- **Yasal metinler:** `web/gizlilik`, `web/kosullar` ve `web/hesap-sil` şu an taslaktır. Hukukçu onayı ve doldurulacak alanlar tamamlanmadan hosting yayınlanmaz. Metin kullanıcıdan yeniden onay isteyecek şekilde değişirse `AppConstants.termsVersion` güncellenir. Mağaza formları için: `docs/magaza/veri-beyanlari.md`.
+  Hosting `hosting/` klasörünü olduğu gibi yayınlar; derleme gerekmez. Taslak yasal sayfalar `firebase.json` ignore listesiyle yayın dışındadır.
+- **Yasal metinler:** `hosting/gizlilik`, `hosting/kosullar` ve `hosting/hesap-sil` şu an taslaktır. Hukukçu onayı ve doldurulacak alanlar tamamlanmadan hosting yayınlanmaz. Metin kullanıcıdan yeniden onay isteyecek şekilde değişirse `AppConstants.termsVersion` güncellenir. Mağaza formları için: `docs/magaza/veri-beyanlari.md`.
 
 Pacta yalnızca kayıt aracıdır: borç vermez, tahsilat yapmaz, para tutmaz.

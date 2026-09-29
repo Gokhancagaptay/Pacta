@@ -42,9 +42,9 @@ Future<void> shareInvite(
   }
 }
 
-void openPactaCodePage(BuildContext context) => Navigator.of(
-  context,
-).push(MaterialPageRoute<void>(builder: (_) => const PactaCodePage()));
+void openPactaCodePage(BuildContext context) =>
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const PactaCodePage()));
 
 /// Kişinin kodu: QR (arkadaş okutur), yazılı kod, kopyala ve paylaş.
 class PactaCodePage extends ConsumerWidget {
@@ -101,10 +101,8 @@ class PactaCodePage extends ConsumerWidget {
             SelectableText(
               formatPactaCode(value),
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: 4,
-              ),
+              style: Theme.of(context).textTheme.headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 4),
             ),
             const SizedBox(height: 20),
             Row(
@@ -338,9 +336,8 @@ Future<void> confirmAddByCode(
             Text(
               person.name,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                sheet,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(sheet).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(

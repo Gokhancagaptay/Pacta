@@ -118,9 +118,8 @@ List<T> parseEach<T>(
 /// v2 defter verisi. Okumalar Firestore akışı, tüm yazmalar Cloud Functions
 /// komutudur (istemci ledgers altına yazamaz, bkz. firestore.rules).
 class LedgerRepository {
-  LedgerRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
-    : _firestore = firestore,
-      _functions = functions;
+  /// Parametreler dışarıdan `firestore:` ve `functions:` adıyla verilir.
+  LedgerRepository({this._firestore, this._functions});
 
   final FirebaseFirestore? _firestore;
   final FirebaseFunctions? _functions;

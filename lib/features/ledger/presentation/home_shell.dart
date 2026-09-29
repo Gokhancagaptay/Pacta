@@ -84,9 +84,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   void _go(int index) => setState(() => _index = index);
 
-  void _addEntry() => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const EntryComposerPage()));
+  void _addEntry() => Navigator.of(context)
+      .push(MaterialPageRoute<void>(builder: (_) => const EntryComposerPage()));
 
   @override
   Widget build(BuildContext context) {

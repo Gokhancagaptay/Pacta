@@ -3,8 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
 
-/// Web'de yayınlanan yasal sayfalar (web/gizlilik, web/kosullar,
-/// web/hesap-sil). Metin değişip yeniden kabul gerekiyorsa
+/// Web'de yayınlanan yasal sayfalar (hosting/gizlilik, hosting/kosullar,
+/// hosting/hesap-sil). Metin değişip yeniden kabul gerekiyorsa
 /// [AppConstants.termsVersion] artırılır.
 enum LegalPage {
   privacy('gizlilik', 'Gizlilik ve KVKK Aydınlatma Metni'),

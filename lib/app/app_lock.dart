@@ -353,9 +353,8 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
                 const SizedBox(height: 20),
                 Text(
                   'Pacta kilitli',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context).textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
                 Text(

@@ -32,9 +32,8 @@ class NotificationRoutes {
 
   /// `/l/<defter>/e/<kayıt>` → (defter, kayıt); kayıt yoksa null.
   static ({String ledgerId, String? entryId})? parse(String route) {
-    final match = RegExp(
-      r'^/l/([A-Za-z0-9_-]+)(?:/e/([A-Za-z0-9_-]+))?$',
-    ).firstMatch(route);
+    final match = RegExp(r'^/l/([A-Za-z0-9_-]+)(?:/e/([A-Za-z0-9_-]+))?$')
+        .firstMatch(route);
     if (match == null) return null;
     return (ledgerId: match[1]!, entryId: match[2]);
   }

@@ -128,9 +128,8 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
   }
 
   Future<void> _scan() async {
-    final code = await Navigator.of(
-      context,
-    ).push<String>(MaterialPageRoute(builder: (_) => const ScanCodePage()));
+    final code = await Navigator.of(context)
+        .push<String>(MaterialPageRoute(builder: (_) => const ScanCodePage()));
     if (code == null || !mounted) return;
     _query.text = formatPactaCode(code);
     setState(() {

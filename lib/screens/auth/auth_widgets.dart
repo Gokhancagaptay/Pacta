@@ -94,9 +94,8 @@ class PactaMark extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           'Pacta',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
     );

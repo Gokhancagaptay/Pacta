@@ -112,9 +112,9 @@ void main() {
   });
 
   test('birimler contracts/assets.json ile aynı', () {
-    final contract =
-        (jsonDecode(File('contracts/assets.json').readAsStringSync()) as List)
-            .cast<Map<String, dynamic>>();
+    final contract = (jsonDecode(
+      File('contracts/assets.json').readAsStringSync(),
+    ) as List).cast<Map<String, dynamic>>();
     expect(
       contract.map((a) => [a['code'], a['scale'], a['symbol'], a['label']]),
       Asset.values.map((a) => [a.code, a.scale, a.symbol, a.label]),

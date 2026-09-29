@@ -2,7 +2,7 @@
 
 Google Play "Veri güvenliği" formu ve Apple "App Privacy" için, uygulamanın
 2026-09-27 hâline göre hazırlanmıştır. Uygulamaya yeni bir SDK ya da veri türü
-eklenirse bu dosya ve [gizlilik sayfası](../../web/gizlilik/index.html) birlikte
+eklenirse bu dosya ve [gizlilik sayfası](../../hosting/gizlilik/index.html) birlikte
 güncellenir.
 
 ## Yüklemeden önce

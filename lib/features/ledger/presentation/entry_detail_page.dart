@@ -1167,9 +1167,7 @@ class _ReviseSheetState extends State<_ReviseSheet> {
               decoration: InputDecoration(
                 labelText: 'Tutar',
                 suffixText: _e.asset.symbol,
-                helperText: _suggested == null
-                    ? null
-                    : 'Karşı tarafın önerdiği tutar yazıldı; isterseniz değiştirin.',
+                helperText: _suggested == null ? null : 'Karşı tarafın önerdiği tutar yazıldı; isterseniz değiştirin.',
                 helperMaxLines: 2,
               ),
             ),
