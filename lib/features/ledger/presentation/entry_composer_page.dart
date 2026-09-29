@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/text/turkish.dart';
 import '../../../core/dates/local_date.dart';
 import '../../../core/money/asset.dart';
 import '../../../core/money/money.dart';
@@ -18,10 +19,18 @@ enum _Due { none, week, month, custom }
 
 /// Yeni kayıt: tür → kişi → tutar → gönder. Tarih bugün, birim TL.
 class EntryComposerPage extends ConsumerStatefulWidget {
-  const EntryComposerPage({super.key, this.ledgerId, this.initialMode});
+  const EntryComposerPage({
+    super.key,
+    this.ledgerId,
+    this.initialMode,
+    this.initialAsset,
+  });
 
   final String? ledgerId;
   final ComposerMode? initialMode;
+
+  /// Hızlı ödemede bakiyenin birimi (altın borcu altınla ödenir).
+  final Asset? initialAsset;
 
   @override
   ConsumerState<EntryComposerPage> createState() => _EntryComposerPageState();
@@ -37,9 +46,12 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
   /// üretir). Başarısız denemeden sonra form değiştiyse yeni kimlik alınır.
   late String _entryId = ref.read(ledgerRepositoryProvider).newId();
   String? _lastAttempt;
-  Asset _asset = Asset.tryLira;
+  late Asset _asset = widget.initialAsset ?? Asset.tryLira;
   _Due _due = _Due.none;
   LocalDate? _customDue;
+
+  /// İşlem tarihi; varsayılan bugün (geçmiş bir borç sonradan girilebilir).
+  LocalDate _occurredOn = LocalDate.today();
   String? _amountError;
   bool _busy = false;
 
@@ -101,10 +113,13 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
 
   Future<void> _pickDate() async {
     final today = DateTime.now();
+    // Daha önce seçilmiş tarih varsa oradan açılır.
+    final initial =
+        _customDue?.toDateTime() ?? today.add(const Duration(days: 14));
     final picked = await showDatePicker(
       context: context,
       locale: const Locale('tr', 'TR'),
-      initialDate: today.add(const Duration(days: 14)),
+      initialDate: initial.isBefore(today) ? today : initial,
       firstDate: today,
       lastDate: today.add(const Duration(days: 3650)),
     );
@@ -113,6 +128,22 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
         _due = _Due.custom;
         _customDue = LocalDate.fromDateTime(picked);
       });
+    }
+  }
+
+  /// İşlem tarihi: en geç bugün, en fazla 10 yıl önce (sunucu 50 yıla
+  /// kadar kabul eder; arayüzde makul aralık).
+  Future<void> _pickOccurredOn() async {
+    final today = LocalDate.today();
+    final picked = await showDatePicker(
+      context: context,
+      locale: const Locale('tr', 'TR'),
+      initialDate: _occurredOn.toDateTime(),
+      firstDate: DateTime(today.year - 10),
+      lastDate: today.toDateTime(),
+    );
+    if (picked != null && mounted) {
+      setState(() => _occurredOn = LocalDate.fromDateTime(picked));
     }
   }
 
@@ -143,6 +174,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       _asset.code,
       _isPayment ? '' : _dueOn?.toIso(),
       _description.text.trim(),
+      _occurredOn.toIso(),
     ].join('|');
     if (_lastAttempt != null && _lastAttempt != attempt) {
       _entryId = ref.read(ledgerRepositoryProvider).newId();
@@ -158,7 +190,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
             kind: _isPayment ? EntryKind.payment : EntryKind.debt,
             iGave: _iGave,
             amount: amount,
-            occurredOn: LocalDate.today(),
+            occurredOn: _occurredOn,
             dueOn: _isPayment ? null : _dueOn,
             description: _description.text.trim(),
           );
@@ -293,7 +325,8 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
               decoration: InputDecoration(
-                hintText: '0,00',
+                // Birimin ondalık basamağına göre: 0,00 / 0,000 / 0
+                hintText: _asset.scale == 0 ? '0' : '0,${'0' * _asset.scale}',
                 errorText: _amountError,
                 suffixIcon: Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -322,6 +355,18 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                 counterText: '',
               ),
               onChanged: (_) => setState(() {}),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: const Text('İşlem tarihi'),
+              trailing: Text(
+                _occurredOn == LocalDate.today()
+                    ? 'Bugün'
+                    : _occurredOn.format(),
+                style: TextStyle(color: c.credit, fontWeight: FontWeight.w600),
+              ),
+              onTap: _busy ? null : _pickOccurredOn,
             ),
             if (!_isPayment) ...[
               const SizedBox(height: 16),
@@ -456,18 +501,36 @@ class _PreviewCard extends StatelessWidget {
 }
 
 /// Kayıt için kişi seçimi: mevcut defterler ya da yeni kişi.
-class _PersonPickerSheet extends ConsumerWidget {
+class _PersonPickerSheet extends ConsumerStatefulWidget {
   const _PersonPickerSheet();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PersonPickerSheet> createState() => _PersonPickerSheetState();
+}
+
+class _PersonPickerSheetState extends ConsumerState<_PersonPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
     final uid = ref.watch(currentUidProvider);
-    // Hesabını silen kişinin defterine kayıt eklenemez.
+    final q = trLower(_query.trim());
+    bool matches(Ledger l) =>
+        q.isEmpty || trLower(l.other(uid).displayName).contains(q);
+    // Hesabını silen kişinin ya da taşınmış defterin kaydı eklenemez.
+    final visible = ref.watch(visibleLedgersProvider).valueOrNull ?? const [];
+    final visibleIds = {for (final l in visible) l.id};
     final ledgers = [
-      for (final l
-          in ref.watch(visibleLedgersProvider).valueOrNull ?? const <Ledger>[])
-        if (!l.isClosed) l,
+      for (final l in visible)
+        if (!l.isClosed && matches(l)) l,
     ];
+    // Listeden kaldırılanlara da kayıt eklenebilir (en sonda).
+    final hidden = [
+      for (final l
+          in ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[])
+        if (!visibleIds.contains(l.id) && !l.isClosed && matches(l)) l,
+    ];
+    final all = visible.length + hidden.length;
     final favorites = ref.watch(favoriteLedgersProvider);
     return SafeArea(
       child: ConstrainedBox(
@@ -477,6 +540,17 @@ class _PersonPickerSheet extends ConsumerWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
+            if (all > 6)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: TextField(
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Kişi ara',
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
             ListTile(
               leading: const Icon(Icons.person_add_alt_1_rounded),
               title: const Text('Yeni kişi ekle'),
@@ -499,6 +573,13 @@ class _PersonPickerSheet extends ConsumerWidget {
                 trailing: favorites.contains(l.id)
                     ? Icon(Icons.star_rounded, color: context.pacta.pendingDot)
                     : null,
+                onTap: () => Navigator.of(context).pop(l.id),
+              ),
+            for (final l in hidden)
+              ListTile(
+                leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
+                title: Text(l.other(uid).displayName),
+                subtitle: const Text('Listeden kaldırıldı'),
                 onTap: () => Navigator.of(context).pop(l.id),
               ),
           ],

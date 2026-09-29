@@ -429,7 +429,7 @@ class _InboxCardState extends ConsumerState<InboxCard> {
     final mine = Money(item.myDeltaMinor, item.amount.asset);
     final subtitle = [
       if (item.description.isNotEmpty) item.description,
-      if (!item.needsConfirmation) 'Düzeltmeniz bekleniyor',
+      if (!item.needsConfirmation) 'Düzenlemeniz bekleniyor',
     ].join(' · ');
 
     return SurfaceCard(
@@ -498,7 +498,7 @@ class _InboxCardState extends ConsumerState<InboxCard> {
                     ),
                     onPressed: () =>
                         openEntry(context, item.ledgerId, item.entryId),
-                    child: Text(item.needsConfirmation ? 'İncele' : 'Düzelt'),
+                    child: Text(item.needsConfirmation ? 'İncele' : 'Düzenle'),
                   ),
                 ),
               ],

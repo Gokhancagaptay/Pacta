@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/money/asset.dart';
 import '../../../core/report.dart';
 import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
@@ -17,6 +18,13 @@ import 'entry_composer_page.dart';
 import 'statement_export.dart';
 
 /// Tek bir kişiyle olan defter: bakiye, hızlı eylemler, kayıtlar.
+/// Defter sayfasında ilk çizilen kayıt sayısı; "daha eski" ile artar.
+const ledgerPageSize = 100;
+
+final _visibleEntriesProvider = StateProvider.autoDispose.family<int, String>(
+  (ref, ledgerId) => ledgerPageSize,
+);
+
 class LedgerPage extends ConsumerWidget {
   const LedgerPage({super.key, required this.ledgerId});
 
@@ -78,7 +86,10 @@ class LedgerPage extends ConsumerWidget {
         final archived = ref.watch(archivedLedgersProvider(ledger.id));
 
         final String sentence;
-        if (balance.isZero) {
+        if (ledger.isArchived) {
+          // Bakiye ortak deftere taşındı; burada kalan eski hâlidir.
+          sentence = 'Bu bakiye ortak deftere taşındı.';
+        } else if (balance.isZero) {
           sentence = 'Hesabınız denk.';
         } else if (balance.isNegative) {
           sentence = '${(-balance).format()} borcunuz var.';
@@ -124,16 +135,28 @@ class LedgerPage extends ConsumerWidget {
               ],
             ),
             actions: [
-              IconButton(
-                tooltip: favorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
-                icon: Icon(
-                  favorite ? Icons.star_rounded : Icons.star_border_rounded,
-                  color: favorite ? c.pendingDot : null,
+              // Arşivdeki defter listelerde görünmez; favori anlamsız.
+              if (!ledger.isArchived)
+                IconButton(
+                  tooltip: favorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
+                  icon: Icon(
+                    favorite ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: favorite ? c.pendingDot : null,
+                  ),
+                  onPressed: () => ref
+                      .read(ledgerRepositoryProvider)
+                      .setFavorite(uid, ledger.id, !favorite)
+                      .catchError((Object e, StackTrace st) {
+                        reportError(e, st, reason: 'Favori kaydedilemedi');
+                        if (context.mounted) {
+                          showSnack(
+                            context,
+                            'Favori kaydedilemedi. Tekrar deneyin.',
+                            error: true,
+                          );
+                        }
+                      }),
                 ),
-                onPressed: () => ref
-                    .read(ledgerRepositoryProvider)
-                    .setFavorite(uid, ledger.id, !favorite),
-              ),
               PopupMenuButton<String>(
                 tooltip: 'Diğer',
                 onSelected: (value) {
@@ -220,7 +243,9 @@ class LedgerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ledger.isPrivate ? 'Bakiye' : 'Onaylı bakiye',
+                      ledger.isArchived
+                          ? 'Taşınmadan önceki bakiye'
+                          : (ledger.isPrivate ? 'Bakiye' : 'Onaylı bakiye'),
                       style: TextStyle(fontSize: 13, color: c.muted),
                     ),
                     const SizedBox(height: 4),
@@ -304,20 +329,25 @@ class LedgerPage extends ConsumerWidget {
                             label: 'Kayıt ekle',
                             onTap: () => _compose(context, ledger),
                           ),
-                          const SizedBox(width: 8),
-                          _Action(
-                            icon: Icons.south_west_rounded,
-                            label: balance.isNegative
-                                ? 'Ödeme yaptım'
-                                : 'Ödeme aldım',
-                            onTap: () => _compose(
-                              context,
-                              ledger,
-                              mode: balance.isNegative
-                                  ? ComposerMode.paid
-                                  : ComposerMode.received,
+                          // Bakiye denkse ödeme kısayolu yok (kim kime?);
+                          // birim bakiyeninkidir (altın borcu altınla).
+                          if (!balance.isZero) ...[
+                            const SizedBox(width: 8),
+                            _Action(
+                              icon: Icons.south_west_rounded,
+                              label: balance.isNegative
+                                  ? 'Ödeme yaptım'
+                                  : 'Ödeme aldım',
+                              onTap: () => _compose(
+                                context,
+                                ledger,
+                                mode: balance.isNegative
+                                    ? ComposerMode.paid
+                                    : ComposerMode.received,
+                                asset: balance.asset,
+                              ),
                             ),
-                          ),
+                          ],
                           if (plan.isRelevant) ...[
                             const SizedBox(width: 8),
                             _Action(
@@ -371,7 +401,10 @@ class LedgerPage extends ConsumerWidget {
                   child: ListTile(
                     leading: const Icon(Icons.inventory_2_outlined),
                     title: const Text('Özel defterdeki eski kayıtlar'),
-                    subtitle: const Text('Yalnızca siz görürsünüz'),
+                    // Birden çok arşiv varsa hangisi olduğu ad ile ayrılır.
+                    subtitle: Text(
+                      '${old.b.displayName} · yalnızca siz görürsünüz',
+                    ),
                     trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -425,7 +458,7 @@ class LedgerPage extends ConsumerWidget {
                                     'onaylayınca bakiyeye işlenir.',
                         ),
                       ]
-                    : _grouped(entries, me, ledger.isPrivate),
+                    : _grouped(context, ref, entries, me, ledger.isPrivate),
               ),
             ],
           ),
@@ -434,11 +467,24 @@ class LedgerPage extends ConsumerWidget {
     );
   }
 
-  List<Widget> _grouped(List<LedgerEntry> entries, Side me, bool isPrivate) {
+  /// Kayıtlar işlem tarihine göre (yeniden eskiye) aylara ayrılır; aynı
+  /// gündekiler giriliş sırasına göre. Sunucu oluşturulma sırasıyla
+  /// gönderir; tarihi değiştirilen kayıt yanlış ayın altında kalmasın.
+  List<Widget> _grouped(
+    BuildContext context,
+    WidgetRef ref,
+    List<LedgerEntry> entries,
+    Side me,
+    bool isPrivate,
+  ) {
+    final sorted = [...entries]..sort(newestFirst);
+    final limit = ref.watch(_visibleEntriesProvider(ledgerId));
+    final shown = sorted.take(limit);
     final groups = <String, List<LedgerEntry>>{};
-    for (final e in entries) {
+    for (final e in shown) {
       groups.putIfAbsent(e.occurredOn.formatMonth(), () => []).add(e);
     }
+    final hidden = sorted.length - limit;
     return [
       for (final group in groups.entries) ...[
         SectionHeader(title: group.key),
@@ -456,7 +502,29 @@ class LedgerPage extends ConsumerWidget {
           ),
         ),
       ],
+      if (hidden > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Center(
+            child: TextButton(
+              onPressed: () =>
+                  ref.read(_visibleEntriesProvider(ledgerId).notifier).state +=
+                      ledgerPageSize,
+              child: Text('Daha eski kayıtlar ($hidden)'),
+            ),
+          ),
+        ),
     ];
+  }
+
+  /// İşlem tarihi yeniden eskiye; aynı gün içinde son girilen önce.
+  static int newestFirst(LedgerEntry x, LedgerEntry y) {
+    final c = y.occurredOn.compareTo(x.occurredOn);
+    if (c != 0) return c;
+    final tx = x.createdAt;
+    final ty = y.createdAt;
+    if (tx != null && ty != null && tx != ty) return ty.compareTo(tx);
+    return y.id.compareTo(x.id);
   }
 
   /// Taşıma başarılıysa bu sayfa ortak defterle değişir.
@@ -481,11 +549,19 @@ class LedgerPage extends ConsumerWidget {
     );
   }
 
-  void _compose(BuildContext context, Ledger ledger, {ComposerMode? mode}) {
+  void _compose(
+    BuildContext context,
+    Ledger ledger, {
+    ComposerMode? mode,
+    Asset? asset,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            EntryComposerPage(ledgerId: ledger.id, initialMode: mode),
+        builder: (_) => EntryComposerPage(
+          ledgerId: ledger.id,
+          initialMode: mode,
+          initialAsset: asset,
+        ),
       ),
     );
   }
@@ -800,22 +876,26 @@ class _Action extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
-          child: SizedBox(
-            height: 64,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: c.credit, size: 20),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: c.credit,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 64),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: c.credit, size: 20),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: c.credit,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

@@ -6,7 +6,9 @@ import 'models.dart';
 /// Kayıtları kullanıcının bakış açısından anlatan metinler.
 ///
 /// Terimler tasarım kurallarındaki sözlüğe uyar: "borç yazdı",
-/// "ödeme bildirdi", "onayla / itiraz et / reddet", "düzeltildi".
+/// "ödeme bildirdi", "onayla / itiraz et / reddet". Bekleyen kaydı
+/// değiştirmek "düzenle / düzenlendi"; onaylı kaydı ters kayıtla geri almak
+/// "düzelt / düzeltildi".
 class EntryText {
   EntryText._();
 
@@ -73,7 +75,7 @@ class EntryText {
       case EntryState.disputed:
         return e.awaitingSide == me
             ? (
-                label: 'İtiraz edildi · düzeltmeniz bekleniyor',
+                label: 'İtiraz edildi · düzenlemeniz bekleniyor',
                 tone: ChipTone.dispute,
                 icon: Icons.edit_note_rounded,
               )
@@ -165,8 +167,9 @@ class EntryText {
       tone: ChipTone.neutral,
       icon: Icons.link_off_rounded,
     ),
+    // Paylaşım menüsünde gönderilip gönderilmediği bilinemez.
     WebConfirmationState.requested => (
-      label: 'Onay linki gönderildi',
+      label: 'Onay linki oluşturuldu',
       tone: ChipTone.pending,
       icon: Icons.schedule_rounded,
     ),
@@ -191,7 +194,7 @@ class EntryText {
     'created' => 'Kaydedildi',
     'confirmed' => 'Onaylandı',
     'disputed' => 'İtiraz edildi',
-    'revised' => 'Düzeltildi',
+    'revised' => 'Düzenlendi',
     'rejected' => 'Reddedildi',
     'cancelled' => 'Geri çekildi',
     'webRequested' => 'Onay linki oluşturuldu',

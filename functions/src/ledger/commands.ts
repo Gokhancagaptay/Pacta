@@ -972,8 +972,8 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
         uid: otherUid,
         setting: "newDebtRequests",
         type: "confirmRequest",
-        title: "Kayıt düzeltildi",
-        message: `${myName} kaydı düzeltti, onayınızı bekliyor: ` +
+        title: "Kayıt düzenlendi",
+        message: `${myName} kaydı düzenledi, onayınızı bekliyor: ` +
           `${formatMinor(revised.amountMinor, revised.asset)}.`,
         ledgerId: input.ledgerId,
         entryId: input.entryId,

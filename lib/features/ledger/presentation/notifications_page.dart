@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/report.dart';
 import '../../../core/ui/widgets.dart';
 import '../application/providers.dart';
 import '../domain/models.dart';
@@ -18,7 +19,10 @@ class NotificationsPage extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     final notes = ref.watch(notificationsProvider);
     final repo = ref.read(ledgerRepositoryProvider);
-    final time = DateFormat('d MMM HH:mm', 'tr_TR');
+    final thisYear = DateFormat('d MMM HH:mm', 'tr_TR');
+    final otherYear = DateFormat('d MMM y HH:mm', 'tr_TR');
+    String time(DateTime at) =>
+        (at.year == DateTime.now().year ? thisYear : otherYear).format(at);
     final unread = [
       for (final n in notes.valueOrNull ?? const <AppNotification>[])
         if (!n.isRead) n,
@@ -30,11 +34,20 @@ class NotificationsPage extends ConsumerWidget {
         actions: [
           if (unread.isNotEmpty)
             TextButton(
-              onPressed: () {
-                for (final n in unread) {
-                  repo.markNotificationRead(uid, n.id);
+              // Tek toplu yazım; ekranda görünmeyen eski bildirimler de.
+              onPressed: () => repo.markAllNotificationsRead(uid).catchError((
+                Object e,
+                StackTrace st,
+              ) {
+                reportError(e, st, reason: 'Bildirimler işaretlenemedi');
+                if (context.mounted) {
+                  showSnack(
+                    context,
+                    'İşaretlenemedi. Tekrar deneyin.',
+                    error: true,
+                  );
                 }
-              },
+              }),
               child: const Text('Tümünü okundu say'),
             ),
         ],
@@ -114,7 +127,7 @@ class NotificationsPage extends ConsumerWidget {
                                         Text(list[i].message),
                                         if (list[i].createdAt != null)
                                           Text(
-                                            time.format(list[i].createdAt!),
+                                            time(list[i].createdAt!),
                                             style: TextStyle(
                                               fontSize: 12,
                                               color: c.muted,

@@ -227,6 +227,24 @@ class LedgerRepository {
       .doc(notificationId)
       .update({'isRead': true});
 
+  /// Okunmamış tüm bildirimleri tek toplu yazımla okundu yapar (en fazla
+  /// 400; ekranda yüklü 20 ile sınırlı değil).
+  Future<void> markAllNotificationsRead(String uid) async {
+    final unread = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .limit(400)
+        .get();
+    if (unread.docs.isEmpty) return;
+    final batch = _db.batch();
+    for (final d in unread.docs) {
+      batch.update(d.reference, {'isRead': true});
+    }
+    await batch.commit();
+  }
+
   /// Bu kişinin hatırlatmaları push olarak gelmez; bildirim listesinde kalır.
   Future<void> setReminderMuted(String uid, String ledgerId, bool muted) =>
       _db.collection('users').doc(uid).set({

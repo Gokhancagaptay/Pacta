@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -153,6 +154,7 @@ class FakeRepo extends LedgerRepository {
       'amountMinor': amount.minor,
       'description': description,
       'dueOn': dueOn,
+      'occurredOn': occurredOn,
     };
     return EntryState.pending;
   }
@@ -321,6 +323,7 @@ Widget app(
   List<Ledger>? people,
   Stream<List<InboxItem>>? inboxStream,
   Map<String, DateTime> hidden = const {},
+  Map<String, List<LedgerEntry>> entries = const {},
 }) => ProviderScope(
   overrides: [
     authUserProvider.overrideWith((ref) => Stream.value(null)),
@@ -344,7 +347,9 @@ Widget app(
         ].firstWhere((l) => l.id == id),
       ),
     ),
-    entriesProvider.overrideWith((ref, id) => Stream.value(const [])),
+    entriesProvider.overrideWith(
+      (ref, id) => Stream.value(entries[id] ?? const []),
+    ),
     userProfileProvider.overrideWith(
       (ref) => Stream.value(
         UserModel(
@@ -538,6 +543,45 @@ void main() {
     expect(find.textContaining('açık bakiye'), findsOneWidget);
     await tester.tap(find.text('Vazgeç'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('Defter: aylar işlem tarihine göre, yeni ay üstte', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    LedgerEntry e(String id, String occurredOn, int createdDay) =>
+        LedgerEntry.fromMap(id, {
+          'ledgerId': 'p_can',
+          'kind': 'debt',
+          'direction': 'aToB',
+          'asset': 'TRY',
+          'amountMinor': 1000,
+          'deltaMinor': 1000,
+          'occurredOn': occurredOn,
+          'description': id,
+          'state': 'confirmed',
+          'version': 1,
+          'proposedBy': 'a',
+          'createdAt': Timestamp.fromDate(DateTime(2026, 9, createdDay)),
+        });
+    // Sunucu oluşturulma sırasıyla gönderir: tarihi geçmişe alınmış kayıt
+    // (Ağustos) en yeni oluşturulan.
+    await tester.pumpWidget(
+      app(
+        const LedgerPage(ledgerId: 'p_can'),
+        FakeRepo(),
+        entries: {
+          'p_can': [
+            e('agustos-kaydi', '2026-08-10', 20),
+            e('eylul-kaydi', '2026-09-05', 6),
+          ],
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    final eylul = tester.getTopLeft(find.text('Eylül 2026')).dy;
+    final agustos = tester.getTopLeft(find.text('Ağustos 2026')).dy;
+    expect(eylul, lessThan(agustos));
   });
 
   testWidgets('Kapalı defter: açıklama görünür, yeni kayıt eklenemez', (
@@ -758,6 +802,7 @@ void main() {
       'amountMinor': 1250,
       'description': 'Taksi',
       'dueOn': null,
+      'occurredOn': LocalDate.today(),
     });
   });
 
@@ -1114,7 +1159,7 @@ void main() {
         state: WebConfirmationState.requested,
         expiresAt: DateTime(2026, 9, 1),
       );
-      expect(EntryText.webStatus(web).label, 'Onay linki gönderildi');
+      expect(EntryText.webStatus(web).label, 'Onay linki oluşturuldu');
       expect(
         EntryText.webStatus(expired, now: DateTime(2026, 9, 2)).label,
         'Onay linkinin süresi doldu',

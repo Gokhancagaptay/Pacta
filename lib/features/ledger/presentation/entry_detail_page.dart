@@ -100,7 +100,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
           ? 'Onaylarsanız iki kayıt birbirini sıfırlar. Katılmıyorsanız '
                 'reddedin.'
           : 'Onaylarsanız ikinizin bakiyesine işlenir. Yanlışsa itiraz edin, '
-                '$other düzeltsin.';
+                '$other düzenlesin.';
       children = [
         FilledButton.icon(
           onPressed: _busy
@@ -141,9 +141,10 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       hint = e.kind == EntryKind.reversal
           ? '$other onaylayana kadar geri çekebilirsiniz.'
           : e.state == EntryState.disputed
-          ? 'Tutarı, tarihi ya da açıklamayı düzeltin; $other yeniden '
+          ? 'Tutarı, tarihi ya da açıklamayı düzenleyin; $other yeniden '
                 'onaylayabilir.'
-          : '$other onaylayana kadar düzeltebilir ya da geri çekebilirsiniz.';
+          : '$other onaylayana kadar düzenleyebilir ya da geri '
+                'çekebilirsiniz.';
       children = [
         Row(
           children: [
@@ -151,7 +152,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
               Expanded(
                 child: FilledButton(
                   onPressed: _busy ? null : () => _revise(e),
-                  child: const Text('Düzelt'),
+                  child: const Text('Düzenle'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -228,6 +229,32 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
   /// Onay linkini oluşturur ve paylaşım menüsünü açar (WhatsApp, SMS...).
   /// Paylaşım açılamazsa link panoya kopyalanır.
   Future<void> _askWeb(LedgerEntry e) async {
+    final previous = e.webConfirmation?.state;
+    if (previous == WebConfirmationState.disputed ||
+        previous == WebConfirmationState.rejected) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Yeni link gönderilsin mi?'),
+          content: Text(
+            'Karşı tarafın ${previous == WebConfirmationState.disputed ? 'itirazı' : 'reddi'} '
+            'bu kayıttaki karttan kalkar; kaydın geçmişinde görünmeye devam '
+            'eder. Kayıt değişmedi; yeniden onay isteyeceksiniz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Vazgeç'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Devam et'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
     final choice = await showModalBottomSheet<_WebChoice>(
       context: context,
       isScrollControlled: true,
@@ -305,7 +332,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         dueOn: result.dueOn,
         clearDue: result.dueOn == null && e.dueOn != null,
       ),
-      'Düzeltildi ve yeniden onaya gönderildi.',
+      'Düzenlendi ve yeniden onaya gönderildi.',
     );
   }
 
@@ -395,7 +422,10 @@ class _Body extends StatelessWidget {
     final status = EntryText.status(entry, me, isPrivate: ledger.isPrivate);
     final mine = entry.deltaFor(me);
     final dispute = entry.dispute;
-    final time = DateFormat('d MMM HH:mm', 'tr_TR');
+    final thisYear = DateFormat('d MMM HH:mm', 'tr_TR');
+    final otherYear = DateFormat('d MMM y HH:mm', 'tr_TR');
+    String time(DateTime at) =>
+        (at.year == DateTime.now().year ? thisYear : otherYear).format(at);
 
     Widget row(String label, String value, {Color? color}) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -452,7 +482,7 @@ class _Body extends StatelessWidget {
               if (entry.version > 1)
                 row(
                   'Durum',
-                  '${entry.version - 1} kez düzeltildi',
+                  '${entry.version - 1} kez düzenlendi',
                   color: c.dispute,
                 ),
             ],
@@ -485,6 +515,11 @@ class _Body extends StatelessWidget {
             web: entry.webConfirmation!,
             entry: entry,
             otherName: otherName,
+            // Düzeltilen (ters kayıtlı) kaydın bekleyen linki artık
+            // çalışmaz (sunucu reddeder).
+            withdrawn:
+                entry.reversedBy != null &&
+                entry.webConfirmation!.state == WebConfirmationState.requested,
           ),
         ],
         if (dispute != null && entry.state == EntryState.disputed) ...[
@@ -541,7 +576,8 @@ class _Body extends StatelessWidget {
                             color: switch (ev.type) {
                               'disputed' || 'webDisputed' => c.dispute,
                               'confirmed' || 'webConfirmed' => c.credit,
-                              'webRejected' => c.debt,
+                              'rejected' || 'webRejected' => c.debt,
+                              'cancelled' => c.muted,
                               _ => c.pendingDot,
                             },
                             shape: BoxShape.circle,
@@ -559,7 +595,7 @@ class _Body extends StatelessWidget {
                               ),
                               if (ev.at != null)
                                 Text(
-                                  time.format(ev.at!),
+                                  time(ev.at!),
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: c.muted,
@@ -598,7 +634,11 @@ class _WebConfirmationCard extends StatelessWidget {
     required this.web,
     required this.entry,
     required this.otherName,
+    this.withdrawn = false,
   });
+
+  /// Kayıt düzeltildi; bekleyen link geçersiz.
+  final bool withdrawn;
 
   final WebConfirmation web;
 
@@ -609,7 +649,13 @@ class _WebConfirmationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.pacta;
-    final status = EntryText.webStatus(web);
+    final status = withdrawn
+        ? (
+            label: 'Onay linki geçersiz',
+            tone: ChipTone.neutral,
+            icon: Icons.link_off_rounded,
+          )
+        : EntryText.webStatus(web);
     final (fg, bg) = switch (status.tone) {
       ChipTone.credit => (c.credit, c.creditSoft),
       ChipTone.dispute => (c.dispute, c.disputeSoft),
@@ -623,7 +669,9 @@ class _WebConfirmationCard extends StatelessWidget {
       _ => null,
     };
     final lines = <String>[
-      if (web.state == WebConfirmationState.requested)
+      if (withdrawn)
+        'Kayıt düzeltildiği için bu link artık çalışmıyor.'
+      else if (web.state == WebConfirmationState.requested)
         web.isExpired(DateTime.now())
             ? '$otherName yanıt vermedi. Yeni link gönderebilirsiniz.'
             : '$otherName linki açıp e-posta adresini doğrulayınca kaydı '
@@ -896,6 +944,16 @@ class _DisputeSheetState extends State<_DisputeSheet> {
         setState(() => _amountError = e.message);
         return;
       }
+      if (suggested.minor <= 0) {
+        setState(() => _amountError = 'Tutar sıfırdan büyük olmalı.');
+        return;
+      }
+      if (suggested.minor == widget.entry.amountMinor) {
+        setState(
+          () => _amountError = 'Bu tutar kayıttakiyle aynı; doğrusunu yazın.',
+        );
+        return;
+      }
     }
     Navigator.pop(context, (_reason, _note.text.trim(), suggested));
   }
@@ -917,7 +975,8 @@ class _DisputeSheetState extends State<_DisputeSheet> {
             Text('İtiraz et', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              'Kayıt, düzeltilmesi için karşı tarafa döner. Bakiyeye işlenmez.',
+              'Kayıt, düzenlenmesi için karşı tarafa döner. Bakiyeye '
+              'işlenmez.',
               style: TextStyle(color: context.pacta.muted),
             ),
             const SizedBox(height: 12),
@@ -1090,10 +1149,13 @@ class _ReviseSheetState extends State<_ReviseSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Kaydı düzelt', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Kaydı düzenle',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 4),
             Text(
-              'Düzeltilen kayıt yeniden onaya gider.',
+              'Düzenlenen kayıt yeniden onaya gider.',
               style: TextStyle(color: c.muted),
             ),
             const SizedBox(height: 12),
@@ -1124,8 +1186,10 @@ class _ReviseSheetState extends State<_ReviseSheet> {
                 'Vade',
                 due == null ? 'Vade yok' : due.format(),
                 () async {
+                  // İşlem tarihi vadeden sonraya alındıysa seçici işlem
+                  // tarihinden açılır (başlangıç, en erken günden önce olamaz).
                   final picked = await _pick(
-                    due ?? _occurredOn,
+                    due == null || due < _occurredOn ? _occurredOn : due,
                     first: _occurredOn,
                   );
                   if (picked != null) setState(() => _dueOn = picked);
@@ -1156,7 +1220,7 @@ class _ReviseSheetState extends State<_ReviseSheet> {
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _submit,
-              child: const Text('Düzelt ve gönder'),
+              child: const Text('Düzenle ve gönder'),
             ),
           ],
         ),
