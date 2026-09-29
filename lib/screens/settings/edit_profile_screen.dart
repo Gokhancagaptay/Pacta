@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pacta/core/report.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/core/ui/widgets.dart';
 import 'package:pacta/models/user_model.dart';
@@ -47,8 +48,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('Adınız güncellendi.')),
       );
-    } catch (e) {
-      debugPrint('Profil kaydedilemedi: $e');
+    } catch (e, st) {
+      reportError(e, st, reason: 'Profil kaydedilemedi');
       if (!mounted) return;
       setState(() {
         _busy = false;

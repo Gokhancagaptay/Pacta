@@ -16,6 +16,9 @@ import '../ledger/presentation/contacts_ui.dart';
 import 'delete_account_page.dart';
 import 'profile_providers.dart';
 
+/// Kilit anahtarı doğrulama sürerken ikinci isteği açmasın.
+bool _lockBusy = false;
+
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
@@ -116,9 +119,17 @@ class ProfilePage extends ConsumerWidget {
                     ),
                     value: ref.watch(appLockProvider).enabled,
                     onChanged: (value) async {
-                      final error = await ref
-                          .read(appLockProvider.notifier)
-                          .setEnabled(value);
+                      // Doğrulama sürerken ikinci dokunuş yeni istek açmaz.
+                      if (_lockBusy) return;
+                      _lockBusy = true;
+                      final String? error;
+                      try {
+                        error = await ref
+                            .read(appLockProvider.notifier)
+                            .setEnabled(value);
+                      } finally {
+                        _lockBusy = false;
+                      }
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

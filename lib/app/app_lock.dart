@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,10 +51,28 @@ class LocalDeviceAuth implements DeviceAuth {
 
 final deviceAuthProvider = Provider<DeviceAuth>((ref) => LocalDeviceAuth());
 
+final _monotonic = Stopwatch()..start();
+
+/// Geçen süreyi ölçmek için tekdüze saat: telefonun saati geri alınsa da
+/// kilit süresi atlanmaz. Mutlak değeri anlamsızdır, yalnızca farkı.
+DateTime monotonicNow() =>
+    DateTime.fromMicrosecondsSinceEpoch(_monotonic.elapsedMicroseconds);
+
 /// Testlerde saat verilebilsin diye.
 final appLockClockProvider = Provider<DateTime Function()>(
-  (ref) => DateTime.now,
+  (ref) => monotonicNow,
 );
+
+/// Kilit açıkken Android ekran görüntüsünü ve son uygulamalar önizlemesini
+/// engeller (FLAG_SECURE; MainActivity.kt). Diğer platformlarda etkisiz.
+Future<void> setSecureWindow(bool secure) async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+  try {
+    await const MethodChannel('pacta/secure').invokeMethod('setSecure', secure);
+  } catch (_) {
+    // Kanal yoksa (testler) sessizce geçilir.
+  }
+}
 
 /// Oturum açık mı (kilit yalnızca oturum varken anlamlıdır).
 final signedInProvider = Provider<bool>(
@@ -144,8 +163,15 @@ class AppLockController extends StateNotifier<AppLockState> {
     }
   }
 
-  /// Kilidi açar; başarılıysa true.
+  /// Kilidi açar; başarılıysa true. Cihazın ekran kilidi kaldırılmışsa
+  /// doğrulama hiç yapılamaz: kullanıcı kilitli kalmasın diye uygulama
+  /// kilidi kapatılır (ekran kilidini kaldırmak zaten cihaz şifresini ister).
   Future<bool> unlock() async {
+    if (!await _auth.isAvailable()) {
+      await _save(false);
+      if (mounted) state = const AppLockState();
+      return true;
+    }
     final ok = await _verify("Pacta'yı açmak için kimliğinizi doğrulayın");
     if (ok && mounted) state = AppLockState(enabled: state.enabled);
     return ok;
@@ -161,9 +187,16 @@ class AppLockController extends StateNotifier<AppLockState> {
   /// eline alan biri kilidi kapatamasın). Sonuç kullanıcıya gösterilecek
   /// hata ya da başarıda null.
   Future<String?> setEnabled(bool value) async {
-    if (value && !await _auth.isAvailable()) {
+    final available = await _auth.isAvailable();
+    if (value && !available) {
       return 'Bu cihazda ekran kilidi (parmak izi, yüz ya da PIN) tanımlı '
           'değil. Önce telefonun ayarlarından ekran kilidi ekleyin.';
+    }
+    // Ekran kilidi kaldırılmış cihazda kapatma doğrulama istemez (yapılamaz).
+    if (!value && !available) {
+      if (!await _save(false)) return 'Ayar kaydedilemedi.';
+      if (mounted) state = const AppLockState();
+      return null;
     }
     final ok = await _verify(
       value
@@ -171,14 +204,19 @@ class AppLockController extends StateNotifier<AppLockState> {
           : 'Uygulama kilidini kapatmak için kimliğinizi doğrulayın',
     );
     if (!ok) return 'Doğrulanamadı; ayar değişmedi.';
+    if (!await _save(value)) return 'Ayar kaydedilemedi.';
+    if (mounted) state = AppLockState(enabled: value);
+    return null;
+  }
+
+  Future<bool> _save(bool value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(prefsKey, value);
+      return true;
     } catch (_) {
-      return 'Ayar kaydedilemedi.';
+      return false;
     }
-    if (mounted) state = AppLockState(enabled: value);
-    return null;
   }
 }
 
@@ -211,6 +249,7 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(ref.read(appLockProvider.notifier).load());
+    unawaited(setSecureWindow(ref.read(appLockProvider).enabled));
   }
 
   @override
@@ -236,13 +275,21 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(
+      appLockProvider.select((s) => s.enabled),
+      (_, enabled) => unawaited(setSecureWindow(enabled)),
+    );
     final locked =
         ref.watch(appLockProvider.select((s) => s.locked)) &&
         ref.watch(signedInProvider);
     // Ağaç yapısı değişmez: içerik (sayfa yığını) kilitliyken de yaşar.
+    // Odak da kapanır: gizli bir metin alanı klavyeden yazı almasın.
     return Stack(
       children: [
-        Offstage(offstage: locked, child: widget.child),
+        Offstage(
+          offstage: locked,
+          child: ExcludeFocus(excluding: locked, child: widget.child),
+        ),
         if (locked) const _LockScreen(),
       ],
     );
@@ -258,6 +305,7 @@ class _LockScreen extends ConsumerStatefulWidget {
 
 class _LockScreenState extends ConsumerState<_LockScreen> {
   bool _failed = false;
+  bool _signingOut = false;
 
   @override
   void initState() {
@@ -271,9 +319,14 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
     if (!ok && mounted) setState(() => _failed = true);
   }
 
+  /// Önce çıkış tamamlanır, sonra kilit kalkar: çıkış sürerken (internetsiz
+  /// birkaç saniye) arkadaki sayfalar görünmez.
   Future<void> _signOut() async {
-    ref.read(appLockProvider.notifier).release();
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    final lock = ref.read(appLockProvider.notifier);
     await AuthService().signOut();
+    lock.release();
   }
 
   @override
@@ -323,7 +376,10 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
                   label: const Text('Kilidi aç'),
                 ),
                 const SizedBox(height: 8),
-                TextButton(onPressed: _signOut, child: const Text('Çıkış yap')),
+                TextButton(
+                  onPressed: _signingOut ? null : _signOut,
+                  child: Text(_signingOut ? 'Çıkış yapılıyor…' : 'Çıkış yap'),
+                ),
               ],
             ),
           ),

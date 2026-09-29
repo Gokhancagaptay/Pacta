@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pacta/core/report.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/core/ui/widgets.dart';
@@ -21,8 +22,8 @@ class NotificationSettingsScreen extends ConsumerWidget {
       await FirestoreService().updateUser(uid, {
         'notificationSettings.$key': value,
       });
-    } catch (e) {
-      debugPrint('Bildirim ayarı kaydedilemedi: $e');
+    } catch (e, st) {
+      reportError(e, st, reason: 'Bildirim ayarı kaydedilemedi');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ayar kaydedilemedi. Tekrar deneyin.')),

@@ -89,8 +89,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
   }
 
   Future<void> _resend() async {
+    if (_wait > 0) return;
+    // Yanıt beklenirken ikinci dokunuş ikinci e-posta istemez.
+    setState(() => _wait = _cooldown);
     final error = await _auth.sendVerificationEmail();
     if (!mounted) return;
+    if (error != null) setState(() => _wait = 0);
     if (error != null) {
       _show(error, error: true);
       return;

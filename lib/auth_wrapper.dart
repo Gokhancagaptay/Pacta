@@ -4,7 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pacta/app/navigation.dart';
 import 'package:pacta/constants/app_constants.dart';
+import 'package:pacta/core/report.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/features/profile/profile_providers.dart';
 import 'package:pacta/firebase_options.dart';
@@ -13,6 +15,7 @@ import 'package:pacta/screens/auth/terms_screen.dart';
 import 'package:pacta/screens/auth/verify_email_screen.dart';
 import 'package:pacta/services/auth_service.dart';
 import 'package:pacta/services/firestore_service.dart';
+import 'package:pacta/services/notification_routes.dart';
 
 /// Hangi ekranın açılacağına tek başına karar verir:
 /// - oturum yok → giriş,
@@ -32,6 +35,22 @@ class AuthWrapper extends StatefulWidget {
 class _AuthWrapperState extends State<AuthWrapper> {
   late Future<void> _init = _ensureFirebase();
   String? _profileEnsuredFor;
+  bool _seenUser = false;
+  String? _shownUid;
+
+  /// Oturumdaki kişi değişti: üstte açık kalan sayfalar (önceki kişinin
+  /// defteri, kayıt ayrıntısı) ve bekleyen bildirim rotası atılır.
+  void _onUser(String? uid) {
+    if (_seenUser && uid == _shownUid) return;
+    final changed = _seenUser;
+    _seenUser = true;
+    _shownUid = uid;
+    if (!changed) return;
+    NotificationRoutes.clear();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => appNavigatorKey.currentState?.popUntil((r) => r.isFirst),
+    );
+  }
 
   Future<void> _ensureFirebase() async {
     if (Firebase.apps.isEmpty) {
@@ -48,8 +67,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void _ensureProfile(User user) {
     if (_profileEnsuredFor == user.uid) return;
     _profileEnsuredFor = user.uid;
-    AuthService().ensureProfile(user).catchError((Object e) {
-      debugPrint('Profil tamamlanamadı: $e');
+    AuthService().ensureProfile(user).catchError((Object e, StackTrace st) {
+      reportError(e, st, reason: 'Profil tamamlanamadı');
       _profileEnsuredFor = null; // sonraki açılışta tekrar denenir
     });
   }
@@ -76,6 +95,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
               return const _LoadingScreen();
             }
             final user = snapshot.data;
+            _onUser(user?.uid);
             if (user == null) {
               _profileEnsuredFor = null;
               return const GirisEkrani();
@@ -102,8 +122,10 @@ class _TermsGate extends ConsumerWidget {
         .watch(userProfileProvider)
         .when(
           loading: () => const _LoadingScreen(),
-          // Profil okunamıyorsa ana ekran kendi hata durumunu gösterir.
-          error: (_, _) => const HomeShell(),
+          // Profil okunamazsa koşul kabulü bilinemez: ana ekran açılmaz,
+          // yeniden denenir.
+          error: (_, _) =>
+              _ErrorScreen(onRetry: () => ref.invalidate(userProfileProvider)),
           data: (profile) {
             final accepted = profile?.termsVersion;
             if (accepted == AppConstants.termsVersion) {

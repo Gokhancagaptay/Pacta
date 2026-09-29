@@ -21,6 +21,9 @@ class NotificationRoutes {
     }
   }
 
+  /// Bekleyen rota atılır (oturum kapandı; sonraki kişiye açılmasın).
+  static void clear() => _pending = null;
+
   static String? takePending() {
     final route = _pending;
     _pending = null;

@@ -15,7 +15,8 @@ class NotificationSettings {
     this.newDebtRequests = true,
     this.statusChanges = true,
     this.paymentReminders = false, // Varsayılan olarak kapalı
-    this.promotionsAndNews = true,
+    // Pazarlama izni kullanıcı açıkça vermedikçe yoktur (İYS/KVKK).
+    this.promotionsAndNews = false,
     this.reminders = true,
   });
 

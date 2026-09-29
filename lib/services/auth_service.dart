@@ -2,11 +2,13 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:pacta/core/report.dart';
 import 'package:pacta/services/firestore_service.dart';
+import 'package:pacta/services/notification_routes.dart';
+import 'package:pacta/services/push_notification_service.dart';
 
 /// Firebase Authentication işlemleri için servis sınıfı
 ///
@@ -91,19 +93,29 @@ class AuthService {
         password: password,
       );
       final user = userCredential.user;
-      await user?.updateDisplayName(adSoyad);
-      // Profil hemen oluşturulur; e-posta doğrulanana kadar uygulama
-      // AuthWrapper'da doğrulama ekranında kalır, sunucu da işlem kabul etmez.
-      if (user != null) {
-        // Kayıt formu koşulların kabulü işaretlenmeden gönderilemez.
-        await _firestoreService.ensureProfile(
-          uid: user.uid,
-          email: user.email ?? email,
-          adSoyad: adSoyad,
-          acceptedTerms: true,
-        );
+      // Hesap açıldı ve oturum açık: sonraki adımlar en iyi çabayla yapılır.
+      // Biri düşerse kullanıcıya "beklenmeyen hata" denmez (tekrar denemek
+      // "e-posta kullanımda" der); profil AuthWrapper'da tamamlanır, koşullar
+      // ekranı kabulü yeniden ister, doğrulama e-postası her durumda gider.
+      try {
+        await user?.updateDisplayName(adSoyad);
+        if (user != null) {
+          // Kayıt formu koşulların kabulü işaretlenmeden gönderilemez.
+          await _firestoreService.ensureProfile(
+            uid: user.uid,
+            email: user.email ?? email,
+            adSoyad: adSoyad,
+            acceptedTerms: true,
+          );
+        }
+      } catch (e, st) {
+        reportError(e, st, reason: 'Kayıt sonrası profil yazılamadı');
       }
-      await _sendVerificationWithSettings(user);
+      try {
+        await _sendVerificationWithSettings(user);
+      } catch (e, st) {
+        reportError(e, st, reason: 'Doğrulama e-postası gönderilemedi');
+      }
       return null; // doğrulama bekleniyor
     } on FirebaseAuthException catch (e) {
       return _handleAuthError(e);
@@ -256,8 +268,10 @@ class AuthService {
       await _auth.signInWithCredential(credential);
       return null;
     } on FirebaseAuthException catch (e) {
+      await _forgetGoogleAccount();
       return _handleAuthError(e);
     } catch (e) {
+      await _forgetGoogleAccount();
       debugPrint('Unexpected error during Google sign in: $e');
       return 'Google ile giriş yapılırken hata oluştu.';
     }
@@ -266,26 +280,29 @@ class AuthService {
   /// Çıkış: önce bu cihazın bildirim anahtarı hesaptan silinir ve iptal
   /// edilir (yoksa çıkan kişinin bildirimleri bu cihaza gelmeye devam eder),
   /// Google oturumu da kapatılır ki başka hesap seçilebilsin. İnternet yoksa
-  /// çıkış beklemez.
+  /// çıkış beklemez. Sonra cihazdaki Firestore önbelleği (defterler,
+  /// kayıtlar) silinir; telefonda önceki kişinin verisi kalmaz.
   Future<void> signOut() async {
     const wait = Duration(seconds: 3);
-    final uid = _auth.currentUser?.uid;
-    if (uid != null) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .update({'fcmToken': FieldValue.delete()})
-            .timeout(wait);
-      } catch (_) {}
-    }
-    try {
-      await FirebaseMessaging.instance.deleteToken().timeout(wait);
-    } catch (_) {}
+    await PushNotificationService.instance.forgetDevice(wait: wait);
     try {
       await _googleSignIn.signOut().timeout(wait);
     } catch (_) {}
     await _auth.signOut();
+    NotificationRoutes.clear();
+    await clearLocalData();
+  }
+
+  /// Firestore'un cihazdaki önbelleğini siler. Eklenti sonlandırılan örneği
+  /// bırakır; sonraki kullanımda yenisi açılır.
+  static Future<void> clearLocalData() async {
+    try {
+      final db = FirebaseFirestore.instance;
+      await db.terminate();
+      await db.clearPersistence();
+    } catch (e, st) {
+      reportError(e, st, reason: 'Yerel veri temizlenemedi');
+    }
   }
 
   /// Mevcut şifreyle yeniden doğrulayıp şifreyi değiştirir.
@@ -337,6 +354,14 @@ class AuthService {
       false;
 
   /// Geri alınamaz işlemden (hesap silme) önce kimliği yeniden doğrular.
+  /// Başarısız girişten sonra: Google son hesabı sessizce yeniden seçmesin,
+  /// kullanıcı başka hesap seçebilsin.
+  Future<void> _forgetGoogleAccount() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+  }
+
   /// Şifreli hesapta [password] gerekir; Google hesabında Google seçici açılır.
   /// Başarılıysa null, değilse Türkçe hata mesajı döner.
   Future<String?> reauthenticate({String? password}) async {

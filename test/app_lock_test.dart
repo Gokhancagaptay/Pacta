@@ -52,6 +52,28 @@ void main() {
       },
     );
 
+    test('cihazın ekran kilidi kaldırılınca uygulama kilidi kapanır', () async {
+      SharedPreferences.setMockInitialValues({
+        AppLockController.prefsKey: true,
+      });
+      final auth = FakeDeviceAuth()..available = false;
+      final lock = AppLockController(auth, DateTime.now);
+      await lock.load();
+      expect(lock.state.locked, isTrue);
+      // Doğrulama yapılamaz; kullanıcı kilitli kalmaz, ayar kapanır.
+      expect(await lock.unlock(), isTrue);
+      expect(lock.state.enabled, isFalse);
+      expect(auth.calls, 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(AppLockController.prefsKey), isFalse);
+    });
+
+    test('tekdüze saat ileri gider', () {
+      final a = monotonicNow();
+      final b = monotonicNow();
+      expect(b.isBefore(a), isFalse);
+    });
+
     test('kapalıyken hiç kilitlenmez', () async {
       SharedPreferences.setMockInitialValues({});
       var now = DateTime(2026, 9, 27, 10);

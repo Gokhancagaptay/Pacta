@@ -10,9 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/app/app_lock.dart';
+import 'package:pacta/app/navigation.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/constants/app_constants.dart';
+import 'package:pacta/core/report.dart';
 import 'package:pacta/firebase_options.dart';
 import 'package:pacta/providers/theme_provider.dart';
 import 'package:pacta/services/app_link_service.dart';
@@ -76,13 +78,15 @@ Future<void> main() async {
 
   if (Firebase.apps.isNotEmpty) {
     unawaited(
-      PushNotificationService().initialize().catchError(
-        (Object e) => debugPrint('Bildirim servisi başlatılamadı: $e'),
+      PushNotificationService.instance.initialize().catchError(
+        (Object e, StackTrace st) =>
+            reportError(e, st, reason: 'Bildirim servisi başlatılamadı'),
       ),
     );
     unawaited(
       AppLinkService.initialize().catchError(
-        (Object e) => debugPrint('Link servisi başlatılamadı: $e'),
+        (Object e, StackTrace st) =>
+            reportError(e, st, reason: 'Link servisi başlatılamadı'),
       ),
     );
   }
@@ -96,6 +100,7 @@ class MyApp extends ConsumerWidget {
     final themeMode = ref.watch(themeProvider);
 
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: AppConstants.appName,
       theme: PactaTheme.light,
       darkTheme: PactaTheme.dark,
