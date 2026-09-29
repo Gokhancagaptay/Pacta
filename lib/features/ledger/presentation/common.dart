@@ -173,7 +173,21 @@ class LedgerTile extends ConsumerWidget {
                 ],
               ),
             ),
-            AmountText(balance, signed: true, colorBySign: true),
+            // Ana bakiye; altın ya da döviz de varsa altında küçük satırlar
+            // (liste 500 ₺ gösterip 2 çeyrek borcu gizlemesin).
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                AmountText(balance, signed: true, colorBySign: true),
+                for (final m in all.where((m) => m.asset != balance.asset))
+                  AmountText(
+                    m,
+                    signed: true,
+                    colorBySign: true,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -329,22 +343,26 @@ class DueTile extends StatelessWidget {
                 color: bg,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${item.dueOn.day}',
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w700,
-                      height: 1.1,
+              // Küçük tarih rozeti büyük yazıda taşmasın.
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.2,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${item.dueOn.day}',
+                      style: TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                      ),
                     ),
-                  ),
-                  Text(
-                    item.dueOn.formatCompact().split(' ').last,
-                    style: TextStyle(color: fg, fontSize: 10, height: 1.1),
-                  ),
-                ],
+                    Text(
+                      item.dueOn.formatCompact().split(' ').last,
+                      style: TextStyle(color: fg, fontSize: 10, height: 1.1),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 12),

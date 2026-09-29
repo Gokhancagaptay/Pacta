@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/report.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
 import '../data/statement_pdf.dart';
@@ -56,6 +57,7 @@ Future<void> exportPeopleSummary(
     rows: selected.rows,
     totals: selected.totals,
     filter: ref.read(peopleFilterProvider),
+    query: ref.read(peopleQueryProvider).trim(),
   );
   final owner = ref.read(userProfileProvider).valueOrNull?.adSoyad ?? '';
   await _share(
@@ -77,8 +79,11 @@ Future<void> _share(
   required Future<Uint8List> Function() pdf,
   required String Function() csv,
 }) async {
+  final Uint8List bytes;
+  final String file;
+  final String mime;
   try {
-    final (Uint8List bytes, String file, String mime) = switch (format) {
+    (bytes, file, mime) = switch (format) {
       ExportFormat.pdf => (await pdf(), '$name.pdf', 'application/pdf'),
       ExportFormat.csv => (
         Uint8List.fromList(utf8.encode(csv())),
@@ -86,6 +91,14 @@ Future<void> _share(
         'text/csv',
       ),
     };
+  } catch (e, st) {
+    reportError(e, st, reason: 'Dışa aktarma dosyası hazırlanamadı');
+    if (context.mounted) {
+      showSnack(context, 'Dosya hazırlanamadı. Tekrar deneyin.', error: true);
+    }
+    return;
+  }
+  try {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile.fromData(bytes, mimeType: mime, name: file)],
@@ -93,9 +106,11 @@ Future<void> _share(
         subject: subject,
       ),
     );
-  } catch (_) {
+  } catch (e, st) {
+    // Dosya hazır; sorun paylaşım menüsünde.
+    reportError(e, st, reason: 'Paylaşım menüsü açılamadı');
     if (context.mounted) {
-      showSnack(context, 'Dosya hazırlanamadı. Tekrar deneyin.', error: true);
+      showSnack(context, 'Paylaşım açılamadı. Tekrar deneyin.', error: true);
     }
   }
 }

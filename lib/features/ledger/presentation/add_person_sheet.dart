@@ -179,11 +179,12 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: _busy ? null : onTap,
-          child: SizedBox(
-            height: 72,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                const SizedBox(height: 8),
                 Icon(icon, color: c.credit),
                 const SizedBox(height: 6),
                 Text(
@@ -195,6 +196,7 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
                     color: c.credit,
                   ),
                 ),
+                const SizedBox(height: 8),
               ],
             ),
           ),

@@ -10,11 +10,15 @@ class PeopleSummary {
     required this.rows,
     required this.totals,
     required this.filter,
+    this.query = '',
   });
 
   final List<PersonRow> rows;
   final SummaryTotals totals;
   final PeopleFilter filter;
+
+  /// Kişi araması (başlıkta yazılır; satırlar zaten süzülmüştür).
+  final String query;
 
   /// "pacta-kisiler-2026-09-28".
   String fileName(LocalDate today) => 'pacta-kisiler-${today.toIso()}';
@@ -43,6 +47,9 @@ class PeopleSummary {
           r.nextDue == null ? '' : date.format(r.nextDue!.dueOn.toDateTime()),
           r.hasOverdue ? 'Evet' : '',
         ],
+      // PDF'teki toplamlar CSV'de de (TL).
+      ['Toplam alacak', '', plainAmount(totals.receivable), '', '', '', ''],
+      ['Toplam borç', '', plainAmount(-totals.payable), '', '', '', ''],
     ];
     return '\uFEFF${lines.map((l) => l.map(csvCell).join(';')).join('\r\n')}'
         '\r\n';

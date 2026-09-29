@@ -176,38 +176,42 @@ class _NavBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 72,
-          child: Row(
-            children: [
-              item(0, Icons.home_rounded, 'Ana sayfa'),
-              item(1, Icons.people_alt_rounded, 'Kişiler'),
-              Expanded(
-                child: Center(
-                  child: Transform.translate(
-                    offset: const Offset(0, -14),
-                    child: Semantics(
-                      label: 'Kayıt ekle',
-                      button: true,
-                      child: Material(
-                        color: PactaTheme.brandFill,
-                        shape: CircleBorder(
-                          side: BorderSide(
-                            color: Theme.of(context).scaffoldBackgroundColor,
-                            width: 4,
+        // Alt menü sabit yükseklikte; büyük yazı etiketleri taşırmasın.
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.3,
+          child: SizedBox(
+            height: 72,
+            child: Row(
+              children: [
+                item(0, Icons.home_rounded, 'Ana sayfa'),
+                item(1, Icons.people_alt_rounded, 'Kişiler'),
+                Expanded(
+                  child: Center(
+                    child: Transform.translate(
+                      offset: const Offset(0, -14),
+                      child: Semantics(
+                        label: 'Kayıt ekle',
+                        button: true,
+                        child: Material(
+                          color: PactaTheme.brandFill,
+                          shape: CircleBorder(
+                            side: BorderSide(
+                              color: Theme.of(context).scaffoldBackgroundColor,
+                              width: 4,
+                            ),
                           ),
-                        ),
-                        elevation: 3,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: onAdd,
-                          child: const SizedBox(
-                            width: 58,
-                            height: 58,
-                            child: Icon(
-                              Icons.add_rounded,
-                              color: PactaTheme.onBrandFill,
-                              size: 28,
+                          elevation: 3,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: onAdd,
+                            child: const SizedBox(
+                              width: 58,
+                              height: 58,
+                              child: Icon(
+                                Icons.add_rounded,
+                                color: PactaTheme.onBrandFill,
+                                size: 28,
+                              ),
                             ),
                           ),
                         ),
@@ -215,10 +219,10 @@ class _NavBar extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              item(2, Icons.event_note_rounded, 'Hareketler', badge: pending),
-              item(3, Icons.person_rounded, 'Profil'),
-            ],
+                item(2, Icons.event_note_rounded, 'Hareketler', badge: pending),
+                item(3, Icons.person_rounded, 'Profil'),
+              ],
+            ),
           ),
         ),
       ),

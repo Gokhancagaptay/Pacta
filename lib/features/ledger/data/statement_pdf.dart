@@ -233,12 +233,16 @@ Future<Uint8List> buildStatementPdf(
                 color: m.minor > 0 ? _green : _red,
               ),
             ),
+        // Özel defterde karşı tarafın onayı yoktur; "onaylı" denmez.
         section(
-          'Onaylı kayıtlar',
+          ledger.isPrivate ? 'Kayıtlar' : 'Onaylı kayıtlar',
           note: 'Tutarlar sizin açınızdan: + alacağınız artar',
         ),
         if (st.confirmed.isEmpty)
-          pw.Text('Onaylı kayıt yok.', style: small)
+          pw.Text(
+            ledger.isPrivate ? 'Kayıt yok.' : 'Onaylı kayıt yok.',
+            style: small,
+          )
         else
           table(
             ['Tarih', 'Kayıt', 'Açıklama', 'Tutar', 'Bakiye'],
@@ -252,6 +256,12 @@ Future<Uint8List> buildStatementPdf(
                       l.entry.description,
                       if (l.entry.dueOn != null)
                         'Vade ${date.format(l.entry.dueOn!.toDateTime())}',
+                      // Özel defterde karşı tarafın web'deki yanıtı kanıttır.
+                      if (ledger.isPrivate && l.entry.webConfirmation != null)
+                        EntryText.webStatus(l.entry.webConfirmation!).label +
+                            (l.entry.webConfirmation!.emailMasked == null
+                                ? ''
+                                : ' (${l.entry.webConfirmation!.emailMasked})'),
                     ].where((t) => t.isNotEmpty).join(' · '),
                   ),
                   amount(l.amount),
@@ -379,7 +389,8 @@ Future<Uint8List> buildPeopleSummaryPdf(
         ),
         pw.Text(
           '$ownerName · $created · '
-          '${summary.filter == PeopleFilter.all ? 'Tüm kişiler' : summary.filter.label} '
+          '${summary.filter == PeopleFilter.all ? 'Tüm kişiler' : summary.filter.label}'
+          '${summary.query.isEmpty ? '' : ' · "${summary.query}" araması'} '
           '(${summary.rows.length})',
           style: small,
         ),

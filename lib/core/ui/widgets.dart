@@ -28,12 +28,19 @@ class AmountText extends StatelessWidget {
     if (resolved == null && colorBySign && !money.isZero) {
       resolved = money.isNegative ? colors.debt : colors.credit;
     }
-    return Text(
-      money.format(signed: signed),
-      style: (style ?? Theme.of(context).textTheme.titleSmall)?.copyWith(
-        color: resolved,
-        fontWeight: FontWeight.w600,
-        fontFeatures: const [FontFeature.tabularFigures()],
+    final spoken = money.isNegative
+        ? 'eksi ${(-money).format()}'
+        : (signed && !money.isZero ? 'artı ${money.format()}' : money.format());
+    return Semantics(
+      label: spoken,
+      excludeSemantics: true,
+      child: Text(
+        money.format(signed: signed),
+        style: (style ?? Theme.of(context).textTheme.titleSmall)?.copyWith(
+          color: resolved,
+          fontWeight: FontWeight.w600,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
   }

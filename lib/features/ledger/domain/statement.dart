@@ -115,6 +115,8 @@ class Statement {
         'Açıklama',
         'Birim',
         'Tutar (sizin açınızdan)',
+        // Excel'de toplanınca bakiyeyi verir: onaysızlar 0.
+        'Bakiyeye etki',
         'Durum',
         'Vade',
         'Kaydı giren',
@@ -126,6 +128,12 @@ class Statement {
           e.description,
           e.asset.code,
           plainAmount(Money(e.deltaFor(me), e.asset)),
+          plainAmount(
+            Money(
+              e.state == EntryState.confirmed ? e.deltaFor(me) : 0,
+              e.asset,
+            ),
+          ),
           EntryText.status(e, me, isPrivate: ledger.isPrivate).label,
           e.dueOn == null ? '' : date.format(e.dueOn!.toDateTime()),
           e.proposedBy == me ? mine.displayName : other.displayName,

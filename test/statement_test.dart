@@ -110,8 +110,13 @@ void main() {
     expect(lines.length, 6);
     expect(
       lines[1],
-      '01.09.2026;Borç verdiniz;Kira payı;TRY;1200,00;Onaylı;01.10.2026;Gökhan',
+      '01.09.2026;Borç verdiniz;Kira payı;TRY;1200,00;1200,00;Onaylı;'
+      '01.10.2026;Gökhan',
     );
+    // Onay bekleyen ve reddedilen kaydın bakiyeye etkisi 0: sütun toplamı
+    // bakiyeyi verir.
+    expect(lines[4], contains(';50,00;0,00;'));
+    expect(lines[5], contains(';70,00;0,00;'));
     expect(lines[3], contains(';-200,00;'));
     expect(lines[5], contains(";'=HYPERLINK();"));
     expect(utf8.encode(csv), isNotEmpty);
