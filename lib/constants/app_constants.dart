@@ -11,7 +11,7 @@ class AppConstants {
   static const String publicProfilesCollection = 'publicProfiles';
 
   // Cloud Functions bölgesi (functions/src/common/firebase.ts ile aynı olmalı).
-  static const String functionsRegion = 'europe-west1';
+  static const String functionsRegion = 'us-central1';
 
   // Web sitesi (davet linki, yasal sayfalar, e-posta dönüş sayfası).
   static const String webBaseUrl = 'https://pacta-76686.web.app';

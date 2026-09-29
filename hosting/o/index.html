@@ -193,7 +193,7 @@
   });
   const auth = getAuth(app);
   auth.languageCode = 'tr';
-  const functions = getFunctions(app, 'europe-west1');
+  const functions = getFunctions(app, 'us-central1');
   const openFn = httpsCallable(functions, 'openWebConfirmation');
   const respondFn = httpsCallable(functions, 'respondWebConfirmation');
 

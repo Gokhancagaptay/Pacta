@@ -114,25 +114,14 @@ class PushNotificationService {
     }
   }
 
-  /// Çıkışta: bu cihazın anahtarı hesaptan silinir ve FCM'de iptal edilir.
-  /// İnternet yoksa beklemez; iptal sonraki açılışta tekrar denenir. Anahtar
-  /// hesaptan silinemese de sonraki girişte sunucu onu eski hesaptan siler.
+  /// Çıkıştan sonra (arka planda): bu cihazın anahtarı FCM'de iptal edilir.
+  /// İptal edilen anahtara giden push hata verir ve sunucu onu hesaptan
+  /// siler; sonraki girişte yeni anahtar kaydedilirken de eski hesaptan
+  /// ayrılır. İnternet yoksa iptal sonraki açılışta tekrar denenir.
   Future<void> forgetDevice({
     Duration wait = const Duration(seconds: 3),
   }) async {
     _savedFor = null;
-    String? token;
-    try {
-      token = await _fcm.getToken().timeout(wait);
-    } catch (_) {}
-    if (token != null) {
-      try {
-        await _functions
-            .httpsCallable('unregisterPushToken')
-            .call<void>({'token': token})
-            .timeout(wait);
-      } catch (_) {}
-    }
     try {
       await _fcm.deleteToken().timeout(wait);
       await _setPendingDelete(false);

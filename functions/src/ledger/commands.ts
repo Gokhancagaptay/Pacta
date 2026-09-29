@@ -13,6 +13,8 @@ import {
   Id,
   assertNotBlocked,
   consumeDaily,
+  readDailyInTx,
+  useDailyInTx,
   fail,
   isDeletedAccount,
   parse,
@@ -627,8 +629,6 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
   const dateError =
     dateRangeError(input.occurredOn, input.dueOn, todayIstanbul());
   if (dateError) fail("invalid-argument", dateError);
-  await consumeDaily(`entries_${uid}`, DAILY.entries,
-    "Bugün için kayıt sınırına ulaştınız. Yarın tekrar deneyin.");
   if (input.linkedEntryId && input.kind !== "payment") {
     fail("invalid-argument", "Yalnızca ödeme bir borca bağlanabilir.");
   }
@@ -639,6 +639,7 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
     // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
     notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const quota = await readDailyInTx(tx, `entries_${uid}`);
     const existing = await tx.get(entryRef);
     if (existing.exists) {
       if (existing.get("proposedByUid") !== uid) {
@@ -681,6 +682,8 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
       description: input.description,
       linkedEntryId: input.linkedEntryId,
     };
+    useDailyInTx(tx, quota, DAILY.entries,
+      "Bugün için kayıt sınırına ulaştınız. Yarın tekrar deneyin.");
     return writeNewEntry(tx, {
       uid,
       side,
@@ -891,8 +894,6 @@ export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
 export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
   const input = parse(ReviseInput, req.data);
-  await consumeDaily(`revisions_${uid}`, DAILY.revisions,
-    "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const notices: Notice[] = [];
 
@@ -901,6 +902,7 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
     notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const entry = await readEntry(tx, entryRef);
+    const quota = await readDailyInTx(tx, `revisions_${uid}`);
     assertVersion(entry, input.expectedVersion);
     if (entry.proposedByUid !== uid) {
       fail("permission-denied", "Yalnızca kaydı giren düzeltebilir.");
@@ -935,6 +937,8 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
       content.dueOn === entry.dueOn &&
       content.description === entry.description;
     if (unchanged) fail("invalid-argument", "Hiçbir şeyi değiştirmediniz.");
+    useDailyInTx(tx, quota, DAILY.revisions,
+      "Bugün için düzenleme sınırına ulaştınız. Yarın tekrar deneyin.");
     const version = entry.version + 1;
     const other = otherSide(side);
     const revised: Entry = {
@@ -1033,10 +1037,6 @@ export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
 export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
   const input = parse(ReverseInput, req.data);
-  // Düzeltme açıp geri çekme döngüsü karşı tarafa sınırsız bildirim
-  // gönderemesin.
-  await consumeDaily(`reversals_${uid}`, DAILY.reversals,
-    "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   if (input.reversalId === input.entryId) {
     fail("invalid-argument", "Düzeltme kaydı için yeni bir kimlik gerekir.");
@@ -1048,6 +1048,9 @@ export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
     // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
     notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    // Düzeltme açıp geri çekme döngüsü karşı tarafa sınırsız bildirim
+    // gönderemesin.
+    const quota = await readDailyInTx(tx, `reversals_${uid}`);
     const existing = await tx.get(reversalRef);
     if (existing.exists) {
       // Tekrar gönderim yalnızca aynı kaydın düzeltmesiyse aynı sonucu döner.
@@ -1074,6 +1077,8 @@ export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
     if (target.reversedBy || target.reversalPendingId) {
       fail("failed-precondition", "Bu kayıt için zaten bir düzeltme var.");
     }
+    useDailyInTx(tx, quota, DAILY.reversals,
+      "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
     const description = input.note ||
       `Düzeltme: ${target.description}`.slice(0, 280);
     const content: EntryContent = {

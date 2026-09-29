@@ -9,7 +9,7 @@ import {admin, db} from "../common/firebase";
 import {deleteQuery} from "../common/queries";
 import {OPTS, requireRecentLogin} from "./callable";
 import {Ledger, Side, otherSide, sideOf} from "./model";
-import {Notice, notificationData, pushOnly} from "./notify";
+import {Notice, notificationData} from "./notify";
 
 // Hesap silme (Apple 5.1.1(v), Google Play hesap silme şartı).
 //
@@ -160,12 +160,11 @@ async function closeSharedLedger(
  * kapatır (karşı taraf da silinmişse siler), kapanan deftere ait bekleyen
  * bildirimleri kaldırır.
  * @param {string} uid Silinen kişi.
- * @return {Promise<object>} Sayılar ve karşı taraflara gidecek push'lar.
+ * @return {Promise<object>} Kapatılan ve silinen defter sayıları.
  */
 async function settleLedgers(uid: string) {
   const ledgers = await db.collection("ledgers")
     .where("memberUids", "array-contains", uid).get();
-  const notices: Notice[] = [];
   let closedLedgers = 0;
   let deletedLedgers = 0;
   for (const doc of ledgers.docs) {
@@ -183,14 +182,13 @@ async function settleLedgers(uid: string) {
       deletedLedgers++;
     }
     if (result.closed) closedLedgers++;
-    if (result.notice) notices.push(result.notice);
     // Silinen kişinin gece gönderdiği, sabaha kalan hatırlatma vb.
     if (result.closed || result.purge) {
       await deleteQuery(db.collection("pushQueue")
         .where("data.ledgerId", "==", doc.id));
     }
   }
-  return {closedLedgers, deletedLedgers, notices};
+  return {closedLedgers, deletedLedgers};
 }
 
 /**
@@ -203,7 +201,7 @@ async function settleLedgers(uid: string) {
 export async function deleteAccountData(
   uid: string
 ): Promise<{closedLedgers: number; deletedLedgers: number}> {
-  const {closedLedgers, deletedLedgers, notices} = await settleLedgers(uid);
+  const {closedLedgers, deletedLedgers} = await settleLedgers(uid);
 
   const userRef = db.collection("users").doc(uid);
   const code = (await userRef.get()).get("pactaCode") as string | undefined;
@@ -223,9 +221,8 @@ export async function deleteAccountData(
   await deleteQuery(db.collection("pushQueue").where("uid", "==", uid));
   await deleteQuery(db.collection("webRequests").where("ownerUid", "==", uid));
 
-  // Uygulama içi bildirimler kapatma transaction'ında yazıldı; push'lar
-  // en son ve en iyi çabayla gider.
-  await pushOnly(notices);
+  // Karşı taraflara bildirimler kapatma transaction'ında yazıldı; push'ları
+  // onNotificationCreated gönderir.
   return {closedLedgers, deletedLedgers};
 }
 
@@ -267,8 +264,7 @@ export async function removeAccount(
   const summary = await deleteAccountData(uid);
   await ignoreMissingUser(admin.auth().deleteUser(uid));
   // Silme sürerken açılmış olabilecek defterler için son tarama.
-  const late = await settleLedgers(uid);
-  await pushOnly(late.notices);
+  await settleLedgers(uid);
   await marker.update({
     pending: false,
     completedAt: FieldValue.serverTimestamp(),

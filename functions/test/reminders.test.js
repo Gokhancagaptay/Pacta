@@ -41,6 +41,14 @@ const remind = (uid, ledgerId) =>
   call(fns.sendReminder, uid, {ledgerId});
 
 const pushQueue = () => db.collection("pushQueue").get();
+const {pushForNotification} = require("../lib/ledger/notify.js");
+
+/** Testte tetikleyici çalışmaz; bildirimlerin push adımı elle yürütülür. */
+async function runPushes(uid) {
+  const notes = await db.collection("users").doc(uid)
+    .collection("notifications").get();
+  for (const d of notes.docs) await pushForNotification(uid, d.data());
+}
 
 describe("vade özeti", () => {
   it("onaylı vadeli borç deftere yazılır, ödeme düşer", async () => {
@@ -141,6 +149,7 @@ describe("sendReminder", () => {
     at(`${today}T23:30:00+03:00`);
     const res = await remind("ali", ledgerId);
     assert.equal(res.queued, true);
+    await runPushes("ayse");
     const queue = await pushQueue();
     assert.equal(queue.size, 1);
     assert.equal(
@@ -159,6 +168,7 @@ describe("sendReminder", () => {
         .set({reminderMutes: {[ledgerId]: true}}, {merge: true});
       at(`${today}T23:30:00+03:00`);
       await remind("ali", ledgerId);
+      await runPushes("ayse");
       assert.equal((await pushQueue()).size, 0);
       const notes = await notifications("ayse");
       assert.ok(notes.docs.some((d) => d.get("type") === "reminder"));

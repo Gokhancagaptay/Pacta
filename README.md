@@ -27,7 +27,7 @@ Onaylanmış kayıt değiştirilemez; düzeltme ters kayıtla yapılır ve geçm
 | Katman | Teknoloji |
 |---|---|
 | Uygulama | Flutter 3.47, Riverpod 2.6, Material 3 |
-| Sunucu | Cloud Functions v2 (Node 22, TypeScript, zod), bölge `europe-west1` |
+| Sunucu | Cloud Functions v2 (Node 22, TypeScript, zod), bölge `us-central1` (veritabanıyla aynı) |
 | Veri | Cloud Firestore; istemci defterlere yazamaz, tüm geçişler callable fonksiyonlarla yapılır |
 | Kimlik | Firebase Auth (e-posta doğrulaması zorunlu, Google ile giriş) |
 | Bildirim | FCM + uygulama içi bildirim listesi |

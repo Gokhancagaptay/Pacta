@@ -85,6 +85,7 @@ class AuthService {
 
     try {
       // Kullanımdaki e-posta için Firebase Auth `email-already-in-use` döner.
+      await waitForSignOutCleanup();
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -135,6 +136,7 @@ class AuthService {
       // Doğrulanmamış hesap giriş yapar ama AuthWrapper onu doğrulama
       // ekranında tutar (oradan bağlantı yeniden gönderilebilir). Profil de
       // AuthWrapper'da tamamlanır.
+      await waitForSignOutCleanup();
       await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -250,6 +252,7 @@ class AuthService {
   /// Google ile giriş; hata varsa Türkçe mesaj döner.
   Future<String?> googleSignIn() async {
     try {
+      await waitForSignOutCleanup();
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return googleCancelled;
 
@@ -278,15 +281,36 @@ class AuthService {
   /// Google oturumu da kapatılır ki başka hesap seçilebilsin. İnternet yoksa
   /// çıkış beklemez. Sonra cihazdaki Firestore önbelleği (defterler,
   /// kayıtlar) silinir; telefonda önceki kişinin verisi kalmaz.
+  ///
+  /// Çıkış anlıktır: oturum hemen kapanır, ekran giriş sayfasına döner.
+  /// Anahtar iptali, Google oturumu ve önbellek temizliği arkada sürer;
+  /// yeni giriş bu temizliğin bitmesini bekler ([waitForSignOutCleanup]).
   Future<void> signOut() async {
-    const wait = Duration(seconds: 3);
-    await PushNotificationService.instance.forgetDevice(wait: wait);
-    try {
-      await _googleSignIn.signOut().timeout(wait);
-    } catch (_) {}
     await _auth.signOut();
     NotificationRoutes.clear();
+    _cleanup = _afterSignOut();
+  }
+
+  /// Önceki çıkışın arka plan temizliği.
+  static Future<void>? _cleanup;
+
+  Future<void> _afterSignOut() async {
+    const wait = Duration(seconds: 3);
+    await Future.wait([
+      PushNotificationService.instance.forgetDevice(wait: wait),
+      _googleSignIn.signOut().timeout(wait).then((_) {}, onError: (_) {}),
+    ]);
     await clearLocalData();
+  }
+
+  /// Önceki çıkışın temizliği bitmeden yeni oturum açılmaz: önbellek
+  /// temizliği yeni oturumun akışlarını kesmesin.
+  static Future<void> waitForSignOutCleanup() async {
+    final pending = _cleanup;
+    if (pending == null) return;
+    try {
+      await pending;
+    } catch (_) {}
   }
 
   /// Firestore'un cihazdaki önbelleğini siler. Eklenti sonlandırılan örneği

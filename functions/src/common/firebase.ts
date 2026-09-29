@@ -11,4 +11,6 @@ setGlobalOptions({maxInstances: 10});
 
 export {admin};
 export const db = admin.firestore();
-export const REGION = "europe-west1";
+// Fonksiyonlar veritabanıyla (nam5, ABD) aynı bölgede: her okuma/yazma
+// okyanus aşırı gidip gelmez.
+export const REGION = "us-central1";

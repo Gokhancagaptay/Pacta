@@ -3,9 +3,14 @@ import {
   FieldValue,
   Timestamp,
 } from "firebase-admin/firestore";
+import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
-import {db} from "../common/firebase";
+import {REGION, db} from "../common/firebase";
 import {sendPushNotification} from "../common/push";
+
+// Bildirim iki adımdır: komut uygulama içi bildirimi yazar ve hemen yanıt
+// verir; push'u, bildirim belgesi oluşunca onNotificationCreated gönderir
+// (kullanıcı, işlemin push gönderilmesini beklemez).
 
 export interface Notice {
   uid: string;
@@ -46,6 +51,9 @@ export function notificationData(n: Notice) {
     route: routeOf(n),
     isRead: false,
     createdAt: FieldValue.serverTimestamp(),
+    // Push için: hangi ayar açıp kapatır, gece gelirse ne zamana kalır.
+    setting: n.setting,
+    pushAfter: n.pushAfter ? Timestamp.fromDate(n.pushAfter) : null,
   };
 }
 
@@ -84,41 +92,62 @@ async function push(n: Notice, user: DocumentSnapshot): Promise<void> {
 }
 
 /**
- * Uygulama içi bildirimi yazar; kullanıcı izin veriyorsa push gönderir.
- * Hatırlatmalarda alıcı o kişiyi sessize aldıysa push gitmez; gönderen
- * bunu bilmez. Alıcının hesabı silinmişse hiçbir şey yazılmaz (sahipsiz
- * belge kalmasın). Transaction commit edildikten sonra çağrılır; hata
- * işlemi geri almaz.
+ * Uygulama içi bildirimi yazar; push'u tetikleyici gönderir. Alıcının
+ * hesabı silinmişse hiçbir şey yazılmaz (sahipsiz belge kalmasın).
+ * Transaction commit edildikten sonra çağrılır; hata işlemi geri almaz.
  * @param {Notice[]} notices Bildirimler.
  */
 export async function deliver(notices: Notice[]): Promise<void> {
-  for (const n of notices) {
+  await Promise.all(notices.map(async (n) => {
     try {
       const userRef = db.collection("users").doc(n.uid);
       const user = await userRef.get();
-      if (!user.exists) continue;
+      if (!user.exists) return;
       await userRef.collection("notifications").add(notificationData(n));
-      await push(n, user);
     } catch (error) {
-      logger.error(`[ledger] Bildirim gönderilemedi: ${n.uid}`, error);
+      logger.error(`[ledger] Bildirim yazılamadı: ${n.uid}`, error);
     }
-  }
+  }));
 }
 
 /**
- * Yalnızca push (uygulama içi bildirim önceden, ör. bir transaction içinde
- * yazıldıysa). Hata işlemi geri almaz.
- * @param {Notice[]} notices Bildirimler.
+ * Bildirim belgesinden push: kullanıcı izin veriyorsa gönderir, sessiz
+ * saatteyse kuyruğa alır. Hatırlatmalarda alıcı o kişiyi sessize aldıysa
+ * gitmez; gönderen bunu bilmez.
+ * @param {string} uid Alıcı.
+ * @param {FirebaseFirestore.DocumentData} data Bildirim belgesi.
  */
-export async function pushOnly(notices: Notice[]): Promise<void> {
-  for (const n of notices) {
+export async function pushForNotification(
+  uid: string,
+  data: FirebaseFirestore.DocumentData
+): Promise<void> {
+  // Eski biçimdeki (ayarı yazılmamış) bildirimler için push yok.
+  if (!data.setting) return;
+  const n: Notice = {
+    uid,
+    setting: data.setting,
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    ledgerId: data.ledgerId,
+    entryId: data.entryId ?? null,
+    pushAfter: (data.pushAfter as Timestamp | null)?.toDate(),
+  };
+  await push(n, await db.collection("users").doc(uid).get());
+}
+
+export const onNotificationCreated = onDocumentCreated(
+  {document: "users/{uid}/notifications/{notificationId}", region: REGION},
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
     try {
-      await push(n, await db.collection("users").doc(n.uid).get());
+      await pushForNotification(event.params.uid, data);
     } catch (error) {
-      logger.error(`[ledger] Push gönderilemedi: ${n.uid}`, error);
+      logger.error(`[ledger] Push gönderilemedi: ${event.params.uid}`, error);
     }
   }
-}
+);
 
 /**
  * Sessiz saatlerde bekletilen push'ları gönderir.

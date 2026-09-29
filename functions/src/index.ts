@@ -14,7 +14,7 @@ export {
   reviseEntry,
 } from "./ledger/commands";
 export {deleteAccount} from "./ledger/account";
-export {registerPushToken, unregisterPushToken} from "./ledger/devices";
+export {registerPushToken} from "./ledger/devices";
 export {
   deletePrivateLedger,
   myPactaCode,
@@ -23,6 +23,7 @@ export {
 } from "./ledger/contacts";
 export {onLedgerEntryWritten} from "./ledger/due";
 export {onUserProfileWritten} from "./ledger/profile";
+export {onNotificationCreated} from "./ledger/notify";
 export {dailyMaintenance} from "./ledger/maintenance";
 export {dailyReminders, sendReminder} from "./ledger/reminders";
 export {

@@ -19,7 +19,7 @@ import 'profile_providers.dart';
 /// Kilit anahtarı doğrulama sürerken ikinci isteği açmasın.
 bool _lockBusy = false;
 
-/// Çıkış onay ister; sürerken (internetsiz birkaç saniye) ekran kilitli.
+/// Çıkış onay ister; onaydan sonra anlıktır (temizlik arkada sürer).
 Future<void> _confirmSignOut(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
@@ -42,15 +42,6 @@ Future<void> _confirmSignOut(BuildContext context) async {
     ),
   );
   if (ok != true || !context.mounted) return;
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const PopScope(
-      canPop: false,
-      child: Center(child: CircularProgressIndicator()),
-    ),
-  );
-  // Oturum kapanınca AuthWrapper tüm sayfaları (bu göstergeyle) kapatır.
   await AuthService().signOut();
 }
 

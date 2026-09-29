@@ -8,7 +8,8 @@ import {OPTS, fail, parse} from "./callable";
 // hesaba kaydedilince diğer tüm hesaplardan silinir. Aynı telefonda A çıkış
 // yapıp (internetsiz bile olsa) B giriş yapınca A'nın bildirimleri artık o
 // telefona gitmez. Bir hesapta en fazla MAX_DEVICES cihaz tutulur; en eski
-// düşer.
+// düşer. Çıkışta uygulama anahtarı FCM'de iptal eder; iptal edilen anahtara
+// giden ilk push hata verir ve anahtar hesaptan silinir (common/push.ts).
 
 export const MAX_DEVICES = 5;
 
@@ -87,19 +88,4 @@ export const registerPushToken = onCall<unknown>(OPTS, async (req) => {
       {merge: true});
   });
   return {saved: true};
-});
-
-/** Çıkışta: bu cihazın anahtarı hesaptan silinir. */
-export const unregisterPushToken = onCall<unknown>(OPTS, async (req) => {
-  if (!req.auth) fail("unauthenticated", "Giriş yapmalısınız.");
-  const {token} = parse(TokenInput, req.data);
-  const ref = db.collection("users").doc(req.auth.uid);
-  const snap = await ref.get();
-  if (!snap.exists) return {removed: false};
-  const update: {[field: string]: unknown} = {
-    fcmTokens: FieldValue.arrayRemove(token),
-  };
-  if (snap.get("fcmToken") === token) update.fcmToken = FieldValue.delete();
-  await ref.update(update);
-  return {removed: true};
 });

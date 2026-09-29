@@ -29,15 +29,12 @@ describe("bildirim anahtarları", () => {
       undefined);
   });
 
-  it("en fazla 5 cihaz; en eskisi düşer; çıkışta yalnızca bu cihaz silinir",
-    async () => {
-      for (let i = 1; i <= 6; i++) {
-        await call(fns.registerPushToken, "ali", {token: `c${i}`});
-      }
-      assert.deepEqual(await tokensOf("ali"), ["c6", "c5", "c4", "c3", "c2"]);
-      await call(fns.unregisterPushToken, "ali", {token: "c4"});
-      assert.deepEqual(await tokensOf("ali"), ["c6", "c5", "c3", "c2"]);
-    });
+  it("en fazla 5 cihaz; en eskisi düşer", async () => {
+    for (let i = 1; i <= 6; i++) {
+      await call(fns.registerPushToken, "ali", {token: `c${i}`});
+    }
+    assert.deepEqual(await tokensOf("ali"), ["c6", "c5", "c4", "c3", "c2"]);
+  });
 
   it("web misafiri ve oturumsuz istek anahtar kaydedemez", async () => {
     await db.doc("webGuests/ayse").set({createdAt: new Date()});

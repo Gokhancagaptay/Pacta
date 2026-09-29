@@ -98,6 +98,49 @@ export function requireRecentLogin(
   return req.auth.uid;
 }
 
+/** Transaction içinde okunmuş günlük sayaç. */
+export interface DailyQuota {
+  ref: DocumentReference;
+  day: string;
+  count: number;
+}
+
+/**
+ * Günlük sayacı transaction içinde okur (ayrı bir transaction'a gerek
+ * kalmaz). Transaction'da okumalar yazmalardan önce yapılır; hak
+ * [useDailyInTx] ile yazmalardan hemen önce düşülür.
+ * @param {Transaction} tx Transaction.
+ * @param {string} key Sayaç (ör. "entries_<uid>").
+ * @return {Promise<DailyQuota>} Sayaç.
+ */
+export async function readDailyInTx(
+  tx: Transaction,
+  key: string
+): Promise<DailyQuota> {
+  const ref = db.collection("rateLimits").doc(key);
+  const today = todayIstanbul();
+  const snap = await tx.get(ref);
+  const count = snap.get("day") === today ? (snap.get("count") as number) : 0;
+  return {ref, day: today, count};
+}
+
+/**
+ * Okunmuş günlük haktan bir tane düşer; dolmuşsa reddeder.
+ * @param {Transaction} tx Transaction.
+ * @param {DailyQuota} quota Okunmuş sayaç.
+ * @param {number} limit Günlük üst sınır.
+ * @param {string} message Sınır dolunca gösterilecek mesaj.
+ */
+export function useDailyInTx(
+  tx: Transaction,
+  quota: DailyQuota,
+  limit: number,
+  message: string
+): void {
+  if (quota.count >= limit) fail("resource-exhausted", message);
+  tx.set(quota.ref, {day: quota.day, count: quota.count + 1});
+}
+
 /**
  * Günlük kullanım hakkından bir tane düşer; dolmuşsa reddeder. Spam ve
  * kötüye kullanımı sınırlar (rateLimits istemciye kapalıdır).
