@@ -40,7 +40,14 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 ## 5. Hatırlatma ve bildirimler
 - [ ] Hatırlat → bildirim gelir, tutar yazmaz; ikinci hatırlatmada "bir sonraki" tarihi; 21:00–09:00 arası sabaha kalır; sessize alınan kişiden bildirim gelmez.
 - [ ] ⭐ Bildirime dokununca ilgili kayıt açılır; zil listesi dolar.
-- [ ] ⭐ Çıkış yapıp başka hesapla girince eski hesabın bildirimleri gelmez.
+- [ ] ⭐ Çıkış yapıp başka hesapla girince eski hesabın bildirimleri gelmez. **İnterneti kapatıp çıkış yapın**, sonra interneti açıp başka hesapla girin: yine gelmemeli.
+- [ ] Aynı hesap iki telefonda açıkken bildirim ikisine de geliyor; birinden çıkınca diğerine gelmeye devam ediyor.
+- [ ] Durum çubuğundaki bildirim simgesi beyaz kare değil (yuvarlak onay işareti).
+
+## 5b. ⭐ Engelleme
+- [ ] Ortak defter menüsü → "Engelle": onay soruyor; defterde "engellediniz" notu ve "Engeli kaldır".
+- [ ] Engellenen kişinin telefonunda: defterde "kayıt gönderilemiyor" notu, Kayıt ekle / Hatırlat yok; bekleyen kaydını geri çekebiliyor.
+- [ ] Engelleyen kayıt eklemeye devam edebiliyor; engel kalkınca her şey eski hâline dönüyor.
 
 ## 6. Kişiler ekranı
 - [ ] Favori, listeden kaldır / geri getir, süzgeçler.
@@ -57,7 +64,8 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 - [ ] Linki uygulaması olmayan bir telefonda / bilgisayarda aç: doğrulamadan önce yalnızca gönderenin adı görünüyor.
 - [ ] E-posta yaz → gelen bağlantıya aynı cihazda dokun → kayıt açılıyor (tutar, tarih, açıklama). Başka cihazda açınca e-posta yeniden soruluyor.
 - [ ] Onayla / İtiraz et (önerilen tutarla) / Reddet: sayfada makbuz; uygulamada bildirim, kayıtta durum kartı ("Karşı taraf onayladı", gizlenmiş e-posta).
-- [ ] Aynı linki başka bir e-postayla açınca "başka bir adrese bağlı" diyor.
+- [ ] Aynı linki başka bir e-postayla açınca "başka bir adrese bağlı" diyor; "Farklı adresle doğrula" ile doğru adres denenebiliyor.
+- [ ] Link oluştururken karşı tarafın e-postası yazılınca: sayfa "a***@… adresi için oluşturuldu" diyor, başka adres kabul edilmiyor; kartta "Belirttiğiniz adresle doğrulandı".
 - [ ] "Onay linkini yeniden gönder" sonrası eski link "Bu link yenilendi" diyor.
 - [ ] Linki doğrulayan kişi sonra aynı e-postayla uygulamaya kaydolabiliyor ("kullanımda" hatası yok).
 
@@ -68,6 +76,9 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 ## 9. Uygulama kilidi
 - [ ] Açarken parmak izi/PIN istiyor; uygulamayı kapatıp açınca içerik görünmeden kilit geliyor.
 - [ ] 1 dk'dan kısa arka plan sormuyor, uzun soruyor; PIN ile açılıyor; kilit ekranından çıkış; kapatırken de doğrulama istiyor.
+- [ ] ⭐ Bir kişinin defteri açıkken kilit gelsin → "Çıkış yap": giriş ekranı açılıyor, geri tuşuyla eski defter görünmüyor.
+- [ ] Kilit açıkken son uygulamalar ekranında Pacta önizlemesi boş/gizli; ekran görüntüsü alınamıyor (kilit kapalıyken alınabiliyor).
+- [ ] Telefonun ekran kilidini kaldırınca Pacta kilitli kalmıyor (kilit kendiliğinden kapanıyor).
 
 ## 10. Yeni kullanıcı
 - [ ] Kişisi olmayan hesapta ana sayfada "Başlarken" 3 adımı ve düğmeleri.
