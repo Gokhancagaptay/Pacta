@@ -71,5 +71,26 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "ledgers",
+      "fieldPath": "dueItems",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "entries",
+      "fieldPath": "description",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "entries",
+      "fieldPath": "webConfirmation",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "revisions",
+      "fieldPath": "description",
+      "indexes": []
+    }
+  ]
 }

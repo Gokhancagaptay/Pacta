@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Pacta v1 güvenlik kuralları.
+// Pacta güvenlik kuralları (v2 defterler).
 // Testler: firestore-tests/ (npm run emulator:test)
 service cloud.firestore {
   match /databases/{database}/documents {

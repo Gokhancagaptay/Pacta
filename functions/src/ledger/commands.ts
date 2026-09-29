@@ -39,13 +39,15 @@ import {
   todayIstanbul,
 } from "./model";
 import {Notice, deliver} from "./notify";
+import {cleanName} from "./profile";
 
 // Durum geçişleri yalnızca bu komutlarla yapılır; istemci ledgers altına
-// yazamaz (firestore.rules). Her komut tek transaction'dır.
+// yazamaz (firestore.rules). Kayıt komutları tek transaction'dır; defter
+// açma ve taşıma kişiyi bulmak için önce ayrı okumalar yapar.
 
 const DateStr = z.string().refine(isValidDate, "Geçersiz tarih.");
-const Amount = z.number().int().positive().max(MAX_MINOR);
-const Text = z.string().trim().max(280);
+export const Amount = z.number().int().positive().max(MAX_MINOR);
+export const Text = z.string().trim().max(280);
 const EntryKey = {ledgerId: Id, entryId: Id, expectedVersion: z.number().int()};
 /** İstemcinin ürettiği kayıt kimliği; "t_" taşıma kayıtlarına ayrılmıştır. */
 const ClientId = Id.refine((v) => !v.startsWith("t_"), "Geçersiz kimlik.");
@@ -178,9 +180,6 @@ function assertVersion(entry: Entry, expected: number) {
   }
 }
 
-/** Defterde ve bildirimlerde görünen adın üst sınırı. */
-const MAX_NAME = 80;
-
 /**
  * Görünen ad: profildeki ad, yoksa giriş kaydındaki ad. Tek satıra indirilir
  * ve kısaltılır; ad alanına yazılmış uzun ya da oltalama amaçlı metinler
@@ -193,9 +192,8 @@ export function displayNameOf(
   user: DocumentSnapshot,
   fallback: string | null = null
 ): string {
-  const raw = (user.get("adSoyad") as string | undefined) || fallback || "";
-  const name = String(raw).replace(/\s+/g, " ").trim().slice(0, MAX_NAME);
-  return name || "Pacta kullanıcısı";
+  return cleanName(user.get("adSoyad")) ?? cleanName(fallback) ??
+    "Pacta kullanıcısı";
 }
 
 /** Günlük sınırlar (kişi başına). Olağan kullanımın çok üstündedir. */

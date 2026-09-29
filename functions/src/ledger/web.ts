@@ -9,9 +9,10 @@ import {CallableRequest, onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {z} from "zod";
 import {admin, db} from "../common/firebase";
-import {MAX_MINOR, formatMinor} from "./assets";
+import {deleteQuery} from "../common/queries";
+import {formatMinor} from "./assets";
 import {OPTS, Id, consumeDaily, fail, parse, requireUid} from "./callable";
-import {DISPUTE_REASONS, displayNameOf} from "./commands";
+import {Amount, DISPUTE_REASONS, Text, displayNameOf} from "./commands";
 import {authInfo} from "./contacts";
 import {Entry, EntryKind, Ledger, deltaForSide, todayIstanbul} from "./model";
 import {Notice, deliver} from "./notify";
@@ -27,11 +28,13 @@ import {Notice, deliver} from "./notify";
 //
 // - Token yalnızca linkte durur; sunucuda özeti (webRequests/{sha256})
 //   saklanır. webRequests ve webGuests istemciye kapalıdır.
-// - İstek, onu ilk açan doğrulanmış e-postaya bağlanır: link başkasına
-//   iletilse de o kişi yanıtlayamaz.
-// - E-posta bağlantısıyla giriş bir Auth hesabı açar. Pacta hesabı olmayan
-//   bu misafir hesapları (webGuests) yanıttan hemen sonra, yanıtlanmazsa
-//   bir gün içinde silinir: kişi sonra uygulamaya aynı adresle kaydolabilir.
+// - İstek, sahibin belirttiği alıcı e-postasına ya da onu ilk açan
+//   doğrulanmış e-postaya bağlanır: link başkasına iletilse de o kişi
+//   yanıtlayamaz.
+// - E-posta bağlantısıyla giriş bir Auth hesabı açar. Linki açan her
+//   profilsiz oturum misafir işaretlenir (webGuests); uygulama komutu
+//   çalıştıramaz, yanıttan hemen sonra, yanıtlanmazsa bir gün içinde
+//   silinir: kişi sonra uygulamaya aynı adresle kaydolabilir.
 
 export const WEB_CONFIRM_BASE = "https://pacta-76686.web.app/o/";
 
@@ -53,8 +56,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const webClock = {now: (): Date => new Date()};
 
 const Token = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
-const Text = z.string().trim().max(280);
-const Amount = z.number().int().positive().max(MAX_MINOR);
 
 export const REJECT_REASONS = {
   notAgreed: "Böyle bir anlaşmamız yok",
@@ -217,10 +218,10 @@ async function liveStatus(
   if (r.state === "answered") return "answered";
   if (r.expiresAt.toMillis() <= now.getTime()) return "expired";
   const ledgerRef = db.collection("ledgers").doc(r.ledgerId);
-  const [ledgerSnap, entrySnap] = [
-    await tx.get(ledgerRef),
-    await tx.get(ledgerRef.collection("entries").doc(r.entryId)),
-  ];
+  const [ledgerSnap, entrySnap] = await tx.getAll(
+    ledgerRef,
+    ledgerRef.collection("entries").doc(r.entryId),
+  );
   const ledger = ledgerSnap.data() as Ledger | undefined;
   const entry = entrySnap.data() as Entry | undefined;
   if (
@@ -611,19 +612,8 @@ export const respondWebConfirmation = onCall<unknown>(OPTS, async (req) => {
 export async function purgeWebData(
   now: Date
 ): Promise<{requests: number; guests: number}> {
-  let requests = 0;
-  for (;;) {
-    const snap = await db.collection("webRequests")
-      .where("purgeAfter", "<", Timestamp.fromDate(now))
-      .limit(400)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    requests += snap.size;
-    if (snap.size < 400) break;
-  }
+  const requests = await deleteQuery(db.collection("webRequests")
+    .where("purgeAfter", "<", Timestamp.fromDate(now)));
   let guests = 0;
   const stale = await db.collection("webGuests")
     .where("createdAt", "<",

@@ -3,7 +3,7 @@ import {FieldValue} from "firebase-admin/firestore";
 import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
 import {admin, db} from "../common/firebase";
-import {deleteQuery} from "./account";
+import {deleteQuery} from "../common/queries";
 import {
   OPTS,
   Id,
@@ -14,6 +14,7 @@ import {
   requireUid,
 } from "./callable";
 import {Ledger, sideOf} from "./model";
+import {cleanName} from "./profile";
 
 // Kişi bulma: e-posta, Pacta kodu (QR ve davet linki de bu kodu taşır).
 // Kodlar codes/{KOD} altında tutulur; istemciye kapalıdır.
@@ -158,7 +159,7 @@ export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
     const candidate = randomCode();
     const codeRef = db.collection("codes").doc(candidate);
     const code = await db.runTransaction(async (tx) => {
-      const [user, taken] = [await tx.get(userRef), await tx.get(codeRef)];
+      const [user, taken] = await tx.getAll(userRef, codeRef);
       const current = user.get("pactaCode") as string | undefined;
       if (current && !rotate) return current;
       if (taken.exists) return null;
@@ -200,12 +201,11 @@ export const previewCode = onCall<unknown>(OPTS, async (req) => {
     target = await uidForCode(uid, input.code);
   }
   const profile = await db.collection("users").doc(target).get();
-  const raw = (profile.get("adSoyad") as string | undefined) ||
-    (await authInfo(target))?.displayName || "";
-  const name = String(raw).replace(/\s+/g, " ").trim().slice(0, 80);
+  const name = cleanName(profile.get("adSoyad")) ??
+    cleanName((await authInfo(target))?.displayName);
   return {
     self: target === uid,
-    displayName: name || "Pacta kullanıcısı",
+    displayName: name ?? "Pacta kullanıcısı",
   };
 });
 

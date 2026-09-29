@@ -6,6 +6,7 @@ import {
 import {onCall} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import {admin, db} from "../common/firebase";
+import {deleteQuery} from "../common/queries";
 import {OPTS, requireRecentLogin} from "./callable";
 import {Ledger, Side, otherSide, sideOf} from "./model";
 import {Notice, notificationData, pushOnly} from "./notify";
@@ -152,22 +153,6 @@ async function closeSharedLedger(
     writeNotice(tx, notice);
     return {closed: true, purge: false, notice};
   });
-}
-
-/**
- * Bir sorgunun tüm belgelerini 400'lük parçalar hâlinde siler.
- * @param {FirebaseFirestore.Query} query Sorgu.
- */
-export async function deleteQuery(
-  query: FirebaseFirestore.Query
-): Promise<void> {
-  for (;;) {
-    const snap = await query.limit(400).get();
-    if (snap.empty) return;
-    const batch = db.batch();
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  }
 }
 
 /**
