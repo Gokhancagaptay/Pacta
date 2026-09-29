@@ -94,5 +94,6 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 - [ ] Telefonda büyük yazı boyutunda taşan/kesilen metin yok.
 
 ## Beklenen, hata sayılmaz
-- Gizlilik / Koşullar bağlantıları şimdilik Pacta web sürümünü açar (yasal sayfalar hukukçu onayından sonra yayınlanacak).
+- Gizlilik / Koşullar bağlantıları şimdilik "Sayfa bulunamadı" açar (yasal sayfalar hukukçu onayından sonra yayınlanacak).
+- https://pacta-76686.web.app ana adresi artık yalnızca kısa bir tanıtım sayfası (web uygulaması yayında değil).
 - iPhone test edilmiyor.
