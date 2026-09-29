@@ -13,7 +13,8 @@ import {Notice, notificationData, pushOnly} from "./notify";
 // Hesap silme (Apple 5.1.1(v), Google Play hesap silme şartı).
 //
 // Silinen: kişinin profili, bildirimleri, gelen kutusu, Pacta kodu,
-// sayaçları, bekleyen bildirimleri, özel defterleri ve giriş hesabı.
+// sayaçları, bekleyen bildirimleri, özel defterleri (web onay istekleriyle)
+// ve giriş hesabı.
 // Kalan: ortak defterler karşı tarafın da kaydıdır; onun nüshası olarak
 // saklanır (plan §8.1). Silinen tarafın adı "Silinmiş kullanıcı" olur,
 // e-postası kaldırılır, defter kapanır (yeni kayıt eklenemez). Kayıtlarda
@@ -157,7 +158,9 @@ async function closeSharedLedger(
  * Bir sorgunun tüm belgelerini 400'lük parçalar hâlinde siler.
  * @param {FirebaseFirestore.Query} query Sorgu.
  */
-async function deleteQuery(query: FirebaseFirestore.Query): Promise<void> {
+export async function deleteQuery(
+  query: FirebaseFirestore.Query
+): Promise<void> {
   for (;;) {
     const snap = await query.limit(400).get();
     if (snap.empty) return;
@@ -228,10 +231,12 @@ export async function deleteAccountData(
   await db.collection("publicProfiles").doc(uid).delete();
   const counters = [
     "reminders", "codes", "coderotations", "ledgers", "entries", "revisions",
+    "webrequests",
   ];
   await Promise.all(counters.map((k) =>
     db.collection("rateLimits").doc(`${k}_${uid}`).delete()));
   await deleteQuery(db.collection("pushQueue").where("uid", "==", uid));
+  await deleteQuery(db.collection("webRequests").where("ownerUid", "==", uid));
 
   // Uygulama içi bildirimler kapatma transaction'ında yazıldı; push'lar
   // en son ve en iyi çabayla gider.

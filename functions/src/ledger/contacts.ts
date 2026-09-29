@@ -3,6 +3,7 @@ import {FieldValue} from "firebase-admin/firestore";
 import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
 import {admin, db} from "../common/firebase";
+import {deleteQuery} from "./account";
 import {OPTS, Id, consumeDaily, fail, parse, requireUid} from "./callable";
 import {Ledger} from "./model";
 
@@ -181,8 +182,9 @@ export const previewCode = onCall<unknown>(OPTS, async (req) => {
 });
 
 /**
- * Özel defteri (yalnızca sahibinin gördüğü) içindeki kayıtlarla birlikte
- * siler. Ortak defterler silinmez; her iki tarafın kaydıdır.
+ * Özel defteri (yalnızca sahibinin gördüğü) içindeki kayıtlar ve web onay
+ * istekleriyle birlikte siler. Ortak defterler silinmez; her iki tarafın
+ * kaydıdır.
  */
 export const deletePrivateLedger = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
@@ -200,5 +202,7 @@ export const deletePrivateLedger = onCall<unknown>(OPTS, async (req) => {
       "kaldırabilirsiniz.");
   }
   await db.recursiveDelete(ref);
+  await deleteQuery(db.collection("webRequests")
+    .where("ledgerId", "==", ledgerId));
   return {deleted: true};
 });

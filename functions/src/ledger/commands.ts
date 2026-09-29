@@ -75,7 +75,7 @@ const CreateEntryInput = z.object({
 const ConfirmInput = z.object(EntryKey).strict();
 const CancelInput = z.object(EntryKey).strict();
 
-const DISPUTE_REASONS = {
+export const DISPUTE_REASONS = {
   amount: "Tutar yanlış",
   date: "Tarih yanlış",
   description: "Açıklama yanlış",
@@ -184,7 +184,7 @@ const MAX_NAME = 80;
  * @param {string | null} fallback Auth'taki ad.
  * @return {string} Görünen ad.
  */
-function displayNameOf(
+export function displayNameOf(
   user: DocumentSnapshot,
   fallback: string | null = null
 ): string {

@@ -132,7 +132,8 @@ service cloud.firestore {
       allow list: if isMember(resource.data);
     }
 
-    // codes, pushQueue, rateLimits, deletedAccounts ve eski v1 koleksiyonları
+    // codes, pushQueue, rateLimits, deletedAccounts, webRequests, webGuests
+    // ve eski v1 koleksiyonları
     // (debts, notifications, users/*/savedContacts) için kural yoktur:
     // istemciye kapalıdır.
   }

@@ -22,3 +22,8 @@ export {
 export {onLedgerEntryWritten} from "./ledger/due";
 export {dailyMaintenance} from "./ledger/maintenance";
 export {dailyReminders, sendReminder} from "./ledger/reminders";
+export {
+  openWebConfirmation,
+  requestWebConfirmation,
+  respondWebConfirmation,
+} from "./ledger/web";

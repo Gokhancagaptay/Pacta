@@ -3,6 +3,7 @@ import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import {admin, db, REGION} from "../common/firebase";
 import {removeAccount} from "./account";
+import {purgeWebData} from "./web";
 
 // Günlük bakım (gizlilik politikasındaki saklama süreleri):
 // - E-postası 30 gün içinde doğrulanmamış hesaplar silinir (başkasının
@@ -11,6 +12,8 @@ import {removeAccount} from "./account";
 //   10 yıl sonra tamamen silinir (karşı tarafın nüshası; TBK 146).
 // - Silinen hesap işareti (deletedAccounts) de 10 yıl sonra silinir: o
 //   kimliği taşıyan son defter de o zamana kadar silinmiş olur.
+// - Yanıtlanmayan web onay istekleri süresi dolduktan 30 gün sonra,
+//   yanıt vermeden kalan misafir girişleri bir gün sonra silinir (web.ts).
 
 export const UNVERIFIED_DAYS = 30;
 export const CLOSED_LEDGER_YEARS = 10;
@@ -150,6 +153,7 @@ export async function runMaintenance(now: Date): Promise<{
   unverified: number;
   closedLedgers: number;
   tombstones: number;
+  web: number;
   failed: number;
 }> {
   const stage = async (
@@ -167,11 +171,16 @@ export async function runMaintenance(now: Date): Promise<{
   const unverified = await stage("unverified", purgeUnverified);
   const closed = await stage("closedLedgers", purgeClosedLedgers);
   const tombstones = await stage("tombstones", purgeTombstones);
+  const web = await stage("web", async (at) => {
+    const {requests, guests} = await purgeWebData(at);
+    return {removed: requests + guests, failed: 0};
+  });
   return {
     unverified: unverified.removed,
     closedLedgers: closed.removed,
     tombstones: tombstones.removed,
-    failed: unverified.failed + closed.failed + tombstones.failed,
+    web: web.removed,
+    failed: unverified.failed + closed.failed + tombstones.failed + web.failed,
   };
 }
 
