@@ -90,19 +90,6 @@ void main() {
     });
   });
 
-  group('Money.allocate', () {
-    test('toplam korunur, kalan en büyük kalana gider', () {
-      final parts = const Money(10000, Asset.tryLira).allocate([1, 1, 1]);
-      expect(parts.map((m) => m.minor), [3334, 3333, 3333]);
-      expect(parts.fold<int>(0, (s, m) => s + m.minor), 10000);
-    });
-
-    test('farklı oranlar', () {
-      final parts = const Money(100, Asset.tryLira).allocate([1, 2]);
-      expect(parts.map((m) => m.minor), [33, 67]);
-    });
-  });
-
   test('çok uzun tutar Türkçe hatayla reddedilir', () {
     expect(
       () => Money.parse('9' * 30, Asset.tryLira),

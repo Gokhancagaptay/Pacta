@@ -206,6 +206,14 @@ class Ledger {
     return list;
   }
 
+  /// Listede ve başlıkta gösterilen tutar: TL; TL yoksa ilk altın/döviz
+  /// bakiyesi ("0,00 ₺" yazıp başka birimdeki borcu gizlemez).
+  Money primaryBalance(String uid) {
+    final tryBalance = balanceFor(uid);
+    final all = balancesFor(uid);
+    return tryBalance.isZero && all.isNotEmpty ? all.first : tryBalance;
+  }
+
   Money balanceFor(String uid, [Asset asset = Asset.tryLira]) {
     final sign = sideOf(uid) == Side.b ? -1 : 1;
     return Money((balances[asset.code] ?? 0) * sign, asset);

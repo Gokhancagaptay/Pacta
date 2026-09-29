@@ -286,4 +286,8 @@ final selectedPersonRowsProvider =
     });
 
 /// Kişiler ekranı tablo görünümünde mi.
-final peopleTableViewProvider = StateProvider<bool>((ref) => false);
+/// Hesap değişince sıfırlanır (diğer kişiler ayarları gibi).
+final peopleTableViewProvider = StateProvider<bool>((ref) {
+  ref.watch(currentUidProvider);
+  return false;
+});

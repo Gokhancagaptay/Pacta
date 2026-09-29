@@ -144,8 +144,10 @@ List<PersonRow> selectRows(
     for (final r in rows)
       if (r.matches(filter) && found(r)) r,
   ];
-  int byName(PersonRow x, PersonRow y) =>
-      trLower(x.name).compareTo(trLower(y.name));
+  // Türkçe küçük harf anahtarı satır başına bir kez hesaplanır.
+  final keys = Map<PersonRow, String>.identity();
+  String key(PersonRow r) => keys.putIfAbsent(r, () => trLower(r.name));
+  int byName(PersonRow x, PersonRow y) => key(x).compareTo(key(y));
   switch (sort) {
     case PeopleSort.recent:
       break; // defterler zaten son harekete göre gelir
@@ -250,9 +252,11 @@ class DueSchedule {
         );
       }
     }
+    final names = <String, String>{};
+    String key(DueRow r) => names.putIfAbsent(r.name, () => trLower(r.name));
     rows.sort((x, y) {
       final c = x.item.dueOn.compareTo(y.item.dueOn);
-      return c != 0 ? c : trLower(x.name).compareTo(trLower(y.name));
+      return c != 0 ? c : key(x).compareTo(key(y));
     });
     final horizon = today.addDays(horizonDays);
     return DueSchedule(

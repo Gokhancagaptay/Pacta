@@ -90,35 +90,6 @@ class Money {
   Money operator -(Money other) => Money(minor - _same(other).minor, asset);
   Money operator -() => Money(-minor, asset);
 
-  /// Tutarı oranlara böler; kalan küçük birimler en büyük kalan yöntemiyle
-  /// dağıtılır, toplam hiçbir zaman değişmez (taksit ve bölüşüm için).
-  List<Money> allocate(List<int> ratios) {
-    if (ratios.isEmpty || ratios.any((r) => r < 0)) {
-      throw ArgumentError('Oranlar boş veya negatif olamaz.');
-    }
-    final total = ratios.fold<int>(0, (a, b) => a + b);
-    if (total == 0) throw ArgumentError('Oranların toplamı sıfır olamaz.');
-
-    final shares = <int>[];
-    final remainders = <int>[];
-    var allocated = 0;
-    for (final ratio in ratios) {
-      final share = minor * ratio ~/ total;
-      shares.add(share);
-      remainders.add(minor * ratio % total);
-      allocated += share;
-    }
-    var left = minor - allocated;
-    final order = List<int>.generate(ratios.length, (i) => i)
-      ..sort((a, b) => remainders[b].compareTo(remainders[a]));
-    for (final i in order) {
-      if (left == 0) break;
-      shares[i] += 1;
-      left -= 1;
-    }
-    return [for (final share in shares) Money(share, asset)];
-  }
-
   /// "1.234,50 ₺" biçiminde yazar. [signed] açıksa pozitifte "+" eklenir.
   String format({bool signed = false, bool withSymbol = true}) {
     final absolute = minor.abs();

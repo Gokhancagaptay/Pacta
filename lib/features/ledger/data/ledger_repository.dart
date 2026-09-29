@@ -253,11 +253,6 @@ class LedgerRepository {
 
   // --- Komutlar ----------------------------------------------------------
 
-  Future<String> openSharedLedger(String counterpartyUid) async {
-    final r = await _call('createLedger', {'counterpartyUid': counterpartyUid});
-    return r['ledgerId'] as String;
-  }
-
   /// E-postası doğrulanmış kişiyle ortak defter. Bulunamazsa sunucu nedenini
   /// söyler (kayıtlı değil, doğrulanmamış...).
   Future<AddedPerson> addByEmail(String email) async => AddedPerson.fromMap(

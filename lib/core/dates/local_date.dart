@@ -64,7 +64,11 @@ class LocalDate implements Comparable<LocalDate> {
   String formatMonth() => DateFormat('MMMM y', 'tr_TR').format(toDateTime());
 
   @override
-  int compareTo(LocalDate other) => toIso().compareTo(other.toIso());
+  int compareTo(LocalDate other) => year != other.year
+      ? year.compareTo(other.year)
+      : month != other.month
+      ? month.compareTo(other.month)
+      : day.compareTo(other.day);
 
   bool operator <(LocalDate other) => compareTo(other) < 0;
 

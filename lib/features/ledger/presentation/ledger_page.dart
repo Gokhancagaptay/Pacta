@@ -60,13 +60,8 @@ class LedgerPage extends ConsumerWidget {
         }
         final other = ledger.other(uid);
         final me = ledger.sideOf(uid) ?? Side.a;
-        // Ana tutar TL; TL yoksa ilk altın/döviz bakiyesi (yoksa "denk" yazıp
-        // altında dolar alacağı göstermek çelişir).
         final all = ledger.balancesFor(uid);
-        final tryBalance = ledger.balanceFor(uid);
-        final balance = tryBalance.isZero && all.isNotEmpty
-            ? all.first
-            : tryBalance;
+        final balance = ledger.primaryBalance(uid);
         final others = all.where((m) => m.asset != balance.asset);
         final today = ref.watch(todayProvider);
         final plan = ReminderPlan.of(

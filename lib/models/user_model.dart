@@ -49,9 +49,6 @@ class UserModel {
   final String email;
   final String? adSoyad;
   final String? telefon;
-  final String? etiket;
-  final List<String>? aramaAnahtarlari;
-  final List<String>? favoriteContacts;
 
   /// Push bildirimi tercihleri.
   final NotificationSettings notificationSettings;
@@ -77,9 +74,6 @@ class UserModel {
     required this.email,
     this.adSoyad,
     this.telefon,
-    this.etiket,
-    this.aramaAnahtarlari,
-    this.favoriteContacts,
     NotificationSettings? notificationSettings,
     this.reminderMutes = const {},
     this.favoriteLedgers = const {},
@@ -94,9 +88,6 @@ class UserModel {
       'email': email,
       'adSoyad': adSoyad,
       'telefon': telefon,
-      'etiket': etiket,
-      'aramaAnahtarlari': aramaAnahtarlari ?? [],
-      'favoriteContacts': favoriteContacts ?? [],
       'notificationSettings': notificationSettings.toMap(),
     };
   }
@@ -107,11 +98,6 @@ class UserModel {
       email: map['email'] ?? '',
       adSoyad: map['adSoyad'],
       telefon: map['telefon'],
-      etiket: map['etiket'],
-      aramaAnahtarlari: map['aramaAnahtarlari'] == null
-          ? null
-          : List<String>.from(map['aramaAnahtarlari']),
-      favoriteContacts: List<String>.from(map['favoriteContacts'] ?? []),
       notificationSettings: NotificationSettings.fromMap(
         map['notificationSettings'],
       ),

@@ -12,7 +12,6 @@ void main() {
 
       expect(user.notificationSettings.newDebtRequests, isTrue);
       expect(user.notificationSettings.reminders, isTrue);
-      expect(user.favoriteContacts, isEmpty);
       expect(user.favoriteLedgers, isEmpty);
       expect(user.pactaCode, isNull);
     });

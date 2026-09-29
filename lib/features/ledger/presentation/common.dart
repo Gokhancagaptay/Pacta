@@ -89,13 +89,8 @@ class LedgerTile extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     final today = ref.watch(todayProvider);
     final other = ledger.other(uid);
-    // TL bakiyesi yoksa ama altın/döviz varsa satırda o gösterilir
-    // ("0,00 ₺" yazıp borcu gizlemez).
-    final tryBalance = ledger.balanceFor(uid);
     final all = ledger.balancesFor(uid);
-    final balance = tryBalance.isZero && all.isNotEmpty
-        ? all.first
-        : tryBalance;
+    final balance = ledger.primaryBalance(uid);
     final c = context.pacta;
     final due = ledger.dueItems.isEmpty ? null : ledger.dueItems.first.dueOn;
     String? subtitle;

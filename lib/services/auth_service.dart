@@ -72,8 +72,6 @@ class AuthService {
     }
   }
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
   /// Kayıt: e-posta, şifre ve ad soyad. Telefon toplanmaz (kullanılan bir
   /// özellik yok; telefonla giriş gelince eklenecek).
   Future<String?> signUpWithEmailAndPassword(
