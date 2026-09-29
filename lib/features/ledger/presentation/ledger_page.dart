@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/report.dart';
 import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
@@ -136,8 +137,19 @@ class LedgerPage extends ConsumerWidget {
               PopupMenuButton<String>(
                 tooltip: 'Diğer',
                 onSelected: (value) {
+                  // Bu sayfanın rotası baştan alınır: işlem sürerken üstte
+                  // başka bir sayfa açılırsa o kapanmaz, bu sayfa kaldırılır.
+                  final route = ModalRoute.of(context);
                   void close() {
-                    if (context.mounted) Navigator.of(context).maybePop();
+                    if (!context.mounted || route == null || !route.isActive) {
+                      return;
+                    }
+                    final navigator = Navigator.of(context);
+                    if (route.isCurrent) {
+                      navigator.pop();
+                    } else {
+                      navigator.removeRoute(route);
+                    }
                   }
 
                   switch (value) {
@@ -608,6 +620,15 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
         setState(() {
           _busy = false;
           _error = e.message;
+        });
+      }
+    } catch (e, stack) {
+      // Beklenmeyen yanıt: panel "meşgul"de kilitli kalmasın.
+      reportError(e, stack, reason: 'Hatırlatma yanıtı okunamadı');
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Hatırlatma gönderilemedi. Tekrar deneyin.';
         });
       }
     }

@@ -77,6 +77,27 @@ class AddedPerson {
   final bool created;
 }
 
+/// Sunucu hatasını kullanıcıya gösterilecek metne çevirir. Uygulama
+/// hataları (geçersiz giriş, sınır, izin...) sunucudan Türkçe gelir; ağ ve
+/// altyapı hataları ise İngilizce ya da "INTERNAL" gibi gelir, bunlar
+/// burada Türkçeleşir.
+String commandMessage(String code, String? message) {
+  switch (code) {
+    case 'unavailable':
+    case 'deadline-exceeded':
+    case 'cancelled':
+      return 'Sunucuya ulaşılamadı. İnternetinizi kontrol edip tekrar '
+          'deneyin.';
+    case 'internal':
+    case 'unknown':
+    case 'data-loss':
+    case 'unimplemented':
+      return 'Bir sorun oluştu. Biraz sonra tekrar deneyin.';
+  }
+  final text = message?.trim() ?? '';
+  return text.isEmpty ? 'İşlem tamamlanamadı.' : text;
+}
+
 /// Belgeleri tek tek çevirir; bozuk belge (bilinmeyen birim, bozuk tarih)
 /// atlanır ve raporlanır, listenin geri kalanı görünür.
 List<T> parseEach<T>(
@@ -420,13 +441,13 @@ class LedgerRepository {
       final result = await _fn.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {
-      final message = e.message ?? 'İşlem tamamlanamadı.';
       throw LedgerException(
-        message
+        commandMessage(e.code, e.message)
             .replaceFirst('STALE_VERSION: ', '')
-            .replaceFirst('REAUTH_REQUIRED: ', ''),
-        isStale: message.startsWith('STALE_VERSION'),
-        needsReauth: message.startsWith('REAUTH_REQUIRED'),
+            .replaceFirst('REAUTH_REQUIRED: ', '')
+            .replaceFirst('TERMS_REQUIRED: ', ''),
+        isStale: (e.message ?? '').startsWith('STALE_VERSION'),
+        needsReauth: (e.message ?? '').startsWith('REAUTH_REQUIRED'),
       );
     } catch (_) {
       throw const LedgerException(

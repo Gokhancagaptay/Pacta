@@ -263,7 +263,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       isScrollControlled: true,
       builder: (_) => _DisputeSheet(entry: e),
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
     await _run(
       () => _repo.dispute(
         e,
@@ -285,7 +285,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         confirmLabel: 'Reddet',
       ),
     );
-    if (reason == null) return;
+    if (reason == null || !mounted) return;
     await _run(() => _repo.reject(e, reason: reason), 'Kayıt reddedildi.');
   }
 
@@ -295,7 +295,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       isScrollControlled: true,
       builder: (_) => _ReviseSheet(entry: e),
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
     await _run(
       () => _repo.revise(
         e,
@@ -330,7 +330,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     await _run(() => _repo.cancel(e), 'Kayıt geri çekildi.');
   }
 
@@ -364,7 +364,7 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     await _run(
       () => _repo.reverse(e),
       immediate || ledger.isPrivate

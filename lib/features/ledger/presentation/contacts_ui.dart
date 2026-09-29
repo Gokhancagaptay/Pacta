@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/report.dart';
 import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
@@ -464,7 +465,14 @@ Future<void> hidePerson(
   );
   if (confirmed != true || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
-  await repo.setHidden(uid, ledger.id, true);
+  // Beklenmez: Firestore yazımı yerel önbelleğe hemen düşer, sunucu onayı
+  // internetsiz hiç gelmeyebilir. Hata olursa ayrıca söylenir.
+  repo.setHidden(uid, ledger.id, true).catchError((Object e, StackTrace st) {
+    reportError(e, st, reason: 'Listeden kaldırılamadı');
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Listeden kaldırılamadı. Tekrar deneyin.')),
+    );
+  });
   onHidden?.call();
   messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
@@ -498,13 +506,35 @@ Future<void> deletePrivateLedger(
   );
   if (confirmed != true || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
+  final navigator = Navigator.of(context);
+  // Silme sürerken sayfa kullanılamaz (başka sayfa açılıp yanlışlıkla
+  // kapanmasın).
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const PopScope(
+      canPop: false,
+      child: Center(child: CircularProgressIndicator()),
+    ),
+  );
+  String? error;
   try {
     await ref.read(ledgerRepositoryProvider).deletePrivateLedger(ledger.id);
-    onDeleted?.call();
-    messenger.showSnackBar(SnackBar(content: Text('$name defteri silindi.')));
   } on LedgerException catch (e) {
-    if (context.mounted) showSnack(context, e.message, error: true);
+    error = e.message;
+  } catch (e, stack) {
+    reportError(e, stack, reason: 'Özel defter silinemedi');
+    error = 'Defter silinemedi. Tekrar deneyin.';
   }
+  navigator.pop();
+  if (error != null) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(error), backgroundColor: Colors.red.shade700),
+    );
+    return;
+  }
+  onDeleted?.call();
+  messenger.showSnackBar(SnackBar(content: Text('$name defteri silindi.')));
 }
 
 Future<bool?> _confirm(

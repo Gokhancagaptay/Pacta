@@ -309,7 +309,13 @@ final inbox = [
   }),
 ];
 
-Widget app(Widget home, FakeRepo repo, {List<Ledger>? people}) => ProviderScope(
+Widget app(
+  Widget home,
+  FakeRepo repo, {
+  List<Ledger>? people,
+  Stream<List<InboxItem>>? inboxStream,
+  Map<String, DateTime> hidden = const {},
+}) => ProviderScope(
   overrides: [
     authUserProvider.overrideWith((ref) => Stream.value(null)),
     currentUidProvider.overrideWith((ref) => 'gokhan'),
@@ -317,7 +323,7 @@ Widget app(Widget home, FakeRepo repo, {List<Ledger>? people}) => ProviderScope(
     ledgersProvider.overrideWith(
       (ref) => Stream.value(people ?? [...ledgers, archivedLedger]),
     ),
-    inboxProvider.overrideWith((ref) => Stream.value(inbox)),
+    inboxProvider.overrideWith((ref) => inboxStream ?? Stream.value(inbox)),
     notificationsProvider.overrideWith((ref) => Stream.value(const [])),
     recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
     todayProvider.overrideWith((ref) => today),
@@ -340,6 +346,7 @@ Widget app(Widget home, FakeRepo repo, {List<Ledger>? people}) => ProviderScope(
           email: 'g@example.com',
           adSoyad: 'Gökhan Ç',
           favoriteLedgers: const {'p_deniz'},
+          hiddenLedgers: hidden,
         ),
       ),
     ),
@@ -850,6 +857,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, contains('rotateCode'));
     expect(find.text('Yeni kodunuz hazır.'), findsOneWidget);
+  });
+
+  testWidgets('ana sayfa: gelen kutusu hatası "bekleyen yok" demez', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    await tester.pumpWidget(
+      app(
+        HomePage(
+          onSeeAllPeople: () {},
+          onOpenActivity: () {},
+          onAddEntry: () {},
+        ),
+        FakeRepo(),
+        inboxStream: Stream.error(Exception('izin yok')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Onay bekleyenler yüklenemedi.'), findsOneWidget);
+    expect(find.text('Onayınızı bekleyen kayıt yok.'), findsNothing);
+  });
+
+  testWidgets('ana sayfa: herkes gizlenince Başlarken yerine geri getirme', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final when = DateTime(2026, 9, 1);
+    await tester.pumpWidget(
+      app(
+        HomePage(
+          onSeeAllPeople: () {},
+          onOpenActivity: () {},
+          onAddEntry: () {},
+        ),
+        FakeRepo(),
+        hidden: {for (final l in ledgers) l.id: when},
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Tüm kişiler listeden kaldırıldı'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Başlarken'), findsNothing);
+    expect(find.text('Listeden kaldırılanlar'), findsOneWidget);
+  });
+
+  test('sunucu altyapı hataları Türkçeleşir', () {
+    expect(
+      commandMessage('unavailable', 'The service is currently unavailable.'),
+      startsWith('Sunucuya ulaşılamadı'),
+    );
+    expect(commandMessage('internal', 'INTERNAL'), startsWith('Bir sorun'));
+    expect(
+      commandMessage('failed-precondition', 'Defter kapalı.'),
+      'Defter kapalı.',
+    );
+    expect(commandMessage('invalid-argument', null), 'İşlem tamamlanamadı.');
   });
 
   testWidgets('yeni kullanıcı Başlarken rehberini görür', (tester) async {

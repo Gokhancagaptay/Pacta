@@ -96,7 +96,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       isScrollControlled: true,
       builder: (_) => const _PersonPickerSheet(),
     );
-    if (id != null) setState(() => _ledgerId = id);
+    if (id != null && mounted) setState(() => _ledgerId = id);
   }
 
   Future<void> _pickDate() async {
@@ -108,7 +108,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       firstDate: today,
       lastDate: today.add(const Duration(days: 3650)),
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _due = _Due.custom;
         _customDue = LocalDate.fromDateTime(picked);
@@ -194,210 +194,218 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       buttonLabel = 'Onay için gönder';
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          tooltip: 'Kapat',
-          onPressed: () => Navigator.of(context).pop(),
+    // Kaydedilirken sayfa kapatılamaz: kayıt sessizce oluşup tekrar
+    // açılan sayfada ikinci kez girilmesin.
+    return PopScope(
+      canPop: !_busy,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            tooltip: 'Kapat',
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          ),
+          titleSpacing: 0,
+          title: const Text('Yeni kayıt'),
         ),
-        titleSpacing: 0,
-        title: const Text('Yeni kayıt'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        children: [
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Borç')),
-              ButtonSegment(value: true, label: Text('Ödeme')),
-            ],
-            selected: {_isPayment},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) => setState(
-              () => _mode = s.first ? ComposerMode.received : ComposerMode.lent,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<ComposerMode>(
-            segments: _isPayment
-                ? const [
-                    ButtonSegment(
-                      value: ComposerMode.received,
-                      label: Text('Ödeme aldım'),
-                    ),
-                    ButtonSegment(
-                      value: ComposerMode.paid,
-                      label: Text('Ödeme yaptım'),
-                    ),
-                  ]
-                : const [
-                    ButtonSegment(
-                      value: ComposerMode.lent,
-                      label: Text('Borç verdim'),
-                    ),
-                    ButtonSegment(
-                      value: ComposerMode.borrowed,
-                      label: Text('Borç aldım'),
-                    ),
-                  ],
-            selected: {_mode},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) => setState(() => _mode = s.first),
-          ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              onTap: widget.ledgerId == null ? _pickPerson : null,
-              leading: other == null
-                  ? CircleAvatar(
-                      backgroundColor: c.creditSoft,
-                      child: Icon(
-                        Icons.person_add_alt_1_rounded,
-                        color: c.credit,
-                      ),
-                    )
-                  : PersonAvatar(name: other.displayName, size: 38),
-              title: Text(other?.displayName ?? 'Kişi seçin'),
-              subtitle: Text(
-                isPrivate ? 'Özel defter' : 'Kime',
-                style: TextStyle(fontSize: 12, color: c.muted),
-              ),
-              trailing: widget.ledgerId == null
-                  ? Text(
-                      other == null ? 'Seç' : 'Değiştir',
-                      style: TextStyle(
-                        color: c.credit,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 18),
-          TextField(
-            controller: _amount,
-            autofocus: widget.ledgerId != null,
-            textAlign: TextAlign.center,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-            decoration: InputDecoration(
-              hintText: '0,00',
-              errorText: _amountError,
-              suffixIcon: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<Asset>(
-                    value: _asset,
-                    items: [
-                      for (final a in Asset.values)
-                        DropdownMenuItem(value: a, child: Text(a.symbol)),
-                    ],
-                    onChanged: (a) => setState(() => _asset = a ?? _asset),
-                  ),
-                ),
-              ),
-            ),
-            onChanged: (_) => setState(() => _amountError = null),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _description,
-            maxLength: 280,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Ne için?',
-              hintText: 'Örn. akşam yemeği',
-              counterText: '',
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (!_isPayment) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Ne zamana kadar?',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-                if (_dueOn != null)
-                  Text(
-                    _dueOn!.format(),
-                    style: TextStyle(fontSize: 12, color: c.muted),
-                  ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Borç')),
+                ButtonSegment(value: true, label: Text('Ödeme')),
               ],
+              selected: {_isPayment},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(
+                () =>
+                    _mode = s.first ? ComposerMode.received : ComposerMode.lent,
+              ),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (due, label) in const [
-                  (_Due.none, 'Vade yok'),
-                  (_Due.week, '1 hafta'),
-                  (_Due.month, '1 ay'),
-                ])
-                  ChoiceChip(
-                    label: Text(label),
-                    selected: _due == due,
-                    onSelected: (_) => setState(() => _due = due),
-                  ),
-                ChoiceChip(
-                  label: const Text('Tarih seç'),
-                  selected: _due == _Due.custom,
-                  onSelected: (_) => _pickDate(),
-                ),
-              ],
+            SegmentedButton<ComposerMode>(
+              segments: _isPayment
+                  ? const [
+                      ButtonSegment(
+                        value: ComposerMode.received,
+                        label: Text('Ödeme aldım'),
+                      ),
+                      ButtonSegment(
+                        value: ComposerMode.paid,
+                        label: Text('Ödeme yaptım'),
+                      ),
+                    ]
+                  : const [
+                      ButtonSegment(
+                        value: ComposerMode.lent,
+                        label: Text('Borç verdim'),
+                      ),
+                      ButtonSegment(
+                        value: ComposerMode.borrowed,
+                        label: Text('Borç aldım'),
+                      ),
+                    ],
+              selected: {_mode},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _mode = s.first),
             ),
-          ],
-          const SizedBox(height: 16),
-          if (ledger != null && money != null)
-            _PreviewCard(
-              title: isPrivate
-                  ? 'Özel defter'
-                  : '${other!.displayName} şunu görecek',
-              text: isPrivate
-                  ? 'Bu kayıt yalnızca sizde tutulur ve hemen bakiyeye işlenir.'
-                  : _preview(ledger.me(uid).displayName, money),
-              note: !isPrivate && _againstMe
-                  ? 'Bu kayıt sizin aleyhinize olduğu için onay beklemeden '
-                        'bakiyeye işlenir; ${other!.displayName} bilgilendirilir.'
-                  : null,
-            ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
+            const SizedBox(height: 12),
+            SurfaceCard(
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                onTap: widget.ledgerId == null ? _pickPerson : null,
+                leading: other == null
+                    ? CircleAvatar(
+                        backgroundColor: c.creditSoft,
+                        child: Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: c.credit,
+                        ),
                       )
-                    : Text(buttonLabel),
-              ),
-              if (ledger != null && !isPrivate && !_againstMe) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Onaylanınca ikinizin bakiyesine işlenir. O zamana kadar '
-                  'geri çekebilirsiniz.',
-                  textAlign: TextAlign.center,
+                    : PersonAvatar(name: other.displayName, size: 38),
+                title: Text(other?.displayName ?? 'Kişi seçin'),
+                subtitle: Text(
+                  isPrivate ? 'Özel defter' : 'Kime',
                   style: TextStyle(fontSize: 12, color: c.muted),
                 ),
-              ],
+                trailing: widget.ledgerId == null
+                    ? Text(
+                        other == null ? 'Seç' : 'Değiştir',
+                        style: TextStyle(
+                          color: c.credit,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 18),
+            TextField(
+              controller: _amount,
+              autofocus: widget.ledgerId != null,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              decoration: InputDecoration(
+                hintText: '0,00',
+                errorText: _amountError,
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<Asset>(
+                      value: _asset,
+                      items: [
+                        for (final a in Asset.values)
+                          DropdownMenuItem(value: a, child: Text(a.symbol)),
+                      ],
+                      onChanged: (a) => setState(() => _asset = a ?? _asset),
+                    ),
+                  ),
+                ),
+              ),
+              onChanged: (_) => setState(() => _amountError = null),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _description,
+              maxLength: 280,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Ne için?',
+                hintText: 'Örn. akşam yemeği',
+                counterText: '',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (!_isPayment) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Ne zamana kadar?',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  if (_dueOn != null)
+                    Text(
+                      _dueOn!.format(),
+                      style: TextStyle(fontSize: 12, color: c.muted),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (due, label) in const [
+                    (_Due.none, 'Vade yok'),
+                    (_Due.week, '1 hafta'),
+                    (_Due.month, '1 ay'),
+                  ])
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: _due == due,
+                      onSelected: (_) => setState(() => _due = due),
+                    ),
+                  ChoiceChip(
+                    label: const Text('Tarih seç'),
+                    selected: _due == _Due.custom,
+                    onSelected: (_) => _pickDate(),
+                  ),
+                ],
+              ),
             ],
+            const SizedBox(height: 16),
+            if (ledger != null && money != null)
+              _PreviewCard(
+                title: isPrivate
+                    ? 'Özel defter'
+                    : '${other!.displayName} şunu görecek',
+                text: isPrivate
+                    ? 'Bu kayıt yalnızca sizde tutulur ve hemen bakiyeye işlenir.'
+                    : _preview(ledger.me(uid).displayName, money),
+                note: !isPrivate && _againstMe
+                    ? 'Bu kayıt sizin aleyhinize olduğu için onay beklemeden '
+                          'bakiyeye işlenir; ${other!.displayName} bilgilendirilir.'
+                    : null,
+              ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  child: _busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.4),
+                        )
+                      : Text(buttonLabel),
+                ),
+                if (ledger != null && !isPrivate && !_againstMe) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Onaylanınca ikinizin bakiyesine işlenir. O zamana kadar '
+                    'geri çekebilirsiniz.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),

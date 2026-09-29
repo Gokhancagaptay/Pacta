@@ -65,6 +65,7 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     final text = _query.text.trim();
     if (text.isEmpty) {
       _fail('E-posta adresi ya da Pacta kodu girin.');
@@ -141,6 +142,8 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
   }
 
   Future<void> _openPrivate() async {
+    // Klavyedeki "Bitti"ye iki kez basmak iki defter açmasın.
+    if (_busy) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
       setState(() => _nameError = 'Bir ad girin.');
@@ -329,9 +332,11 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
             TextField(
               controller: _name,
               textCapitalization: TextCapitalization.words,
+              maxLength: 80,
               decoration: InputDecoration(
                 labelText: 'Ad soyad',
                 errorText: _nameError,
+                counterText: '',
               ),
               onSubmitted: (_) => _openPrivate(),
             ),

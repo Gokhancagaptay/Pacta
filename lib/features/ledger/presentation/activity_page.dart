@@ -43,7 +43,8 @@ class _UpcomingTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final inbox = ref.watch(inboxProvider).valueOrNull ?? const [];
+    final inboxAsync = ref.watch(inboxProvider);
+    final inbox = inboxAsync.valueOrNull ?? const [];
     final schedule = ref.watch(dueScheduleProvider);
     final today = ref.watch(todayProvider);
 
@@ -54,6 +55,16 @@ class _UpcomingTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(ledgersProvider),
       ),
       data: (s) {
+        // Gelen kutusu okunamadıysa "yaklaşan bir şey yok" denmez.
+        if (inboxAsync.hasError && !inboxAsync.hasValue) {
+          return ErrorState(
+            message: 'Onay bekleyenler yüklenemedi.',
+            onRetry: () => ref.invalidate(inboxProvider),
+          );
+        }
+        if (!inboxAsync.hasValue) {
+          return const Center(child: CircularProgressIndicator());
+        }
         if (inbox.isEmpty && s.isEmpty) {
           return const EmptyState(
             icon: Icons.event_available_rounded,
@@ -92,7 +103,11 @@ class _UpcomingTab extends ConsumerWidget {
                 ),
               ),
               for (final item in inbox) ...[
-                InboxCard(item: item, actions: true),
+                InboxCard(
+                  key: ValueKey('${item.ledgerId}/${item.entryId}'),
+                  item: item,
+                  actions: true,
+                ),
                 const SizedBox(height: 10),
               ],
             ],

@@ -36,7 +36,12 @@ class HomePage extends ConsumerWidget {
         ? null
         : name.split(' ').first;
     final totals = ref.watch(totalsProvider);
-    final inbox = ref.watch(inboxProvider).valueOrNull ?? const [];
+    final inboxAsync = ref.watch(inboxProvider);
+    final inbox = inboxAsync.valueOrNull ?? const [];
+    // Tüm kişiler listeden kaldırılmışsa "Başlarken" gösterilmez.
+    final anyLedger = (ref.watch(ledgersProvider).valueOrNull ?? const []).any(
+      (l) => !l.isArchived,
+    );
     final unread = (ref.watch(notificationsProvider).valueOrNull ?? const [])
         .where((n) => !n.isRead)
         .length;
@@ -126,7 +131,18 @@ class HomePage extends ConsumerWidget {
                       ),
                     ),
             ),
-            if (inbox.isEmpty)
+            // Yüklenirken ya da hata varken "bekleyen yok" denmez.
+            if (inboxAsync.hasError && !inboxAsync.hasValue)
+              ErrorState(
+                message: 'Onay bekleyenler yüklenemedi.',
+                onRetry: () => ref.invalidate(inboxProvider),
+              )
+            else if (!inboxAsync.hasValue)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (inbox.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
@@ -136,7 +152,10 @@ class HomePage extends ConsumerWidget {
               )
             else ...[
               for (final item in inbox.take(3)) ...[
-                InboxCard(item: item),
+                InboxCard(
+                  key: ValueKey('${item.ledgerId}/${item.entryId}'),
+                  item: item,
+                ),
                 const SizedBox(height: 10),
               ],
               if (inbox.length > 3)
@@ -177,7 +196,25 @@ class HomePage extends ConsumerWidget {
                 ),
               ],
               data: (list) => list.isEmpty
-                  ? [GettingStarted(onAddEntry: onAddEntry)]
+                  ? [
+                      if (anyLedger)
+                        EmptyState(
+                          icon: Icons.visibility_off_outlined,
+                          title: 'Tüm kişiler listeden kaldırıldı',
+                          message:
+                              'Hesap geçmişleri silinmedi; istediğiniz kişiyi '
+                              'geri getirebilirsiniz.',
+                          action: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 44),
+                            ),
+                            onPressed: () => showHiddenPeopleSheet(context),
+                            child: const Text('Listeden kaldırılanlar'),
+                          ),
+                        )
+                      else
+                        GettingStarted(onAddEntry: onAddEntry),
+                    ]
                   : [
                       SectionHeader(
                         title: 'Kişiler',
