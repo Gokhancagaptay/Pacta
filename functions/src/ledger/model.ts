@@ -48,6 +48,8 @@ export interface Ledger {
   dueRemindedOn?: string;
   /** Tarafın karşı tarafa gönderdiği son hatırlatma. */
   reminders?: {[side in Side]?: {lastOn: string; kind: string}};
+  /** Bu taraf karşı tarafı engelledi (yeni kayıt ve hatırlatma alamaz). */
+  blockedBy?: {[side in Side]?: boolean};
 }
 
 export interface EntryContent {

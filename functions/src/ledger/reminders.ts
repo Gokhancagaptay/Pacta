@@ -1,12 +1,21 @@
-import {Timestamp, WriteBatch} from "firebase-admin/firestore";
+import {DocumentReference, Timestamp} from "firebase-admin/firestore";
 import {onCall} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import {z} from "zod";
 import {db, REGION} from "../common/firebase";
-import {OPTS, Id, fail, parse, readLedger, requireUid} from "./callable";
+import {
+  OPTS,
+  Id,
+  assertNotBlocked,
+  fail,
+  parse,
+  readLedger,
+  requireUid,
+} from "./callable";
 import {
   Ledger,
+  Side,
   addDays,
   deltaForSide,
   hourIstanbul,
@@ -17,7 +26,8 @@ import {Notice, deliver, flushPushQueue} from "./notify";
 
 // Hatırlatmalar nazik ve seyrek olmalı: metni sunucu seçer (gönderen serbest
 // metin yazamaz), tutar bildirimde görünmez, aynı kişiye sık gönderilemez,
-// gece push atılmaz. Alıcı bir kişiyi sessize alabilir (users.reminderMutes).
+// elle gönderilen hatırlatma gece push olarak gitmez (sabaha kalır). Alıcı
+// bir kişiyi sessize alabilir (users.reminderMutes).
 
 export type ReminderKind = "overdue" | "pending" | "balance";
 type DueWhen = "soon" | "today" | "late";
@@ -136,6 +146,7 @@ export const sendReminder = onCall<unknown>(OPTS, async (req) => {
 
   const {notice, result} = await db.runTransaction(async (tx) => {
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    assertNotBlocked(ledger, side);
     const other = otherSide(side);
     const otherUid = ledger.sides[other].uid;
     if (ledger.mode !== "shared" || !otherUid) {
@@ -221,7 +232,6 @@ export async function runDailyReminders(
   now: Date
 ): Promise<{notified: number; flushed: number}> {
   const today = todayIstanbul(now);
-  const flushed = await flushPushQueue(now);
   const whenOf = new Map<string, DueWhen>([
     [addDays(today, 3), "soon"],
     [today, "today"],
@@ -232,15 +242,19 @@ export async function runDailyReminders(
     .where("dueDates", "array-contains-any", [...whenOf.keys()])
     .get();
 
-  const notices: Notice[] = [];
-  const batches: WriteBatch[] = [];
-  let ops = 0;
+  const targets: {ref: DocumentReference; notices: Notice[]}[] = [];
   for (const doc of snap.docs) {
     const ledger = doc.data() as Ledger;
     if (ledger.status !== "active" || ledger.dueRemindedOn === today) continue;
     const picked = new Map<string, {when: DueWhen; name: string}>();
-    const pick = (uid: string | null, when: DueWhen, name: string) => {
-      if (!uid) return;
+    const pick = (
+      uid: string | null,
+      when: DueWhen,
+      name: string,
+      recipient: Side
+    ) => {
+      // Karşı tarafı engelleyen kişiye onun adıyla hatırlatma gitmez.
+      if (!uid || ledger.blockedBy?.[recipient]) return;
       const current = picked.get(uid);
       if (!current || URGENCY[when] > URGENCY[current.when]) {
         picked.set(uid, {when, name});
@@ -251,13 +265,15 @@ export async function runDailyReminders(
       if (!when) continue;
       const debtor = ledger.sides[item.debtorSide];
       const creditor = ledger.sides[otherSide(item.debtorSide)];
-      pick(debtor.uid, when, creditor.displayName);
-      if (when === "today") pick(creditor.uid, "today", debtor.displayName);
+      pick(debtor.uid, when, creditor.displayName, item.debtorSide);
+      if (when === "today") {
+        pick(creditor.uid, "today", debtor.displayName,
+          otherSide(item.debtorSide));
+      }
     }
     if (picked.size === 0) continue;
-    if (ops % 400 === 0) batches.push(db.batch());
-    batches[batches.length - 1].update(doc.ref, {dueRemindedOn: today});
-    ops++;
+    const notices: Notice[] = [];
+    targets.push({ref: doc.ref, notices});
     for (const [uid, p] of picked) {
       notices.push({
         uid,
@@ -270,13 +286,33 @@ export async function runDailyReminders(
     }
   }
   // Önce işaretle, sonra gönder: yeniden denemede aynı gün ikinci kez gitmez.
-  for (const b of batches) await b.commit();
+  // Defter başına ayrı yazım: arada silinen bir defter diğerlerini düşürmez.
+  const notices: Notice[] = [];
+  for (let i = 0; i < targets.length; i += 50) {
+    await Promise.all(targets.slice(i, i + 50).map(async (t) => {
+      try {
+        await t.ref.update({dueRemindedOn: today});
+        notices.push(...t.notices);
+      } catch (error) {
+        logger.error("[reminders] Defter işaretlenemedi",
+          {ledgerId: t.ref.id, error: String(error)});
+      }
+    }));
+  }
   await deliver(notices);
+  // Gece bekletilen push'lar en son: birikmiş kuyruk vade hatırlatmalarını
+  // zaman aşımına sokmasın.
+  const flushed = await flushPushQueue(now);
   return {notified: notices.length, flushed};
 }
 
 export const dailyReminders = onSchedule(
-  {schedule: "every day 09:00", timeZone: "Europe/Istanbul", region: REGION},
+  {
+    schedule: "every day 09:00",
+    timeZone: "Europe/Istanbul",
+    region: REGION,
+    timeoutSeconds: 540,
+  },
   async () => {
     const summary = await runDailyReminders(clock.now());
     logger.info("[reminders] Günlük hatırlatmalar", summary);

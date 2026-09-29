@@ -466,6 +466,8 @@ export const respondWebConfirmation = onCall<unknown>(OPTS, async (req) => {
   const ip = (forwarded || req.rawRequest?.ip || "").trim().slice(0, 64);
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const snap = await tx.get(ref);
     if (!snap.exists) fail("not-found", "Onay isteği bulunamadı.");
     const r = snap.data() as WebRequest;

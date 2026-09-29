@@ -11,6 +11,7 @@ import {ASSET_CODES, MAX_MINOR, formatMinor} from "./assets";
 import {
   OPTS,
   Id,
+  assertNotBlocked,
   consumeDaily,
   fail,
   isDeletedAccount,
@@ -46,6 +47,8 @@ const DateStr = z.string().refine(isValidDate, "Geçersiz tarih.");
 const Amount = z.number().int().positive().max(MAX_MINOR);
 const Text = z.string().trim().max(280);
 const EntryKey = {ledgerId: Id, entryId: Id, expectedVersion: z.number().int()};
+/** İstemcinin ürettiği kayıt kimliği; "t_" taşıma kayıtlarına ayrılmıştır. */
+const ClientId = Id.refine((v) => !v.startsWith("t_"), "Geçersiz kimlik.");
 
 const CreateLedgerInput = z.union([
   // Firebase uid biçimi; eğik çizgi vb. ile yol oluşturulamaz.
@@ -61,7 +64,7 @@ const CreateLedgerInput = z.union([
 
 const CreateEntryInput = z.object({
   ledgerId: Id,
-  entryId: Id,
+  entryId: ClientId,
   kind: z.enum(["debt", "payment"]),
   iGave: z.boolean(),
   asset: z.enum(ASSET_CODES),
@@ -121,12 +124,14 @@ const ConvertInput = z.object({
 const ReverseInput = z.object({
   ledgerId: Id,
   entryId: Id,
-  reversalId: Id,
+  reversalId: ClientId,
   note: Text.default(""),
 }).strict();
 
 type StoredEntry = Entry & {
   confirmation: {uid: string; version: number} | null;
+  dispute?: {byUid: string} | null;
+  rejection?: {byUid: string} | null;
 };
 
 /**
@@ -194,7 +199,7 @@ export function displayNameOf(
 }
 
 /** Günlük sınırlar (kişi başına). Olağan kullanımın çok üstündedir. */
-const DAILY = {ledgers: 20, entries: 300, revisions: 100};
+const DAILY = {ledgers: 20, entries: 300, revisions: 100, reversals: 50};
 
 /** Bir kişinin yanıtını bekleyen kayıt üst sınırı (gelen kutusu taşmasın). */
 const MAX_PENDING_PER_LEDGER = 50;
@@ -402,9 +407,12 @@ function writeNewEntry(
     entryId: string;
     content: EntryContent;
     notices: Notice[];
+    /** Taşıma satırı: bekleyen kayıt sınırına takılmaz. */
+    transfer?: boolean;
   }
 ) {
   const {uid, side, ledger, ledgerId, entryId, content, notices} = ctx;
+  assertNotBlocked(ledger, side);
   const {ledgerRef, entryRef} = refsFor(ledgerId, entryId);
   const delta = deltaFor(content.direction, content.amountMinor);
   const hash = contentHash(ledgerId, entryId, content, 1);
@@ -445,7 +453,7 @@ function writeNewEntry(
     };
     ledger.head = {seq: committed.confirmedSeq, chainHash: committed.chainHash};
   } else {
-    if ((ledger.pendingCount ?? 0) >= MAX_PENDING_PER_LEDGER) {
+    if (!ctx.transfer && (ledger.pendingCount ?? 0) >= MAX_PENDING_PER_LEDGER) {
       fail("resource-exhausted",
         "Bu kişide onay bekleyen çok fazla kayıt var. Önce bekleyenlerin " +
         "yanıtlanmasını bekleyin.");
@@ -458,7 +466,9 @@ function writeNewEntry(
     ledger.pendingCount = (ledger.pendingCount ?? 0) + 1;
   }
 
-  tx.set(entryRef, {
+  // create: aynı kimlikte kayıt varsa (ör. taşıma kimliği önceden
+  // kullanılmışsa) üzerine yazılmaz, işlem düşer.
+  tx.create(entryRef, {
     ...entry,
     ...chain,
     dispute: null,
@@ -628,6 +638,8 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const existing = await tx.get(entryRef);
     if (existing.exists) {
@@ -681,6 +693,8 @@ export const confirmEntry = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const entry = await readEntry(tx, entryRef);
     if (
@@ -751,9 +765,15 @@ export const disputeEntry = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const entry = await readEntry(tx, entryRef);
     assertVersion(entry, input.expectedVersion);
+    // Bağlantı kopup yeniden gönderilen istek: iş zaten yapıldı.
+    if (entry.state === "disputed" && entry.dispute?.byUid === uid) {
+      return {state: "disputed", version: entry.version};
+    }
     if (entry.state !== "pending" || entry.awaitingSide !== side) {
       fail("failed-precondition", "Bu kayıt sizin onayınızı beklemiyor.");
     }
@@ -802,9 +822,14 @@ export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const entry = await readEntry(tx, entryRef);
     assertVersion(entry, input.expectedVersion);
+    if (entry.state === "rejected" && entry.rejection?.byUid === uid) {
+      return {state: "rejected", version: entry.version};
+    }
     if (entry.state !== "pending" || entry.awaitingSide !== side) {
       fail("failed-precondition", "Bu kayıt sizin onayınızı beklemiyor.");
     }
@@ -861,12 +886,15 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const entry = await readEntry(tx, entryRef);
     assertVersion(entry, input.expectedVersion);
     if (entry.proposedByUid !== uid) {
       fail("permission-denied", "Yalnızca kaydı giren düzeltebilir.");
     }
+    assertNotBlocked(ledger, side);
     if (entry.state !== "pending" && entry.state !== "disputed") {
       fail("failed-precondition", "Bu kayıt artık düzeltilemez.");
     }
@@ -886,6 +914,12 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
     const dateError =
       dateRangeError(content.occurredOn, content.dueOn, todayIstanbul());
     if (dateError) fail("invalid-argument", dateError);
+    const unchanged = content.asset === entry.asset &&
+      content.amountMinor === entry.amountMinor &&
+      content.occurredOn === entry.occurredOn &&
+      content.dueOn === entry.dueOn &&
+      content.description === entry.description;
+    if (unchanged) fail("invalid-argument", "Hiçbir şeyi değiştirmediniz.");
     const version = entry.version + 1;
     const other = otherSide(side);
     const revised: Entry = {
@@ -948,6 +982,9 @@ export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
     if (entry.proposedByUid !== uid) {
       fail("permission-denied", "Yalnızca kaydı giren geri çekebilir.");
     }
+    if (entry.state === "cancelled") {
+      return {state: "cancelled", version: entry.version};
+    }
     if (entry.state !== "pending" && entry.state !== "disputed") {
       fail("failed-precondition", "Bu kayıt artık geri çekilemez.");
     }
@@ -981,11 +1018,17 @@ export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
 export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
   const input = parse(ReverseInput, req.data);
+  // Düzeltme açıp geri çekme döngüsü karşı tarafa sınırsız bildirim
+  // gönderemesin.
+  await consumeDaily(`reversals_${uid}`, DAILY.reversals,
+    "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
   const reversalRef = ledgerRef.collection("entries").doc(input.reversalId);
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const existing = await tx.get(reversalRef);
     if (existing.exists) {
@@ -1100,15 +1143,18 @@ export function transferLines(
       });
       rest -= item.openMinor;
     }
-    if (rest > 0) {
+    // Tek kayıt tutar sınırını aşamaz; büyük bakiye parçalara bölünür.
+    while (rest > 0) {
+      const part = Math.min(rest, MAX_MINOR);
       lines.push({
         asset,
-        amountMinor: rest,
+        amountMinor: part,
         iGave,
         occurredOn: today,
         dueOn: null,
         description: "Önceki kayıtlardan kalan bakiye",
       });
+      rest -= part;
     }
   }
   return lines;
@@ -1158,6 +1204,8 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
   const notices: Notice[] = [];
 
   const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
     const priv = await tx.get(privateRef);
     // Aynı defter aynı anda başka birine taşındıysa gerçek hedef döner.
     const already = priv.get("convertedTo") as string | undefined;
@@ -1176,6 +1224,14 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
       todayIstanbul(),
       input.includeDescriptions
     );
+    const ids = lines.map((_, i) => `t_${input.ledgerId}_${i}`);
+    if (ids.length > 0) {
+      const taken = await tx.getAll(
+        ...ids.map((id) => sharedRef.collection("entries").doc(id)));
+      if (taken.some((d) => d.exists)) {
+        fail("already-exists", "Bu defterin kayıtları daha önce taşınmış.");
+      }
+    }
     // Kayıt başına ayrı bildirim yerine aşağıda tek özet gider.
     const perEntry: Notice[] = [];
     let pending = 0;
@@ -1185,7 +1241,7 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
         side,
         ledger,
         ledgerId: shared.ledgerId,
-        entryId: `t_${input.ledgerId}_${i}`,
+        entryId: ids[i],
         content: {
           kind: "debt",
           direction: directionFor(side, line.iGave),
@@ -1197,6 +1253,7 @@ export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
           linkedEntryId: null,
         },
         notices: perEntry,
+        transfer: true,
       });
       if (written.state === "pending") pending++;
     });

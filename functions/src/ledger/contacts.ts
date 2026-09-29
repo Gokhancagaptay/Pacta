@@ -4,8 +4,16 @@ import {onCall} from "firebase-functions/v2/https";
 import {z} from "zod";
 import {admin, db} from "../common/firebase";
 import {deleteQuery} from "./account";
-import {OPTS, Id, consumeDaily, fail, parse, requireUid} from "./callable";
-import {Ledger} from "./model";
+import {
+  OPTS,
+  Id,
+  consumeDaily,
+  fail,
+  parse,
+  readLedger,
+  requireUid,
+} from "./callable";
+import {Ledger, sideOf} from "./model";
 
 // Kişi bulma: e-posta, Pacta kodu (QR ve davet linki de bu kodu taşır).
 // Kodlar codes/{KOD} altında tutulur; istemciye kapalıdır.
@@ -118,8 +126,10 @@ export async function authInfo(uid: string): Promise<AuthInfo | null> {
       verified: user.emailVerified || byPhone,
       displayName: user.displayName ?? null,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    // Geçici Auth hatası "kullanıcı yok" gibi görünmesin.
+    if ((error as {code?: string}).code === "auth/user-not-found") return null;
+    throw error;
   }
 }
 
@@ -191,18 +201,46 @@ export const deletePrivateLedger = onCall<unknown>(OPTS, async (req) => {
   const {ledgerId} = parse(z.object({ledgerId: Id}).strict(), req.data);
   const ref = db.collection("ledgers").doc(ledgerId);
   const snap = await ref.get();
-  if (!snap.exists) return {deleted: false};
-  const ledger = snap.data() as Ledger;
-  if (ledger.sides.a.uid !== uid) {
-    fail("permission-denied", "Bu defterin sahibi değilsiniz.");
+  if (snap.exists) {
+    const ledger = snap.data() as Ledger;
+    if (!sideOf(ledger, uid)) fail("not-found", "Defter bulunamadı.");
+    if (ledger.sides.a.uid !== uid || ledger.mode !== "private") {
+      fail("failed-precondition",
+        "Ortak defter silinemez; karşı tarafın da kaydıdır. Listenizden " +
+        "kaldırabilirsiniz.");
+    }
   }
-  if (ledger.mode !== "private") {
-    fail("failed-precondition",
-      "Ortak defter silinemez; karşı tarafın da kaydıdır. Listenizden " +
-      "kaldırabilirsiniz.");
-  }
-  await db.recursiveDelete(ref);
+  // Önce web onay istekleri (karşı tarafın e-postası ve IP'si): defter
+  // silindikten sonraki bir hata, tekrar denemede bunları kalıcı bırakmasın.
   await deleteQuery(db.collection("webRequests")
+    .where("ownerUid", "==", uid)
     .where("ledgerId", "==", ledgerId));
+  if (!snap.exists) return {deleted: false};
+  await db.recursiveDelete(ref);
   return {deleted: true};
+});
+
+const BlockInput = z.object({ledgerId: Id, blocked: z.boolean()}).strict();
+
+/**
+ * Karşı tarafı engeller ya da engeli kaldırır. Engellenen kişi bu deftere
+ * yeni kayıt, düzeltme ve hatırlatma gönderemez; bekleyen kayıtlarını geri
+ * çekebilir ve engelleyenin kayıtlarını yanıtlayabilir. Engelleyen kişi
+ * kayıt eklemeye devam eder.
+ */
+export const setBlocked = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const {ledgerId, blocked} = parse(BlockInput, req.data);
+  const ref = db.collection("ledgers").doc(ledgerId);
+  await db.runTransaction(async (tx) => {
+    const {ledger, side} = await readLedger(tx, ref, uid);
+    if (ledger.mode !== "shared") {
+      fail("failed-precondition", "Özel defterde engellenecek kimse yok.");
+    }
+    tx.update(ref, {
+      [`blockedBy.${side}`]: blocked ? true : FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return {blocked};
 });

@@ -179,7 +179,7 @@ describe("deletePrivateLedger", () => {
       asset: "TRY", amountMinor: 5000, occurredOn: today,
     });
     await rejectsWith(
-      call(fns.deletePrivateLedger, "ayse", {ledgerId}), "permission-denied");
+      call(fns.deletePrivateLedger, "ayse", {ledgerId}), "not-found");
     assert.deepEqual(
       await call(fns.deletePrivateLedger, "ali", {ledgerId}), {deleted: true});
     assert.equal((await ledgerDoc(ledgerId)).exists, false);

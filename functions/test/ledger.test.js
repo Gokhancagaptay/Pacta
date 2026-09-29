@@ -102,7 +102,7 @@ describe("onay akışı", () => {
     await rejectsWith(
       call(fns.confirmEntry, "ali", key), "failed-precondition");
     await rejectsWith(
-      call(fns.confirmEntry, "mallory", key), "permission-denied");
+      call(fns.confirmEntry, "mallory", key), "not-found");
 
     await call(fns.confirmEntry, "ayse", key);
     const ledger = await ledgerDoc(ledgerId);
@@ -299,7 +299,7 @@ describe("özel defter", () => {
         ledgerId, entryId: randomUUID(), kind: "debt", iGave: true,
         asset: "TRY", amountMinor: 100, occurredOn: today,
       }),
-      "permission-denied");
+      "not-found");
   });
 });
 

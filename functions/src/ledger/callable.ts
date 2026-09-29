@@ -6,7 +6,7 @@ import {
 } from "firebase-functions/v2/https";
 import {z} from "zod";
 import {REGION, db} from "../common/firebase";
-import {Ledger, Side, sideOf, todayIstanbul} from "./model";
+import {Ledger, Side, otherSide, sideOf, todayIstanbul} from "./model";
 
 // Callable komutların ortak parçaları.
 // App Check uygulamalar kaydedilince açılacak (plan §9).
@@ -122,6 +122,18 @@ export function parse<T extends z.ZodTypeAny>(
 }
 
 /**
+ * Karşı taraf bu kişiyi engellediyse yeni kayıt, düzeltme ve hatırlatma
+ * gönderilemez. Mesaj engeli açıkça söylemez.
+ * @param {Ledger} ledger Defter.
+ * @param {Side} side İşlemi yapanın tarafı.
+ */
+export function assertNotBlocked(ledger: Ledger, side: Side): void {
+  if (ledger.blockedBy?.[otherSide(side)]) {
+    fail("failed-precondition", "Bu kişiye şu an kayıt gönderilemiyor.");
+  }
+}
+
+/**
  * Defteri okur; üyelik ve durum kontrolü yapar.
  * @param {Transaction} tx Transaction.
  * @param {DocumentReference} ref Defter.
@@ -137,7 +149,9 @@ export async function readLedger(
   if (!snap.exists) fail("not-found", "Defter bulunamadı.");
   const ledger = snap.data() as Ledger;
   const side = sideOf(ledger, uid);
-  if (!side) fail("permission-denied", "Bu defterin tarafı değilsiniz.");
+  // Olmayan defterle aynı yanıt: başkaları arasında defter olup olmadığı
+  // (ilişki) hata kodundan öğrenilemez (kurallardaki ilkeyle aynı).
+  if (!side) fail("not-found", "Defter bulunamadı.");
   if (ledger.status !== "active") {
     fail("failed-precondition", "Defter kapalı.");
   }

@@ -111,7 +111,7 @@ describe("sendReminder", () => {
       /hatırlatılacak bir şey yok/);
     await confirmedLoan(ledgerId, 50000);
     await rejectsWith(remind("ayse", ledgerId), "failed-precondition");
-    await rejectsWith(remind("mallory", ledgerId), "permission-denied");
+    await rejectsWith(remind("mallory", ledgerId), "not-found");
   });
 
   it("yanıt bekleyen kayıt için hatırlatır", async () => {

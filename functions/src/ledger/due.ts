@@ -114,9 +114,16 @@ export function toSource(id: string, d: DocumentData): DueSource {
 export async function recomputeDue(ledgerId: string): Promise<void> {
   const ledgerRef = db.collection("ledgers").doc(ledgerId);
   await db.runTransaction(async (tx) => {
-    // Silinen defterin kayıtları tek tek silinirken tetikleyici her biri
-    // için çalışır; defter yoksa okumadan çıkılır.
-    if (!(await tx.get(ledgerRef)).exists) return;
+    const ledger = await tx.get(ledgerRef);
+    if (!ledger.exists) return;
+    // Kapanan ya da taşınan defterde vade artık kapatılamaz; hâlâ çalışan
+    // bir hesap kapanıştan sonra listeyi geri yazmasın.
+    if (ledger.get("status") !== "active") {
+      if ((ledger.get("dueItems") ?? []).length > 0) {
+        tx.update(ledgerRef, {dueItems: [], dueDates: []});
+      }
+      return;
+    }
     const snap = await tx.get(
       ledgerRef.collection("entries").where("state", "==", "confirmed")
     );
@@ -151,6 +158,9 @@ export const onLedgerEntryWritten = onDocumentWritten(
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
+    // Kayıtlar yalnızca defterle birlikte silinir (recursiveDelete önce
+    // kayıtları siler); her silinen kayıt için yeniden hesap yapılmaz.
+    if (!after) return;
     if (!affectsDue(before, after)) return;
     await recomputeDue(event.params.ledgerId);
   }

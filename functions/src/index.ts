@@ -18,6 +18,7 @@ export {
   deletePrivateLedger,
   myPactaCode,
   previewCode,
+  setBlocked,
 } from "./ledger/contacts";
 export {onLedgerEntryWritten} from "./ledger/due";
 export {dailyMaintenance} from "./ledger/maintenance";

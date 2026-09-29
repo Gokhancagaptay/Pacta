@@ -231,7 +231,7 @@ export async function deleteAccountData(
   await db.collection("publicProfiles").doc(uid).delete();
   const counters = [
     "reminders", "codes", "coderotations", "ledgers", "entries", "revisions",
-    "webrequests",
+    "webrequests", "reversals",
   ];
   await Promise.all(counters.map((k) =>
     db.collection("rateLimits").doc(`${k}_${uid}`).delete()));
