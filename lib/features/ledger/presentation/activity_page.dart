@@ -126,7 +126,9 @@ class _OutlookCard extends StatelessWidget {
     final c = context.pacta;
     var incoming = 0;
     var outgoing = 0;
-    var overdue = 0;
+    // Vadesi geçenler yönüyle ayrı: alacak ve borç toplanmaz.
+    var overdueIn = 0;
+    var overdueOut = 0;
     for (final r in [...schedule.overdue, ...schedule.upcoming]) {
       if (r.amount.asset != Asset.tryLira) continue;
       if (r.iOwe) {
@@ -136,8 +138,19 @@ class _OutlookCard extends StatelessWidget {
       }
     }
     for (final r in schedule.overdue) {
-      if (r.amount.asset == Asset.tryLira) overdue += r.amount.minor.abs();
+      if (r.amount.asset != Asset.tryLira) continue;
+      if (r.iOwe) {
+        overdueOut += r.amount.minor.abs();
+      } else {
+        overdueIn += r.amount.minor.abs();
+      }
     }
+    final overdueParts = [
+      if (overdueIn > 0)
+        '${Money(overdueIn, Asset.tryLira).format()} alacağınız',
+      if (overdueOut > 0)
+        '${Money(overdueOut, Asset.tryLira).format()} borcunuz',
+    ];
     Widget box(String label, int minor, Color color) => Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,11 +165,22 @@ class _OutlookCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 12),
       child: SurfaceCard(
         padding: const EdgeInsets.all(14),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            box('Tahsil edilecek', incoming, c.credit),
-            box('Ödenecek', outgoing, c.debt),
-            if (overdue > 0) box('Vadesi geçen', overdue, c.debt),
+            Row(
+              children: [
+                box('Tahsil edilecek', incoming, c.credit),
+                box('Ödenecek', outgoing, c.debt),
+              ],
+            ),
+            if (overdueParts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Vadesi geçen: ${overdueParts.join(' · ')}',
+                style: TextStyle(fontSize: 13, color: c.dispute),
+              ),
+            ],
           ],
         ),
       ),

@@ -111,7 +111,7 @@ class HomePage extends ConsumerWidget {
                 net: t.net,
                 receivable: t.receivable,
                 payable: t.payable,
-                footnote: t.othersSentence,
+                footnote: t.footnote,
               ),
             ),
             SectionHeader(

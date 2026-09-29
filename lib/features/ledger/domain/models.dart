@@ -70,6 +70,15 @@ class DueItem {
     description: (m['description'] as String?) ?? '',
   );
 
+  /// Bozuk ya da bilinmeyen birimli öğede null (defter yine açılır).
+  static DueItem? tryFromMap(Object? item) {
+    try {
+      return DueItem.fromMap((item as Map).cast<String, dynamic>());
+    } catch (_) {
+      return null;
+    }
+  }
+
   final String entryId;
   final Side debtorSide;
   final Money open;
@@ -122,7 +131,7 @@ class Ledger {
       lastEntryAt: _time(m['lastEntryAt']),
       dueItems: [
         for (final item in (m['dueItems'] as List?) ?? const [])
-          DueItem.fromMap((item as Map).cast<String, dynamic>()),
+          ?DueItem.tryFromMap(item),
       ],
       lastReminderOn: {
         for (final side in Side.values)

@@ -82,6 +82,9 @@ void main() {
     expect(archived.isArchived, isTrue);
     expect(archived.isClosed, isTrue);
     expect(visibleLedgers([archived, active]), [active]);
-    expect(Totals.from([archived, active], 'gokhan').receivable.minor, 1000);
+    final totals = Totals.from([archived, active], 'gokhan');
+    // Özel defter onaylı bakiyeye girmez; ayrı satırda gösterilir.
+    expect(totals.receivable.minor, 0);
+    expect(totals.private.single.minor, 1000);
   });
 }

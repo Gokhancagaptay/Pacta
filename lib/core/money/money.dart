@@ -18,9 +18,10 @@ class Money {
   /// Türkçe girişi küçük birime çevirir.
   ///
   /// Virgül ondalık ayıracıdır, nokta binlik ayıracıdır: "1.234,56" → 123456.
-  /// Virgül yoksa ve noktadan sonra üç basamaklı gruplar gelmiyorsa nokta
-  /// ondalık sayılır ("12.5" → 1250); böylece yanlış klavye düzeni tutarı
-  /// 10 katına çıkarmaz.
+  /// Nokta ancak gerçek bir binlik gruplaması varsa (ilk grup 1–3 hane ve 0
+  /// ile başlamıyor, diğerleri tam 3 hane) binlik sayılır; yoksa tek nokta
+  /// ondalıktır ("12.5" → 1250, "0.500" → 0,50). Böylece yanlış klavye
+  /// düzeni tutarı 10 ya da 1000 katına çıkarmaz.
   factory Money.parse(String input, Asset asset) {
     var text = input.replaceAll(RegExp(r'\s'), '').replaceAll(asset.symbol, '');
     if (text.isEmpty) throw const FormatException('Tutar boş.');
@@ -33,6 +34,9 @@ class Money {
     if (text.contains(',')) {
       final parts = text.split(',');
       if (parts.length != 2) throw FormatException('Geçersiz tutar: $input');
+      if (parts[0].contains('.') && !_isGrouped(parts[0].split('.'))) {
+        throw FormatException('Geçersiz tutar: $input');
+      }
       whole = parts[0].replaceAll('.', '');
       fraction = parts[1];
       if (fraction.contains('.')) {
@@ -40,8 +44,7 @@ class Money {
       }
     } else if (text.contains('.')) {
       final groups = text.split('.');
-      final isThousands = groups.skip(1).every((g) => g.length == 3);
-      if (isThousands) {
+      if (_isGrouped(groups)) {
         whole = groups.join();
         fraction = '';
       } else if (groups.length == 2) {
@@ -55,6 +58,9 @@ class Money {
       fraction = '';
     }
 
+    if (whole.isEmpty && fraction.isEmpty) {
+      throw FormatException('Geçersiz tutar: $input');
+    }
     if (whole.isEmpty) whole = '0';
     if (fraction.length > asset.scale) {
       throw FormatException(
@@ -71,6 +77,14 @@ class Money {
     if (minor > maxMinor) throw const FormatException('Tutar çok büyük.');
     return Money(minor, asset);
   }
+
+  /// "1.234.567" gibi geçerli binlik gruplaması mı.
+  static bool _isGrouped(List<String> groups) =>
+      groups.length >= 2 &&
+      groups.first.isNotEmpty &&
+      groups.first.length <= 3 &&
+      !groups.first.startsWith('0') &&
+      groups.skip(1).every((g) => g.length == 3);
 
   Money operator +(Money other) => Money(minor + _same(other).minor, asset);
   Money operator -(Money other) => Money(minor - _same(other).minor, asset);

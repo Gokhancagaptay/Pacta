@@ -158,11 +158,12 @@ String plainAmount(Money m) {
 
 /// CSV hücresi: ayraç/tırnak kaçışı ve formül enjeksiyonuna karşı koruma.
 String csvCell(String value) {
-  // Formül olarak çalıştırılmasın (=, +, -, @ ile başlayan metin); sayılar
-  // (tutar sütunu) olduğu gibi kalır.
+  // Formül olarak çalıştırılmasın (=, +, -, @, sekme, satır başı ile
+  // başlayan metin). Yalnızca tamamı sayı olan hücre ("-1234,50", tutar
+  // sütunu) olduğu gibi kalır; "-1+..." gibi metinler kaçırılır.
   var v = value;
-  if (RegExp(r'^[=+@]').hasMatch(v) ||
-      (v.startsWith('-') && !RegExp(r'^-\d').hasMatch(v))) {
+  if (RegExp('^[=+\\-@\t\r]').hasMatch(v) &&
+      !RegExp(r'^-?\d+(,\d+)?$').hasMatch(v)) {
     v = "'$v";
   }
   if (v.contains(RegExp('[;"\r\n]'))) {

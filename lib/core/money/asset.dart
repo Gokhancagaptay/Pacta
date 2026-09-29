@@ -22,11 +22,16 @@ class Asset {
 
   static const values = [tryLira, usd, eur, gramAltin, ceyrek];
 
-  static Asset fromCode(String code) {
+  static Asset fromCode(String code) =>
+      tryFromCode(code) ?? (throw FormatException('Bilinmeyen birim: $code'));
+
+  /// Bilinmeyen birimde null: sunucuya yeni birim eklendiğinde eski uygulama
+  /// çökmesin, o kaydı atlasın.
+  static Asset? tryFromCode(String? code) {
     for (final asset in values) {
       if (asset.code == code) return asset;
     }
-    throw FormatException('Bilinmeyen birim: $code');
+    return null;
   }
 
   @override

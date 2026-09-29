@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacta/core/money/asset.dart';
 import 'package:pacta/core/money/money.dart';
+import 'package:pacta/features/ledger/domain/statement.dart';
 
 void main() {
   group('Money.parse', () {
@@ -35,11 +36,42 @@ void main() {
       expect(() => parse('1,555'), throwsFormatException);
     });
 
+    test('binlik sayılamayan noktalar ondalıktır', () {
+      // Eskiden 500 ₺ sayılıyordu.
+      expect(() => parse('0.500'), throwsFormatException);
+      expect(parse('0.500', Asset.gramAltin), 500);
+      expect(parse('1234.567', Asset.gramAltin), 1234567);
+      expect(() => parse('1234.567'), throwsFormatException);
+      expect(parse('0.50'), 50);
+    });
+
     test('geçersiz girişler reddedilir', () {
-      for (final bad in ['', 'abc', '-5', '1,2,3', '1.2.3,4.5', '12.5.1']) {
+      for (final bad in [
+        '',
+        'abc',
+        '-5',
+        '1,2,3',
+        '1.2.3,4.5',
+        '12.5.1',
+        '1.2.3,4',
+        '1234.567.890',
+        '.',
+      ]) {
         expect(() => parse(bad), throwsFormatException, reason: bad);
       }
       expect(() => parse('999.999.999.999,00'), throwsFormatException);
+    });
+  });
+
+  group('csvCell', () {
+    test('yalnızca tamamı sayı olan hücre olduğu gibi kalır', () {
+      expect(csvCell('-1234,50'), '-1234,50');
+      expect(csvCell('1500'), '1500');
+      expect(csvCell("-1+cmd|' /C calc'!A0"), "'-1+cmd|' /C calc'!A0");
+      expect(csvCell('=HYPERLINK("x")'), '"\'=HYPERLINK(""x"")"');
+      expect(csvCell('@SUM(A1)'), "'@SUM(A1)");
+      expect(csvCell('\t=1'), "'\t=1");
+      expect(csvCell('Kira; ocak'), '"Kira; ocak"');
     });
   });
 

@@ -19,8 +19,15 @@ class LocalDate implements Comparable<LocalDate> {
     );
   }
 
-  static LocalDate? tryParse(String? value) =>
-      value == null ? null : LocalDate.parse(value);
+  /// Boş ya da bozuk değerde null (istisna fırlatmaz).
+  static LocalDate? tryParse(String? value) {
+    if (value == null) return null;
+    try {
+      return LocalDate.parse(value);
+    } on FormatException {
+      return null;
+    }
+  }
 
   final int year;
   final int month;

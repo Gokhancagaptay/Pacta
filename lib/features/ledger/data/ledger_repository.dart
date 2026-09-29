@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../core/report.dart';
 import '../../../core/dates/local_date.dart';
 import '../../../core/money/money.dart';
 import '../domain/models.dart';
@@ -76,6 +77,23 @@ class AddedPerson {
   final bool created;
 }
 
+/// Belgeleri tek tek çevirir; bozuk belge (bilinmeyen birim, bozuk tarih)
+/// atlanır ve raporlanır, listenin geri kalanı görünür.
+List<T> parseEach<T>(
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  T Function(QueryDocumentSnapshot<Map<String, dynamic>> doc) parse,
+) {
+  final out = <T>[];
+  for (final d in docs) {
+    try {
+      out.add(parse(d));
+    } catch (e, stack) {
+      reportError(e, stack, reason: 'Bozuk belge atlandı: ${d.reference.path}');
+    }
+  }
+  return out;
+}
+
 /// v2 defter verisi. Okumalar Firestore akışı, tüm yazmalar Cloud Functions
 /// komutudur (istemci ledgers altına yazamaz, bkz. firestore.rules).
 class LedgerRepository {
@@ -104,7 +122,7 @@ class LedgerRepository {
       .where('memberUids', arrayContains: uid)
       .orderBy('lastEntryAt', descending: true)
       .snapshots()
-      .map((s) => [for (final d in s.docs) Ledger.fromMap(d.id, d.data())]);
+      .map((s) => parseEach(s.docs, (d) => Ledger.fromMap(d.id, d.data())));
 
   Stream<Ledger?> watchLedger(String ledgerId) => _ledgers
       .doc(ledgerId)
@@ -119,9 +137,8 @@ class LedgerRepository {
           .orderBy('createdAt', descending: true)
           .snapshots()
           .map(
-            (s) => [
-              for (final d in s.docs) LedgerEntry.fromMap(d.id, d.data()),
-            ],
+            (s) =>
+                parseEach(s.docs, (d) => LedgerEntry.fromMap(d.id, d.data())),
           );
 
   /// Tüm defterlerdeki kayıtlar, son değişene göre (Hareketler > Geçmiş).
@@ -133,9 +150,8 @@ class LedgerRepository {
           .limit(limit)
           .snapshots()
           .map(
-            (s) => [
-              for (final d in s.docs) LedgerEntry.fromMap(d.id, d.data()),
-            ],
+            (s) =>
+                parseEach(s.docs, (d) => LedgerEntry.fromMap(d.id, d.data())),
           );
 
   Stream<LedgerEntry?> watchEntry(String ledgerId, String entryId) => _ledgers
@@ -156,7 +172,7 @@ class LedgerRepository {
       .where('entryId', isEqualTo: entryId)
       .snapshots()
       .map((s) {
-        final events = [for (final d in s.docs) LedgerEvent.fromMap(d.data())];
+        final events = parseEach(s.docs, (d) => LedgerEvent.fromMap(d.data()));
         events.sort(
           (x, y) => (x.at ?? DateTime.now()).compareTo(y.at ?? DateTime.now()),
         );
@@ -169,7 +185,7 @@ class LedgerRepository {
       .collection('inbox')
       .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((s) => [for (final d in s.docs) InboxItem.fromMap(d.data())]);
+      .map((s) => parseEach(s.docs, (d) => InboxItem.fromMap(d.data())));
 
   Stream<List<AppNotification>> watchNotifications(String uid) => _db
       .collection('users')
@@ -179,9 +195,8 @@ class LedgerRepository {
       .limit(20)
       .snapshots()
       .map(
-        (s) => [
-          for (final d in s.docs) AppNotification.fromMap(d.id, d.data()),
-        ],
+        (s) =>
+            parseEach(s.docs, (d) => AppNotification.fromMap(d.id, d.data())),
       );
 
   Future<void> markNotificationRead(String uid, String notificationId) => _db

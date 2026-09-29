@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pacta/core/dates/local_date.dart';
 import 'package:pacta/core/money/asset.dart';
 import 'package:pacta/core/ui/widgets.dart';
 import 'package:pacta/features/ledger/application/providers.dart';
@@ -123,6 +124,76 @@ void main() {
       expect(t.othersSentence, 'Ayrıca 2 çeyrek alacağınız var.');
       expect(Totals.from(const [], 'gokhan').othersSentence, isNull);
       expect(Asset.fromCode('TRY'), Asset.tryLira);
+    });
+
+    test('özel ve kapalı defterler onaylı bakiyeye girmez', () {
+      final private = Ledger.fromMap('v_x', {
+        'mode': 'private',
+        'sides': {
+          'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+          'b': {'uid': null, 'displayName': 'Bakkal'},
+        },
+        'balances': {'TRY': 80000},
+      });
+      final deleted = Ledger.fromMap('p_x', {
+        'mode': 'shared',
+        'status': 'closed',
+        'sides': {
+          'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+          'b': {'uid': 'eski', 'displayName': 'Silinmiş', 'deleted': true},
+        },
+        'balances': {'TRY': 50000},
+      });
+      final t = Totals.from([
+        ledger(balances: {'TRY': 1000}),
+        private,
+        deleted,
+      ], 'gokhan');
+      expect(t.receivable.minor, 1000);
+      expect(t.private.single.minor, 80000);
+      expect(
+        t.footnote,
+        'Özel defterlerinizde ayrıca 800,00 ₺ alacağınız var '
+        '(karşı taraf onaylamadı).',
+      );
+    });
+
+    test('bozuk alanlar listeyi düşürmez', () {
+      expect(LocalDate.tryParse('2026-13'), isNull);
+      expect(Asset.tryFromCode('GBP'), isNull);
+      final l = Ledger.fromMap('p_y', {
+        'mode': 'shared',
+        'sides': {
+          'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+          'b': {'uid': 'x', 'displayName': 'X'},
+        },
+        'balances': {'TRY': 100, 'GBP': 5},
+        'dueItems': [
+          {
+            'entryId': 'e1',
+            'asset': 'GBP',
+            'debtorSide': 'b',
+            'openMinor': 5,
+            'dueOn': '2026-10-01',
+          },
+          {
+            'entryId': 'e2',
+            'asset': 'TRY',
+            'debtorSide': 'b',
+            'openMinor': 100,
+            'dueOn': 'yarın',
+          },
+          {
+            'entryId': 'e3',
+            'asset': 'TRY',
+            'debtorSide': 'b',
+            'openMinor': 100,
+            'dueOn': '2026-10-01',
+          },
+        ],
+      });
+      expect(l.dueItems.map((i) => i.entryId), ['e3']);
+      expect(l.balancesFor('gokhan').single.minor, 100);
     });
   });
 }

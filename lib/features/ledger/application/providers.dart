@@ -67,24 +67,36 @@ final notificationsProvider = StreamProvider.autoDispose<List<AppNotification>>(
   },
 );
 
-/// Tüm defterlerin kullanıcı bakış açısından onaylı toplamı.
+/// Kullanıcının bakış açısından toplamlar.
 class Totals {
   const Totals({
     required this.net,
     required this.receivable,
     required this.payable,
     required this.others,
+    this.private = const [],
   });
 
-  /// Bir kullanıcının tüm defterlerini birim bazında toplar. TL ana karttadır,
-  /// diğer birimler (altın, döviz) [others] listesinde ayrı durur.
+  /// "Onaylı bakiye" yalnızca açık ortak defterlerden gelir: iki tarafın
+  /// onayladığı kayıtlar. TL ana karttadır, diğer birimler [others]
+  /// listesinde durur. Özel defterler (karşı taraf onaylamadı) [private]
+  /// listesinde ayrıca gösterilir. Kapalı defterler sayılmaz: taşınmış özel
+  /// defterin bakiyesi ortak deftere geçti; karşı tarafı hesabını silmiş
+  /// defter artık kapatılamaz.
   factory Totals.from(List<Ledger> ledgers, String uid) {
     var receivable = 0;
     var payable = 0;
     final others = <String, int>{};
+    final private = <String, int>{};
     for (final ledger in ledgers) {
-      // Taşınmış özel defterin bakiyesi ortak defterde sayılır.
-      if (ledger.isArchived) continue;
+      if (ledger.isClosed) continue;
+      if (ledger.isPrivate) {
+        for (final money in ledger.balancesFor(uid)) {
+          private[money.asset.code] =
+              (private[money.asset.code] ?? 0) + money.minor;
+        }
+        continue;
+      }
       for (final money in ledger.balancesFor(uid)) {
         if (money.asset == Asset.tryLira) {
           if (money.minor > 0) {
@@ -102,17 +114,23 @@ class Totals {
       net: Money(receivable - payable, Asset.tryLira),
       receivable: Money(receivable, Asset.tryLira),
       payable: Money(payable, Asset.tryLira),
-      others: [
-        for (final e in others.entries)
-          if (e.value != 0) Money(e.value, Asset.fromCode(e.key)),
-      ],
+      others: _nonZero(others),
+      private: _nonZero(private),
     );
   }
+
+  static List<Money> _nonZero(Map<String, int> byCode) => [
+    for (final e in byCode.entries)
+      if (e.value != 0) Money(e.value, Asset.fromCode(e.key)),
+  ];
 
   final Money net;
   final Money receivable;
   final Money payable;
   final List<Money> others;
+
+  /// Özel defterlerin toplamı, birim başına (onaylı sayılmaz).
+  final List<Money> private;
 
   /// "Ayrıca 2 çeyrek alacağınız, 1,500 gr borcunuz var".
   String? get othersSentence {
@@ -122,6 +140,23 @@ class Totals {
         m.isNegative ? '${(-m).format()} borcunuz' : '${m.format()} alacağınız',
     ];
     return 'Ayrıca ${parts.join(', ')} var.';
+  }
+
+  /// "Özel defterlerinizde ayrıca 800,00 ₺ alacağınız var (onaysız)."
+  String? get privateSentence {
+    if (private.isEmpty) return null;
+    final parts = [
+      for (final m in private)
+        m.isNegative ? '${(-m).format()} borcunuz' : '${m.format()} alacağınız',
+    ];
+    return 'Özel defterlerinizde ayrıca ${parts.join(', ')} var '
+        '(karşı taraf onaylamadı).';
+  }
+
+  /// Karttaki dipnot: diğer birimler ve özel defterler.
+  String? get footnote {
+    final lines = [?othersSentence, ?privateSentence];
+    return lines.isEmpty ? null : lines.join('\n');
   }
 }
 
