@@ -656,8 +656,21 @@ export const createEntry = onCall<unknown>(OPTS, async (req) => {
       const linked = await tx.get(
         ledgerRef.collection("entries").doc(input.linkedEntryId)
       );
-      if (!linked.exists || linked.get("kind") !== "debt") {
+      const debt = linked.data() as Entry | undefined;
+      if (!debt || debt.kind !== "debt") {
         fail("failed-precondition", "Bağlanan borç bulunamadı.");
+      }
+      // Ödeme yalnızca geçerli bir borcu, aynı birimde ve borcu kapatan
+      // yönde karşılayabilir.
+      if (debt.state !== "confirmed" || debt.reversedBy) {
+        fail("failed-precondition",
+          "Ödeme yalnızca onaylı bir borca bağlanabilir.");
+      }
+      if (debt.asset !== input.asset) {
+        fail("invalid-argument", "Ödeme, borçla aynı birimde olmalı.");
+      }
+      if (directionFor(side, input.iGave) === debt.direction) {
+        fail("invalid-argument", "Bu ödeme bu borcu kapatmaz.");
       }
     }
     const content: EntryContent = {
@@ -901,6 +914,10 @@ export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
     if (entry.kind === "reversal") {
       fail("failed-precondition", "Düzeltme kaydının tutarı değiştirilemez.");
     }
+    if (entry.linkedEntryId && input.asset && input.asset !== entry.asset) {
+      fail("invalid-argument",
+        "Bir borca bağlı ödemenin birimi değiştirilemez.");
+    }
     const content: EntryContent = {
       kind: entry.kind,
       direction: entry.direction,
@@ -1023,6 +1040,9 @@ export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
   await consumeDaily(`reversals_${uid}`, DAILY.reversals,
     "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
   const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  if (input.reversalId === input.entryId) {
+    fail("invalid-argument", "Düzeltme kaydı için yeni bir kimlik gerekir.");
+  }
   const reversalRef = ledgerRef.collection("entries").doc(input.reversalId);
   const notices: Notice[] = [];
 
@@ -1032,7 +1052,12 @@ export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
     const existing = await tx.get(reversalRef);
     if (existing.exists) {
-      if (existing.get("proposedByUid") !== uid) {
+      // Tekrar gönderim yalnızca aynı kaydın düzeltmesiyse aynı sonucu döner.
+      if (
+        existing.get("proposedByUid") !== uid ||
+        existing.get("kind") !== "reversal" ||
+        existing.get("linkedEntryId") !== input.entryId
+      ) {
         fail("already-exists", "Kayıt kimliği kullanılmış.");
       }
       return {

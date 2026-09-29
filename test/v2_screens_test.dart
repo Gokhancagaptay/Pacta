@@ -50,6 +50,12 @@ class FakeRepo extends LedgerRepository {
   }
 
   @override
+  Future<({bool self, String name})> previewEmail(String email) async {
+    calls.add('previewEmail $email');
+    return (self: false, name: 'Ayşe Yılmaz');
+  }
+
+  @override
   Future<AddedPerson> addByCode(String code) async {
     calls.add('addByCode $code');
     return const AddedPerson(
@@ -801,6 +807,19 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'ayse@example.com');
       await tester.pump();
+      // Geri alınamaz: e-postada da önce kişinin adı gösterilir.
+      final find1 = find.widgetWithText(FilledButton, 'Kişiyi bul');
+      await tester.scrollUntilVisible(
+        find1,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find1);
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('previewEmail ayse@example.com'));
+      expect(repo.calls.where((c) => c.startsWith('convert')), isEmpty);
+      expect(find.text('Ayşe Yılmaz'), findsOneWidget);
+
       final button = find.widgetWithText(FilledButton, 'Ortak deftere taşı');
       await tester.scrollUntilVisible(
         button,

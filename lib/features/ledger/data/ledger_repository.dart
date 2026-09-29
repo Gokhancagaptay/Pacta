@@ -254,7 +254,19 @@ class LedgerRepository {
   /// Kodun sahibinin adı; eklemeden önce onay için.
   Future<({bool self, String name})> previewCode(String code) async {
     final r = await _call('previewCode', {'code': code.trim()});
-    return (self: r['self'] == true, name: r['displayName'] as String);
+    return (
+      self: r['self'] == true,
+      name: (r['displayName'] as String?) ?? 'Pacta kullanıcısı',
+    );
+  }
+
+  /// E-postanın sahibinin adı; özel defteri taşımadan (geri alınamaz) önce.
+  Future<({bool self, String name})> previewEmail(String email) async {
+    final r = await _call('previewCode', {'email': email.trim()});
+    return (
+      self: r['self'] == true,
+      name: (r['displayName'] as String?) ?? 'Pacta kullanıcısı',
+    );
   }
 
   /// Kullanıcının Pacta kodu; yoksa sunucu üretir.

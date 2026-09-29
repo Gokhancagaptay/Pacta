@@ -175,12 +175,30 @@ export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
   fail("unavailable", "Kod oluşturulamadı, tekrar deneyin.");
 });
 
-/** Koddan kişinin adını gösterir; eklemeden önce onay için. */
+const PreviewInput = z.union([
+  z.object({code: z.string().max(200)}).strict(),
+  z.object({
+    email: z.string().trim().min(3).max(254)
+      .refine((v) => v.includes("@"), "Geçerli bir e-posta girin."),
+  }).strict(),
+]);
+
+/**
+ * Koddan ya da e-postadan kişinin adını gösterir; eklemeden ya da özel
+ * defteri taşımadan (geri alınamaz) önce doğru kişi olduğu görülsün.
+ * E-posta sorgusu da kod sorgu sınırından düşer (adres taraması
+ * zorlaşsın).
+ */
 export const previewCode = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
-  const input = z.object({code: z.string().max(200)}).strict();
-  const {code} = parse(input, req.data);
-  const target = await uidForCode(uid, code);
+  const input = parse(PreviewInput, req.data);
+  let target: string;
+  if ("email" in input) {
+    await consumeCodeLookup(uid);
+    target = await uidForEmail(input.email);
+  } else {
+    target = await uidForCode(uid, input.code);
+  }
   const profile = await db.collection("users").doc(target).get();
   const raw = (profile.get("adSoyad") as string | undefined) ||
     (await authInfo(target))?.displayName || "";

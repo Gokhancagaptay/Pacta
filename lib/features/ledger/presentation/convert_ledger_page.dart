@@ -38,7 +38,9 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
   bool _withDescriptions = false;
 
   /// Kodla bulunan kişi; taşımadan önce adı gösterilir.
-  ({String code, String name})? _found;
+  /// Bulunan kişi: yazılan kod ya da e-posta (küçük harf) ve adı. Taşıma
+  /// geri alınamaz; önce ad gösterilir, ikinci dokunuşta taşınır.
+  ({String key, String name})? _found;
 
   @override
   void dispose() {
@@ -53,21 +55,27 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
     _error = message;
   });
 
-  Future<void> _lookup(String code) async {
+  Future<void> _lookup({String? code, String? email}) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final preview = await _repo.previewCode(code);
+      final preview = email != null
+          ? await _repo.previewEmail(email)
+          : await _repo.previewCode(code!);
       if (!mounted) return;
       if (preview.self) {
-        _fail('Bu sizin kodunuz. Kişinin Pacta kodunu girin.');
+        _fail(
+          email != null
+              ? 'Bu sizin e-postanız. Kişinin e-postasını girin.'
+              : 'Bu sizin kodunuz. Kişinin Pacta kodunu girin.',
+        );
         return;
       }
       setState(() {
         _busy = false;
-        _found = (code: code, name: preview.name);
+        _found = (key: email?.toLowerCase() ?? code!, name: preview.name);
       });
     } on LedgerException catch (e) {
       if (mounted) _fail(e.message);
@@ -80,7 +88,7 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
     ).push<String>(MaterialPageRoute(builder: (_) => const ScanCodePage()));
     if (code == null || !mounted) return;
     _query.text = formatPactaCode(code);
-    await _lookup(code);
+    await _lookup(code: code);
   }
 
   Future<void> _submit() async {
@@ -93,6 +101,11 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
     String? code;
     if (text.contains('@')) {
       email = text;
+      // E-postada da önce kişinin adı gösterilir; taşıma ikinci dokunuşta.
+      if (_found?.key != email.toLowerCase()) {
+        await _lookup(email: email);
+        return;
+      }
     } else {
       code = parsePactaCode(text);
       if (code == null) {
@@ -103,8 +116,8 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
         return;
       }
       // Kodla önce kişinin adı gösterilir; taşıma ikinci dokunuşta.
-      if (_found?.code != code) {
-        await _lookup(code);
+      if (_found?.key != code) {
+        await _lookup(code: code);
         return;
       }
     }
@@ -317,9 +330,7 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(
-                        _query.text.trim().isNotEmpty &&
-                                !_query.text.contains('@') &&
-                                found == null
+                        _query.text.trim().isNotEmpty && found == null
                             ? 'Kişiyi bul'
                             : 'Ortak deftere taşı',
                       ),

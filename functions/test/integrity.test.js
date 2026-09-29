@@ -171,3 +171,52 @@ describe("engelleme", () => {
       {ledgerId: privateId, blocked: true}), "failed-precondition");
   });
 });
+
+describe("bağlı ödeme ve ters kayıt kimliği", () => {
+  const pay = (ledgerId, uid, linkedEntryId, extra = {}) =>
+    call(fns.createEntry, uid, {
+      ledgerId, entryId: randomUUID(), kind: "payment", iGave: false,
+      asset: "TRY", amountMinor: 100, occurredOn: today, linkedEntryId,
+      ...extra,
+    });
+
+  it("ödeme yalnızca onaylı, aynı birimli borcu kapatan yönde bağlanır",
+    async () => {
+      const ledgerId = await sharedLedger();
+      const pending = await lend(ledgerId, "ali", 1000);
+      await rejectsWith(pay(ledgerId, "ali", pending.entryId),
+        "failed-precondition", /onaylı/);
+      await call(fns.confirmEntry, "ayse",
+        {ledgerId, entryId: pending.entryId, expectedVersion: 1});
+      await rejectsWith(pay(ledgerId, "ali", pending.entryId, {asset: "USD"}),
+        "invalid-argument", /aynı birimde/);
+      // Borç veren ödeme "yaptım" diyemez: bu borcu kapatmaz.
+      await rejectsWith(pay(ledgerId, "ali", pending.entryId, {iGave: true}),
+        "invalid-argument", /kapatmaz/);
+      const ok = await pay(ledgerId, "ali", pending.entryId);
+      assert.equal(ok.state, "confirmed");
+    });
+
+  it("düzeltme kimliği düzeltilen kaydın kendisi olamaz", async () => {
+    const ledgerId = await sharedLedger();
+    const {entryId} = await lend(ledgerId, "ali", 100, {iGave: false});
+    await rejectsWith(call(fns.reverseEntry, "ali",
+      {ledgerId, entryId, reversalId: entryId}), "invalid-argument");
+    const other = await lend(ledgerId, "ali", 200, {iGave: false});
+    await rejectsWith(call(fns.reverseEntry, "ali",
+      {ledgerId, entryId, reversalId: other.entryId}), "already-exists");
+  });
+
+  it("e-postayla kişi önizlemesi ad döner, sorgu sınırından düşer",
+    async () => {
+      const res = await call(fns.previewCode, "ali",
+        {email: "AYSE@example.com"});
+      assert.deepEqual(res, {self: false, displayName: "Ayşe Yılmaz"});
+      assert.equal((await call(fns.previewCode, "ali",
+        {email: "ali@example.com"})).self, true);
+      await rejectsWith(call(fns.previewCode, "ali",
+        {email: "m@example.com"}), "failed-precondition");
+      const counter = await db.doc("rateLimits/codes_ali").get();
+      assert.equal(counter.get("count"), 3);
+    });
+});
