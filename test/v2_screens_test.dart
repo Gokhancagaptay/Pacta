@@ -100,6 +100,11 @@ class FakeRepo extends LedgerRepository {
   }
 
   @override
+  Future<void> setBlocked(String ledgerId, bool blocked) async {
+    calls.add('block $ledgerId $blocked');
+  }
+
+  @override
   Future<WebLink> requestWebConfirmation(
     LedgerEntry e, {
     bool includeDescription = true,
@@ -219,6 +224,24 @@ final closedLedger = Ledger.fromMap('p_eski', {
   'pendingCount': 0,
 });
 
+// Gökhan'ın engellediği Efe ve Gökhan'ı engelleyen Zeynep.
+Ledger blockedLedger(String id, String otherUid, String name, String by) =>
+    Ledger.fromMap(id, {
+      'mode': 'shared',
+      'sides': {
+        'a': {'uid': 'gokhan', 'displayName': 'Gökhan'},
+        'b': {'uid': otherUid, 'displayName': name},
+      },
+      'balances': {'TRY': 10000},
+      'pendingCount': 0,
+      'blockedBy': {by: true},
+    });
+
+final blockedLedgers = [
+  blockedLedger('p_efe', 'efe', 'Efe Kara', 'a'),
+  blockedLedger('p_zeynep', 'zeynep', 'Zeynep Ak', 'b'),
+];
+
 // Uygulaması olmayan Bakkal Ahmet: 300 ₺'si 1 Ekim vadeli, toplam 800 ₺.
 final privateLedger = Ledger.fromMap('v_bakkal', {
   'mode': 'private',
@@ -304,6 +327,7 @@ Widget app(Widget home, FakeRepo repo, {List<Ledger>? people}) => ProviderScope(
           closedLedger,
           privateLedger,
           archivedLedger,
+          ...blockedLedgers,
         ].firstWhere((l) => l.id == id),
       ),
     ),
@@ -513,6 +537,39 @@ void main() {
 
     expect(find.text('Silinmiş kullanıcı'), findsOneWidget);
     expect(find.textContaining('Pacta hesabını sildi'), findsOneWidget);
+    expect(find.text('Kayıt ekle'), findsNothing);
+    expect(find.text('Hatırlat'), findsNothing);
+  });
+
+  testWidgets('Engelleme: onay sorulur, engellenen kişi not görür', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_can'), repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Diğer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Engelle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Can Demir engellensin mi?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Engelle'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, contains('block p_can true'));
+
+    // Engellediğim kişi: not ve "Engeli kaldır"; kayıt eklemeye devam.
+    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_efe'), repo));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('kişisini engellediniz'), findsOneWidget);
+    expect(find.text('Kayıt ekle'), findsOneWidget);
+    await tester.tap(find.text('Engeli kaldır'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, contains('block p_efe false'));
+
+    // Beni engelleyen kişi: kayıt ve hatırlatma düğmeleri yok.
+    await tester.pumpWidget(app(const LedgerPage(ledgerId: 'p_zeynep'), repo));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('gönderilemiyor'), findsOneWidget);
     expect(find.text('Kayıt ekle'), findsNothing);
     expect(find.text('Hatırlat'), findsNothing);
   });

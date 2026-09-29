@@ -95,9 +95,11 @@ class Ledger {
     this.convertedTo,
     this.chainSeq = 0,
     this.chainHash = '',
+    this.blockedBy = const {},
   });
 
   factory Ledger.fromMap(String id, Map<String, dynamic> m) {
+    final blocked = (m['blockedBy'] as Map?) ?? const {};
     final sides = (m['sides'] as Map?)?.cast<String, dynamic>() ?? const {};
     final raw = (m['balances'] as Map?)?.cast<String, dynamic>() ?? const {};
     final reminders =
@@ -109,6 +111,10 @@ class Ledger {
       convertedTo: m['convertedTo'] as String?,
       chainSeq: ((m['head'] as Map?)?['seq'] as num?)?.toInt() ?? 0,
       chainHash: ((m['head'] as Map?)?['chainHash'] as String?) ?? '',
+      blockedBy: {
+        for (final side in Side.values)
+          if (blocked[side.name] == true) side,
+      },
       a: LedgerSide.fromMap((sides['a'] as Map?)?.cast<String, dynamic>()),
       b: LedgerSide.fromMap((sides['b'] as Map?)?.cast<String, dynamic>()),
       balances: {for (final e in raw.entries) e.key: (e.value as num).toInt()},
@@ -160,6 +166,19 @@ class Ledger {
 
   /// Tarafın karşı tarafa en son hatırlatma gönderdiği gün.
   final Map<Side, LocalDate> lastReminderOn;
+
+  /// Karşı tarafını engelleyen taraflar (engellenen kayıt ve hatırlatma
+  /// gönderemez; sunucu uygular).
+  final Set<Side> blockedBy;
+
+  /// Kullanıcı karşı tarafı engelledi mi.
+  bool blockedByMe(String uid) => blockedBy.contains(sideOf(uid));
+
+  /// Karşı taraf kullanıcıyı engelledi mi.
+  bool blocksMe(String uid) {
+    final me = sideOf(uid);
+    return me != null && blockedBy.contains(me == Side.a ? Side.b : Side.a);
+  }
 
   Side? sideOf(String uid) =>
       a.uid == uid ? Side.a : (b.uid == uid ? Side.b : null);

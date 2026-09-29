@@ -143,6 +143,8 @@ class LedgerPage extends ConsumerWidget {
                   switch (value) {
                     case 'mute':
                       _toggleMute(context, ref, ledger, muted);
+                    case 'block':
+                      _toggleBlock(context, ref, ledger);
                     case 'convert':
                       _convert(context, ledger);
                     case 'pdf':
@@ -170,6 +172,13 @@ class LedgerPage extends ConsumerWidget {
                     const PopupMenuItem(
                       value: 'convert',
                       child: Text('Ortak deftere taşı'),
+                    ),
+                  if (!ledger.isPrivate && !ledger.isClosed)
+                    PopupMenuItem(
+                      value: 'block',
+                      child: Text(
+                        ledger.blockedByMe(uid) ? 'Engeli kaldır' : 'Engelle',
+                      ),
                     ),
                   if (!ledger.isPrivate && !ledger.isClosed)
                     PopupMenuItem(
@@ -256,7 +265,26 @@ class LedgerPage extends ConsumerWidget {
                           style: TextStyle(color: c.muted),
                         ),
                       )
-                    else
+                    else if (ledger.blocksMe(uid))
+                      _ClosedNote(
+                        text:
+                            '${other.displayName} kişisine şu an kayıt, '
+                            'düzeltme ya da hatırlatma gönderilemiyor. '
+                            'Bekleyen kayıtlarınızı geri çekebilirsiniz.',
+                      )
+                    else ...[
+                      if (ledger.blockedByMe(uid)) ...[
+                        _ClosedNote(
+                          text:
+                              '${other.displayName} kişisini engellediniz. '
+                              'Size kayıt, düzeltme ya da hatırlatma '
+                              'gönderemez; siz kayıt eklemeye devam '
+                              'edebilirsiniz.',
+                          action: 'Engeli kaldır',
+                          onAction: () => _toggleBlock(context, ref, ledger),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       Row(
                         children: [
                           _Action(
@@ -301,6 +329,7 @@ class LedgerPage extends ConsumerWidget {
                           ],
                         ],
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -446,6 +475,46 @@ class LedgerPage extends ConsumerWidget {
         builder: (_) =>
             EntryComposerPage(ledgerId: ledger.id, initialMode: mode),
       ),
+    );
+  }
+
+  Future<void> _toggleBlock(
+    BuildContext context,
+    WidgetRef ref,
+    Ledger ledger,
+  ) async {
+    final uid = ref.read(currentUidProvider);
+    final name = ledger.other(uid).displayName;
+    final block = !ledger.blockedByMe(uid);
+    if (block) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('$name engellensin mi?'),
+          content: Text(
+            '$name size yeni kayıt, düzeltme ya da hatırlatma gönderemez. '
+            'Bekleyen kayıtlarını geri çekebilir, sizin kayıtlarınızı '
+            'yanıtlayabilir. Ortak geçmişiniz silinmez; engeli istediğiniz '
+            'zaman kaldırabilirsiniz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Vazgeç'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Engelle'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !context.mounted) return;
+    }
+    await runCommand(
+      context,
+      () => ref.read(ledgerRepositoryProvider).setBlocked(ledger.id, block),
+      success: block ? '$name engellendi.' : 'Engel kaldırıldı.',
     );
   }
 
@@ -662,22 +731,18 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
 }
 
 class _ClosedNote extends StatelessWidget {
-  const _ClosedNote({
-    required this.text,
-    required this.action,
-    required this.onAction,
-  });
+  const _ClosedNote({required this.text, this.action, this.onAction});
 
   final String text;
-  final String action;
-  final VoidCallback onAction;
+  final String? action;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     final c = context.pacta;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      padding: EdgeInsets.fromLTRB(12, 12, 12, action == null ? 12 : 4),
       decoration: BoxDecoration(
         color: c.line,
         borderRadius: BorderRadius.circular(12),
@@ -686,10 +751,11 @@ class _ClosedNote extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(text, style: TextStyle(color: c.muted)),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(onPressed: onAction, child: Text(action)),
-          ),
+          if (action != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: onAction, child: Text(action!)),
+            ),
         ],
       ),
     );

@@ -255,6 +255,11 @@ class LedgerRepository {
     }),
   );
 
+  /// Karşı tarafı engeller ya da engeli kaldırır: engellenen kişi bu deftere
+  /// kayıt, düzeltme ve hatırlatma gönderemez.
+  Future<void> setBlocked(String ledgerId, bool blocked) =>
+      _call('setBlocked', {'ledgerId': ledgerId, 'blocked': blocked});
+
   /// Özel defteri kayıtlarıyla birlikte siler (ortak defter silinmez).
   Future<void> deletePrivateLedger(String ledgerId) =>
       _call('deletePrivateLedger', {'ledgerId': ledgerId});
