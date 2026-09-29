@@ -202,6 +202,60 @@ class EntryDispute {
   final int? suggestedAmountMinor;
 }
 
+/// Uygulaması olmayan karşı tarafın web'deki yanıtı (yalnızca özel
+/// defterde). Özel defterin bakiyesini değiştirmez; kayda kanıt olarak
+/// eklenir (functions/src/ledger/web.ts).
+enum WebConfirmationState { requested, confirmed, disputed, rejected }
+
+class WebConfirmation {
+  const WebConfirmation({
+    required this.state,
+    this.emailMasked,
+    this.reason,
+    this.note = '',
+    this.suggestedAmountMinor,
+    this.requestedAt,
+    this.respondedAt,
+    this.expiresAt,
+  });
+
+  factory WebConfirmation.fromMap(Map<String, dynamic> m) => WebConfirmation(
+    state: _enum(
+      WebConfirmationState.values,
+      m['state'],
+      WebConfirmationState.requested,
+    ),
+    emailMasked: m['emailMasked'] as String?,
+    reason: m['reason'] as String?,
+    note: (m['note'] as String?) ?? '',
+    suggestedAmountMinor: (m['suggestedAmountMinor'] as num?)?.toInt(),
+    requestedAt: _time(m['requestedAt']),
+    respondedAt: _time(m['respondedAt']),
+    expiresAt: _time(m['expiresAt']),
+  );
+
+  final WebConfirmationState state;
+
+  /// Yanıtlayanın gizlenmiş e-postası: "a***@gmail.com".
+  final String? emailMasked;
+
+  /// İtiraz ya da ret gerekçesi (EntryText sözlüklerindeki anahtarlar).
+  final String? reason;
+  final String note;
+  final int? suggestedAmountMinor;
+  final DateTime? requestedAt;
+  final DateTime? respondedAt;
+
+  /// Link bu andan sonra yanıt kabul etmez.
+  final DateTime? expiresAt;
+
+  /// Link gönderildi ama yanıt gelmeden süresi doldu.
+  bool isExpired(DateTime now) =>
+      state == WebConfirmationState.requested &&
+      expiresAt != null &&
+      !now.isBefore(expiresAt!);
+}
+
 class LedgerEntry {
   const LedgerEntry({
     required this.id,
@@ -225,6 +279,7 @@ class LedgerEntry {
     required this.reversalPendingId,
     required this.dispute,
     this.rejectionReason,
+    this.webConfirmation,
     this.createdAt,
     this.updatedAt,
   });
@@ -232,6 +287,7 @@ class LedgerEntry {
   factory LedgerEntry.fromMap(String id, Map<String, dynamic> m) {
     final awaiting = m['awaitingSide'];
     final dispute = (m['dispute'] as Map?)?.cast<String, dynamic>();
+    final web = (m['webConfirmation'] as Map?)?.cast<String, dynamic>();
     return LedgerEntry(
       id: id,
       ledgerId: (m['ledgerId'] as String?) ?? '',
@@ -256,6 +312,7 @@ class LedgerEntry {
       reversalPendingId: m['reversalPendingId'] as String?,
       dispute: dispute == null ? null : EntryDispute.fromMap(dispute),
       rejectionReason: (m['rejection'] as Map?)?['reason'] as String?,
+      webConfirmation: web == null ? null : WebConfirmation.fromMap(web),
       createdAt: _time(m['createdAt']),
       updatedAt: _time(m['updatedAt']),
     );
@@ -284,6 +341,9 @@ class LedgerEntry {
 
   /// Ret gerekçesi (ör. "accountDeleted": karşı taraf hesabını sildi).
   final String? rejectionReason;
+
+  /// Özel defterde karşı tarafın web'den verdiği yanıt.
+  final WebConfirmation? webConfirmation;
   final DateTime? createdAt;
 
   /// Son durum değişikliği (Hareketler > Geçmiş sırası).
@@ -307,6 +367,14 @@ class LedgerEntry {
       kind != EntryKind.reversal &&
       reversedBy == null &&
       reversalPendingId == null;
+
+  /// Özel defterde karşı taraftan web onayı istenebilir mi (sunucuyla aynı
+  /// koşullar; defterin özel ve açık olduğunu çağıran bilir).
+  bool get canRequestWebConfirmation =>
+      state == EntryState.confirmed &&
+      kind != EntryKind.reversal &&
+      reversedBy == null &&
+      webConfirmation?.state != WebConfirmationState.confirmed;
 }
 
 class InboxItem {

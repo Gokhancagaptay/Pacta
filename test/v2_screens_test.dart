@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,10 +9,12 @@ import 'package:pacta/core/dates/local_date.dart';
 import 'package:pacta/core/money/money.dart';
 import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/features/ledger/data/ledger_repository.dart';
+import 'package:pacta/features/ledger/domain/entry_text.dart';
 import 'package:pacta/features/ledger/domain/models.dart';
 import 'package:pacta/features/ledger/domain/reminder.dart';
 import 'package:pacta/features/ledger/presentation/contacts_ui.dart';
 import 'package:pacta/features/ledger/presentation/entry_composer_page.dart';
+import 'package:pacta/features/ledger/presentation/entry_detail_page.dart';
 import 'package:pacta/features/ledger/presentation/home_page.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
 import 'package:pacta/features/ledger/presentation/ledger_page.dart';
@@ -93,6 +96,18 @@ class FakeRepo extends LedgerRepository {
       name: 'Ayşe Yılmaz',
       transferred: 2,
       pending: 2,
+    );
+  }
+
+  @override
+  Future<WebLink> requestWebConfirmation(
+    LedgerEntry e, {
+    bool includeDescription = true,
+  }) async {
+    calls.add('webLink ${e.id} $includeDescription');
+    return (
+      url: 'https://pacta-76686.web.app/o/${'a' * 32}',
+      expiresOn: const LocalDate(2026, 10, 9),
     );
   }
 
@@ -809,5 +824,140 @@ void main() {
     await tester.tap(find.text('Pacta kodum'));
     await tester.pumpAndSettle();
     expect(find.text('K7Q-3XM'), findsOneWidget);
+  });
+
+  group('Özel defter web onayı', () {
+    LedgerEntry bakkalEntry([Map<String, Object?>? web]) =>
+        LedgerEntry.fromMap('e-bakkal', {
+          'ledgerId': 'v_bakkal',
+          'kind': 'debt',
+          'direction': 'aToB',
+          'asset': 'TRY',
+          'amountMinor': 50000,
+          'deltaMinor': 50000,
+          'occurredOn': '2026-09-20',
+          'description': 'Veresiye',
+          'state': 'confirmed',
+          'version': 1,
+          'proposedBy': 'a',
+          'proposedByUid': 'gokhan',
+          'webConfirmation': ?web,
+        });
+
+    Future<void> openDetail(
+      WidgetTester tester,
+      FakeRepo repo,
+      LedgerEntry entry,
+    ) async {
+      phoneSize(tester);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            entryProvider.overrideWith((ref, key) => Stream.value(entry)),
+            entryEventsProvider.overrideWith(
+              (ref, key) => Stream.value(const []),
+            ),
+          ],
+          child: app(
+            const EntryDetailPage(ledgerId: 'v_bakkal', entryId: 'e-bakkal'),
+            repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('link açıklamasız istenebilir; paylaşılamazsa kopyalanır', (
+      tester,
+    ) async {
+      final repo = FakeRepo();
+      String? copied;
+      final share = shareWebLink;
+      addTearDown(() => shareWebLink = share);
+      shareWebLink = (_) async => throw Exception('paylaşım yok');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await openDetail(tester, repo, bakkalEntry());
+      expect(find.textContaining('linkle onaylayabilir'), findsOneWidget);
+
+      await tester.tap(find.text('Karşı taraftan onay iste'));
+      await tester.pumpAndSettle();
+      expect(find.text('Açıklamayı göster'), findsOneWidget);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Link oluştur ve paylaş'));
+      await tester.pumpAndSettle();
+
+      expect(repo.calls, contains('webLink e-bakkal false'));
+      // Paylaşım menüsü açılamazsa link panoya kopyalanır.
+      expect(find.textContaining('Link kopyalandı'), findsOneWidget);
+      expect(copied, contains('500,00 ₺'));
+      expect(copied, contains('https://pacta-76686.web.app/o/'));
+      expect(copied, contains('9 Ekim 2026'));
+    });
+
+    testWidgets('itiraz gerekçe, önerilen tutar ve e-postayla görünür', (
+      tester,
+    ) async {
+      await openDetail(
+        tester,
+        FakeRepo(),
+        bakkalEntry({
+          'state': 'disputed',
+          'reason': 'amount',
+          'note': '400 idi',
+          'suggestedAmountMinor': 40000,
+          'emailMasked': 'a***@gmail.com',
+        }),
+      );
+      // Durum etiketi ve kart başlığı.
+      expect(find.text('Karşı taraf itiraz etti'), findsNWidgets(2));
+      expect(find.text('Tutar yanlış'), findsOneWidget);
+      expect(find.text('“400 idi”'), findsOneWidget);
+      expect(find.text('Önerilen tutar: 400,00 ₺'), findsOneWidget);
+      expect(
+        find.textContaining('E-postayla doğrulandı: a***@gmail.com'),
+        findsOneWidget,
+      );
+      expect(find.text('Onay linkini yeniden gönder'), findsOneWidget);
+    });
+
+    testWidgets('onaylanan kayda yeniden link istenmez', (tester) async {
+      await openDetail(
+        tester,
+        FakeRepo(),
+        bakkalEntry({'state': 'confirmed', 'emailMasked': 'a***@gmail.com'}),
+      );
+      expect(find.text('Karşı taraf onayladı'), findsNWidgets(2));
+      expect(find.text('Karşı taraftan onay iste'), findsNothing);
+      expect(find.text('Onay linkini yeniden gönder'), findsNothing);
+      expect(find.text('Bu kaydı düzelt'), findsOneWidget);
+    });
+
+    test('süresi dolan link ayrı etiketle gösterilir', () {
+      final web = WebConfirmation.fromMap({'state': 'requested'});
+      final expired = WebConfirmation(
+        state: WebConfirmationState.requested,
+        expiresAt: DateTime(2026, 9, 1),
+      );
+      expect(EntryText.webStatus(web).label, 'Onay linki gönderildi');
+      expect(
+        EntryText.webStatus(expired, now: DateTime(2026, 9, 2)).label,
+        'Onay linkinin süresi doldu',
+      );
+    });
   });
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/dates/local_date.dart';
@@ -167,15 +169,32 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         ),
       ];
     } else if (e.canBeReversed) {
+      // Özel defterde karşı taraf uygulamada değildir; linkle onaylayabilir.
+      final askWeb = ledger.isPrivate && e.canRequestWebConfirmation;
       children = [
+        if (askWeb) ...[
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _askWeb(e),
+            icon: const Icon(Icons.send_rounded),
+            label: Text(
+              e.webConfirmation == null
+                  ? 'Karşı taraftan onay iste'
+                  : 'Onay linkini yeniden gönder',
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         OutlinedButton(
           onPressed: _busy ? null : () => _reverse(e, ledger, me),
           child: const Text('Bu kaydı düzelt'),
         ),
       ];
-      hint = ledger.isPrivate
-          ? null
-          : 'Onaylı kayıt değiştirilemez; düzeltme için ters kayıt açılır.';
+      hint = !ledger.isPrivate
+          ? 'Onaylı kayıt değiştirilemez; düzeltme için ters kayıt açılır.'
+          : askWeb && e.webConfirmation == null
+          ? '$other uygulamayı kullanmasa da size göndereceğimiz linkle '
+                'onaylayabilir.'
+          : null;
     } else {
       return null;
     }
@@ -204,6 +223,37 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
         ),
       ),
     );
+  }
+
+  /// Onay linkini oluşturur ve paylaşım menüsünü açar (WhatsApp, SMS...).
+  /// Paylaşım açılamazsa link panoya kopyalanır.
+  Future<void> _askWeb(LedgerEntry e) async {
+    final includeDescription = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _WebConfirmSheet(entry: e),
+    );
+    if (includeDescription == null || !mounted) return;
+    setState(() => _busy = true);
+    var copied = false;
+    await runCommand(context, () async {
+      final link = await _repo.requestWebConfirmation(
+        e,
+        includeDescription: includeDescription,
+      );
+      final text = webConfirmMessage(e, link);
+      try {
+        await shareWebLink(text);
+      } catch (_) {
+        await Clipboard.setData(ClipboardData(text: text));
+        copied = true;
+      }
+    });
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (copied) {
+      showSnack(context, "Link kopyalandı; WhatsApp'ta yapıştırıp gönderin.");
+    }
   }
 
   Future<void> _dispute(LedgerEntry e) async {
@@ -428,6 +478,14 @@ class _Body extends StatelessWidget {
               ),
             ),
           ),
+        if (ledger.isPrivate && entry.webConfirmation != null) ...[
+          const SizedBox(height: 12),
+          _WebConfirmationCard(
+            web: entry.webConfirmation!,
+            entry: entry,
+            otherName: otherName,
+          ),
+        ],
         if (dispute != null && entry.state == EntryState.disputed) ...[
           const SizedBox(height: 12),
           Container(
@@ -479,11 +537,12 @@ class _Body extends StatelessWidget {
                           height: 10,
                           margin: const EdgeInsets.only(top: 5),
                           decoration: BoxDecoration(
-                            color: ev.type == 'disputed'
-                                ? c.dispute
-                                : (ev.type == 'confirmed'
-                                      ? c.credit
-                                      : c.pendingDot),
+                            color: switch (ev.type) {
+                              'disputed' || 'webDisputed' => c.dispute,
+                              'confirmed' || 'webConfirmed' => c.credit,
+                              'webRejected' => c.debt,
+                              _ => c.pendingDot,
+                            },
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -516,6 +575,162 @@ class _Body extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Paylaşım menüsü (WhatsApp, SMS...); testlerde değiştirilir.
+@visibleForTesting
+Future<void> Function(String text) shareWebLink = (text) =>
+    SharePlus.instance.share(ShareParams(text: text));
+
+/// Paylaşılacak mesaj: karşı taraf linkle, uygulama kurmadan onaylar.
+String webConfirmMessage(LedgerEntry e, WebLink link) =>
+    "Merhaba, aramızdaki ${e.amount.format()} tutarındaki kaydı Pacta'da "
+    'tuttum. Kontrol edip onaylar mısın? Uygulama gerekmez, e-posta '
+    'adresini doğrulaman yeterli:\n${link.url}\n'
+    '(Link ${link.expiresOn.format()} tarihine kadar geçerli.)';
+
+/// Özel defterde karşı tarafın web'deki yanıtı ya da bekleyen link.
+class _WebConfirmationCard extends StatelessWidget {
+  const _WebConfirmationCard({
+    required this.web,
+    required this.entry,
+    required this.otherName,
+  });
+
+  final WebConfirmation web;
+
+  /// Önerilen tutarın birimi için kayıt.
+  final LedgerEntry entry;
+  final String otherName;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final status = EntryText.webStatus(web);
+    final (fg, bg) = switch (status.tone) {
+      ChipTone.credit => (c.credit, c.creditSoft),
+      ChipTone.dispute => (c.dispute, c.disputeSoft),
+      ChipTone.debt => (c.debt, c.debtSoft),
+      _ => (c.muted, Theme.of(context).colorScheme.surfaceContainerHighest),
+    };
+    final day = DateFormat('d MMMM y', 'tr_TR');
+    final reason = switch (web.state) {
+      WebConfirmationState.disputed => EntryText.disputeReasons[web.reason],
+      WebConfirmationState.rejected => EntryText.rejectReasons[web.reason],
+      _ => null,
+    };
+    final lines = <String>[
+      if (web.state == WebConfirmationState.requested)
+        web.isExpired(DateTime.now())
+            ? '$otherName yanıt vermedi. Yeni link gönderebilirsiniz.'
+            : '$otherName linki açıp e-posta adresini doğrulayınca kaydı '
+                  'onaylayabilir ya da itiraz edebilir.'
+                  '${web.expiresAt == null ? '' : ' Link ${day.format(web.expiresAt!)} tarihine kadar geçerli.'}',
+      ?reason,
+      if (web.note.isNotEmpty) '“${web.note}”',
+      if (web.suggestedAmountMinor != null)
+        'Önerilen tutar: '
+            '${Money(web.suggestedAmountMinor!, entry.asset).format()}',
+      if (web.emailMasked != null)
+        'E-postayla doğrulandı: ${web.emailMasked}'
+            '${web.respondedAt == null ? '' : ' · ${day.format(web.respondedAt!)}'}',
+      if (web.state != WebConfirmationState.requested)
+        'Özel defterinizin bakiyesi bu yanıtla değişmez.',
+    ];
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(status.icon, size: 18, color: fg),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  status.label,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: fg),
+                ),
+              ),
+            ],
+          ),
+          for (final line in lines) ...[const SizedBox(height: 4), Text(line)],
+        ],
+      ),
+    );
+  }
+}
+
+/// Onay linki oluşturmadan önce: nasıl çalıştığı ve açıklamanın gidip
+/// gitmeyeceği. Açıklamanın gönderilip gönderilmeyeceğini döner.
+class _WebConfirmSheet extends StatefulWidget {
+  const _WebConfirmSheet({required this.entry});
+
+  final LedgerEntry entry;
+
+  @override
+  State<_WebConfirmSheet> createState() => _WebConfirmSheetState();
+}
+
+class _WebConfirmSheetState extends State<_WebConfirmSheet> {
+  bool _includeDescription = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final hasDescription = widget.entry.description.isNotEmpty;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Karşı taraftan onay iste',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            for (final line in const [
+              'Bu kayıt için bir onay linki oluşturulur; linki WhatsApp ya da '
+                  'SMS ile siz gönderirsiniz.',
+              'Karşı taraf uygulama kurmaz. E-posta adresini doğrular, kaydı '
+                  'görür; onaylar, itiraz eder ya da reddeder.',
+              'Yanıt gelince bildirim alırsınız. Link 14 gün geçerlidir; yeni '
+                  'link oluşturursanız eskisi çalışmaz.',
+            ])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(line, style: TextStyle(color: c.muted)),
+              ),
+            if (hasDescription)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _includeDescription,
+                onChanged: (v) => setState(() => _includeDescription = v),
+                title: const Text('Açıklamayı göster'),
+                subtitle: Text(
+                  '“${widget.entry.description}”',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, hasDescription && _includeDescription),
+              child: const Text('Link oluştur ve paylaş'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

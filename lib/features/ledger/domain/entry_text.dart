@@ -125,6 +125,9 @@ class EntryText {
             icon: Icons.schedule_rounded,
           );
         }
+        if (isPrivate && e.webConfirmation != null) {
+          return webStatus(e.webConfirmation!);
+        }
         return (
           // Kaydı girenin aleyhine olduğu için onay beklemeden işlenmiş kayıt
           // karşı taraf onaylamış gibi gösterilmez.
@@ -136,6 +139,38 @@ class EntryText {
         );
     }
   }
+
+  /// Özel defterde karşı tarafın web yanıtı.
+  static ({String label, ChipTone tone, IconData icon}) webStatus(
+    WebConfirmation w, {
+    DateTime? now,
+  }) => switch (w.state) {
+    WebConfirmationState.confirmed => (
+      label: 'Karşı taraf onayladı',
+      tone: ChipTone.credit,
+      icon: Icons.verified_rounded,
+    ),
+    WebConfirmationState.disputed => (
+      label: 'Karşı taraf itiraz etti',
+      tone: ChipTone.dispute,
+      icon: Icons.edit_note_rounded,
+    ),
+    WebConfirmationState.rejected => (
+      label: 'Karşı taraf reddetti',
+      tone: ChipTone.debt,
+      icon: Icons.block_rounded,
+    ),
+    WebConfirmationState.requested when w.isExpired(now ?? DateTime.now()) => (
+      label: 'Onay linkinin süresi doldu',
+      tone: ChipTone.neutral,
+      icon: Icons.link_off_rounded,
+    ),
+    WebConfirmationState.requested => (
+      label: 'Onay linki gönderildi',
+      tone: ChipTone.pending,
+      icon: Icons.schedule_rounded,
+    ),
+  };
 
   static const disputeReasons = {
     'amount': 'Tutar yanlış',
@@ -159,6 +194,10 @@ class EntryText {
     'revised' => 'Düzeltildi',
     'rejected' => 'Reddedildi',
     'cancelled' => 'Geri çekildi',
+    'webRequested' => 'Onay linki oluşturuldu',
+    'webConfirmed' => "Web'de onaylandı",
+    'webDisputed' => "Web'de itiraz edildi",
+    'webRejected' => "Web'de reddedildi",
     _ => type,
   };
 }

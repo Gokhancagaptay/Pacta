@@ -55,6 +55,9 @@ class ConvertResult {
   final int pending;
 }
 
+/// Web onay linki ve son geçerlilik günü.
+typedef WebLink = ({String url, LocalDate expiresOn});
+
 class AddedPerson {
   const AddedPerson({
     required this.ledgerId,
@@ -352,6 +355,23 @@ class LedgerRepository {
         'reversalId': newId(),
         'note': note,
       });
+
+  /// Özel defterdeki kayıt için karşı tarafa gönderilecek onay linki. Aynı
+  /// kayıt için önceki link geçersiz olur. Açıklama istenmezse gitmez.
+  Future<WebLink> requestWebConfirmation(
+    LedgerEntry e, {
+    bool includeDescription = true,
+  }) async {
+    final r = await _call('requestWebConfirmation', {
+      'ledgerId': e.ledgerId,
+      'entryId': e.id,
+      'includeDescription': includeDescription,
+    });
+    return (
+      url: r['url'] as String,
+      expiresOn: LocalDate.parse(r['expiresOn'] as String),
+    );
+  }
 
   /// Karşı tarafa nazik bir uygulama içi hatırlatma; metni sunucu seçer.
   Future<ReminderResult> sendReminder(String ledgerId) async {
