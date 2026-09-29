@@ -71,6 +71,13 @@
       const mode = params.get('mode');
       const oobCode = params.get('oobCode');
 
+      // Web onayı (/o/...) için e-posta bağlantısıyla giriş: e-posta işleyici
+      // bu sayfaya ayarlıysa bağlantı, parametreleriyle onay sayfasına döner.
+      const next = params.get('continueUrl') || '';
+      if (mode === 'signIn' && next.startsWith(window.location.origin + '/o/')) {
+        window.location.replace(next + (next.includes('?') ? '&' : '?') + params.toString());
+      }
+
       // Kullanıcıya durum gösterimi
       const title = document.getElementById('title');
       const desc = document.getElementById('desc');

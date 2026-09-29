@@ -50,6 +50,7 @@
     ],
     "rewrites": [
       { "source": "/u/**", "destination": "/u/index.html" },
+      { "source": "/o/**", "destination": "/o/index.html" },
       { "source": "**", "destination": "/index.html" }
     ]
   },

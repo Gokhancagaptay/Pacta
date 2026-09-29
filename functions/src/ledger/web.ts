@@ -235,6 +235,7 @@ function details(r: WebRequest, email: string) {
   return {
     sentence: webSentence(r),
     amount: formatMinor(r.amountMinor, r.asset),
+    asset: r.asset,
     occurredOn: r.occurredOn,
     dueOn: r.dueOn,
     description: r.description,

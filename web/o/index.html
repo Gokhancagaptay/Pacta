@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pacta · Kayıt onayı</title>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <style>
+    :root { color-scheme: light dark; --bg: #F7F8FC; --card: #fff; --text: #111827;
+            --muted: #4B5563; --line: #E5E7EB; --soft: #F1F2F6; --accent: #4ADE80;
+            --on-accent: #052E16; --credit: #16A34A; --dispute: #B45309;
+            --dispute-soft: #FEF3C7; --debt: #DC2626; --debt-soft: #FEE2E2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #181A20; --card: #23262F; --text: #F3F4F6; --muted: #9CA3AF;
+              --line: #2E323C; --soft: #2E323C; --credit: #4ADE80; --dispute: #FBBF24;
+              --dispute-soft: #3A2E12; --debt: #F87171; --debt-soft: #3B1D1D; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    main { max-width: 460px; margin: 0 auto; padding: 28px 16px 40px; }
+    .brand { font-weight: 800; font-size: 18px; margin: 0 4px 16px; }
+    .brand span { color: var(--credit); }
+    .card { background: var(--card); border-radius: 20px; padding: 22px; }
+    h1 { font-size: 21px; line-height: 1.3; margin: 0 0 8px; }
+    p { color: var(--muted); line-height: 1.55; margin: 0 0 12px; }
+    .small { font-size: 13px; }
+    .amount { font-size: 30px; font-weight: 700; text-align: center; margin: 8px 0 4px; }
+    .sentence { text-align: center; color: var(--text); margin-bottom: 16px; }
+    dl { margin: 0 0 16px; border-top: 1px solid var(--line); }
+    dl div { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0;
+             border-bottom: 1px solid var(--line); }
+    dt { color: var(--muted); }
+    dd { margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+    label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 6px; }
+    input, select, textarea { width: 100%; min-height: 48px; padding: 12px 14px; font: inherit;
+                              color: var(--text); background: var(--soft); border: 1px solid var(--line);
+                              border-radius: 12px; }
+    textarea { min-height: 80px; resize: vertical; }
+    button { display: block; width: 100%; min-height: 50px; border: 0; border-radius: 14px;
+             font: inherit; font-size: 16px; font-weight: 600; padding: 13px; margin-top: 10px;
+             cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    .primary { background: var(--accent); color: var(--on-accent); }
+    .secondary { background: var(--soft); color: var(--text); }
+    .warn { background: var(--dispute-soft); color: var(--dispute); }
+    .danger { background: var(--debt-soft); color: var(--debt); }
+    .row { display: flex; gap: 10px; }
+    .row button { flex: 1; }
+    .notice { background: var(--soft); border-radius: 14px; padding: 12px 14px; margin: 14px 0 0; }
+    .notice p { margin: 0; font-size: 13px; }
+    .error { color: var(--debt); font-size: 14px; margin: 10px 0 0; }
+    .done-icon { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+                 margin: 4px auto 12px; font-size: 28px; font-weight: 700;
+                 background: var(--soft); color: var(--credit); }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand"><span>●</span> Pacta</div>
+  <div class="card">
+
+    <section id="loading"><p>Yükleniyor…</p></section>
+
+    <section id="closed" hidden>
+      <h1 id="closedTitle">Bu link geçerli değil</h1>
+      <p id="closedText"></p>
+    </section>
+
+    <section id="verify" hidden>
+      <h1 id="verifyTitle">Bir kaydı onaylamanız isteniyor</h1>
+      <p id="verifyText"></p>
+      <form id="verifyForm" novalidate>
+        <label for="email">E-posta adresiniz</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required
+               placeholder="ornek@gmail.com">
+        <button class="primary" id="sendLink" type="submit">Doğrulama bağlantısı gönder</button>
+        <p class="error" id="verifyError" hidden></p>
+      </form>
+      <div class="notice">
+        <p>E-posta adresiniz yalnızca bu yanıtın size ait olduğunu doğrulamak için kullanılır.
+          Kaydı gönderen kişi adresinizin gizlenmiş hâlini görür (ör. a***@gmail.com).
+          Yanıtınız, kanıt olarak e-posta adresiniz, IP adresiniz ve tarayıcı bilginizle
+          birlikte kayıt silinene kadar saklanır. Pacta hesabı açılmaz; doğrulama için
+          oluşan geçici giriş kaydı yanıtınızdan sonra silinir.</p>
+      </div>
+    </section>
+
+    <section id="sent" hidden>
+      <h1>E-postanızı kontrol edin</h1>
+      <p><b id="sentTo"></b> adresine bir bağlantı gönderdik. Bağlantıya bu cihazda dokunun;
+        kayıt açılacak.</p>
+      <p class="small">E-posta birkaç dakika içinde gelmezse gereksiz (spam) klasörüne bakın.</p>
+      <button class="secondary" id="resend" type="button">Farklı adres gir</button>
+    </section>
+
+    <section id="askEmail" hidden>
+      <h1>E-posta adresinizi doğrulayın</h1>
+      <p>Bağlantıyı başka bir cihazda ya da tarayıcıda açtınız. Güvenlik için bağlantının
+        gönderildiği adresi yazın.</p>
+      <form id="askForm" novalidate>
+        <label for="askInput">E-posta adresiniz</label>
+        <input id="askInput" type="email" autocomplete="email" inputmode="email" required>
+        <button class="primary" type="submit">Devam et</button>
+        <p class="error" id="askError" hidden></p>
+      </form>
+    </section>
+
+    <section id="detail" hidden>
+      <div class="amount" id="amount"></div>
+      <p class="sentence" id="sentence"></p>
+      <dl id="facts"></dl>
+
+      <div id="choose">
+        <button class="primary" id="confirmBtn" type="button">Onayla</button>
+        <div class="row">
+          <button class="warn" id="disputeBtn" type="button">İtiraz et</button>
+          <button class="danger" id="rejectBtn" type="button">Reddet</button>
+        </div>
+      </div>
+
+      <div id="confirmStep" hidden>
+        <p>Onaylarsanız bu kaydın doğru olduğunu kabul etmiş olursunuz. Yanıtınız
+          <b id="ownerAgain"></b> kişisine iletilir ve değiştirilemez.</p>
+        <button class="primary" id="confirmSend" type="button">Evet, onaylıyorum</button>
+        <button class="secondary back" type="button">Vazgeç</button>
+      </div>
+
+      <form id="disputeForm" hidden novalidate>
+        <label for="disputeReason">Ne yanlış?</label>
+        <select id="disputeReason">
+          <option value="amount">Tutar yanlış</option>
+          <option value="date">Tarih yanlış</option>
+          <option value="description">Açıklama yanlış</option>
+          <option value="duplicate">Mükerrer kayıt</option>
+          <option value="other">Diğer</option>
+        </select>
+        <div id="suggestWrap">
+          <label for="suggest">Doğru tutar (isteğe bağlı)</label>
+          <input id="suggest" inputmode="decimal" placeholder="ör. 400,00">
+        </div>
+        <label for="disputeNote">Not (isteğe bağlı)</label>
+        <textarea id="disputeNote" maxlength="280"></textarea>
+        <button class="warn" type="submit">İtirazı gönder</button>
+        <button class="secondary back" type="button">Vazgeç</button>
+      </form>
+
+      <form id="rejectForm" hidden novalidate>
+        <label for="rejectReason">Neden reddediyorsunuz?</label>
+        <select id="rejectReason">
+          <option value="notAgreed">Böyle bir anlaşmamız yok</option>
+          <option value="unknownPerson">Bu kişiyi tanımıyorum</option>
+          <option value="other">Diğer</option>
+        </select>
+        <label for="rejectNote">Not (isteğe bağlı)</label>
+        <textarea id="rejectNote" maxlength="280"></textarea>
+        <button class="danger" type="submit">Reddet</button>
+        <button class="secondary back" type="button">Vazgeç</button>
+      </form>
+
+      <p class="error" id="detailError" hidden></p>
+      <p class="small center" id="signedAs"></p>
+    </section>
+
+    <section id="done" hidden>
+      <div class="done-icon" id="doneIcon">✓</div>
+      <h1 class="center" id="doneTitle"></h1>
+      <p class="center" id="doneText"></p>
+      <p class="small center">Pacta, borç ve alacakları iki tarafın onayıyla tutan bir
+        uygulamadır. Kayıtlarınızı siz de tutmak isterseniz uygulamayı yükleyebilirsiniz.</p>
+    </section>
+
+  </div>
+</main>
+<script type="module">
+  import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
+  import {
+    browserSessionPersistence, getAuth, isSignInWithEmailLink, sendSignInLinkToEmail,
+    setPersistence, signInWithEmailLink, signOut,
+  } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+  import {getFunctions, httpsCallable} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
+
+  // Uygulamasız onay (functions/src/ledger/web.ts). Sunucudan gelen metinler
+  // yalnızca textContent ile yazılır.
+  const app = initializeApp({
+    apiKey: 'AIzaSyCRiTS8mFvtH5q6KRk5Pb2EdcBg0uZDybo',
+    authDomain: 'pacta-76686.firebaseapp.com',
+    projectId: 'pacta-76686',
+    appId: '1:842011786529:web:50c0e2f379b07c4fd65260',
+  });
+  const auth = getAuth(app);
+  auth.languageCode = 'tr';
+  const functions = getFunctions(app, 'europe-west1');
+  const openFn = httpsCallable(functions, 'openWebConfirmation');
+  const respondFn = httpsCallable(functions, 'respondWebConfirmation');
+
+  const $ = (id) => document.getElementById(id);
+  const token = (location.pathname.split('/o/')[1] || '').split('/')[0];
+  const EMAIL_KEY = 'pactaWebEmail';
+  const SCALE = {TRY: 2, USD: 2, EUR: 2, GAU: 3, CEYREK: 0};
+  const SECTIONS = ['loading', 'closed', 'verify', 'sent', 'askEmail', 'detail', 'done'];
+  let view = null;
+
+  const show = (id) => SECTIONS.forEach((s) => { $(s).hidden = s !== id; });
+  const store = {
+    get() { try { return localStorage.getItem(EMAIL_KEY); } catch { return null; } },
+    set(v) { try { localStorage.setItem(EMAIL_KEY, v); } catch { /* gizli pencere */ } },
+    clear() { try { localStorage.removeItem(EMAIL_KEY); } catch { /* yok */ } },
+  };
+  const setError = (id, message) => { $(id).textContent = message || ''; $(id).hidden = !message; };
+  const messageOf = (e) => (e && e.message && !/^internal$/i.test(e.message))
+    ? e.message : 'Bir sorun oluştu. Bağlantınızı kontrol edip tekrar deneyin.';
+  const formatDate = (iso) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('tr-TR',
+      {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+  };
+
+  function closed(title, text) {
+    $('closedTitle').textContent = title;
+    $('closedText').textContent = text;
+    show('closed');
+  }
+
+  const CLOSED = {
+    invalid: ['Bu link geçerli değil', 'Linki eksik kopyalamış olabilirsiniz. Gönderen kişiden linki yeniden isteyin.'],
+    expired: ['Linkin süresi doldu', 'Onay linkleri 14 gün geçerlidir. Gönderen kişiden yeni link isteyin.'],
+    revoked: ['Bu link yenilendi', 'Gönderen kişi yeni bir link oluşturdu. Size gönderilen son linki açın.'],
+    withdrawn: ['Kayıt değişti', 'Kayıt düzeltildi ya da kaldırıldı; bu link artık geçerli değil.'],
+    otherEmail: ['Bu link başka bir adrese bağlı', 'Bu onay isteği başka bir e-posta adresiyle açıldı. Size ait değilse gönderen kişiye haber verin.'],
+    answered: ['Bu istek yanıtlandı', 'Bu kayıt için yanıt verildi. Yanıtı veren sizseniz aynı e-posta adresiyle doğrulayarak görebilirsiniz.'],
+  };
+
+  function render(result) {
+    view = result;
+    const status = result.status;
+    if (status === 'answered' && result.answer && result.sentence) return renderDone(result.answer);
+    if (status === 'answered' && !auth.currentUser) return renderVerify(result, true);
+    if (status !== 'open') {
+      const [title, text] = CLOSED[status] || CLOSED.invalid;
+      if (status === 'otherEmail') signOut(auth);
+      return closed(title, text);
+    }
+    if (!result.sentence) return renderVerify(result, false);
+    renderDetail(result);
+  }
+
+  function renderVerify(result, answered) {
+    $('verifyTitle').textContent = answered ? 'Yanıtınızı görün' : 'Bir kaydı onaylamanız isteniyor';
+    $('verifyText').textContent = answered
+      ? 'Bu istek yanıtlandı. Yanıtı görmek için yanıt verdiğiniz e-posta adresini doğrulayın.'
+      : `${result.ownerName}, sizinle ilgili bir borç kaydını Pacta'da tuttu ve doğruluğunu ` +
+        'onaylamanızı istiyor. Kaydı görmek için e-posta adresinizi doğrulayın.';
+    show('verify');
+  }
+
+  function renderDetail(r) {
+    $('amount').textContent = r.amount;
+    $('sentence').textContent = r.sentence;
+    $('ownerAgain').textContent = r.ownerName;
+    const facts = $('facts');
+    facts.replaceChildren();
+    const add = (label, value) => {
+      const div = document.createElement('div');
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = label;
+      dd.textContent = value;
+      div.append(dt, dd);
+      facts.append(div);
+    };
+    add('İşlem tarihi', formatDate(r.occurredOn));
+    if (r.dueOn) add('Vade', formatDate(r.dueOn));
+    if (r.description) add('Açıklama', r.description);
+    $('signedAs').textContent = `Doğrulanan adres: ${r.email}`;
+    $('suggest').placeholder = SCALE[r.asset] === 0 ? 'ör. 2' : 'ör. 400,00';
+    step('choose');
+    show('detail');
+  }
+
+  function renderDone(answer) {
+    const texts = {
+      confirm: ['✓', 'Kaydı onayladınız', 'Onayınız kaydı gönderen kişiye iletildi.'],
+      dispute: ['!', 'İtirazınız iletildi', 'Kaydı gönderen kişi itirazınızı görecek. Düzeltilirse size yeni link gönderebilir.'],
+      reject: ['×', 'Kaydı reddettiniz', 'Yanıtınız kaydı gönderen kişiye iletildi.'],
+    };
+    const [icon, title, text] = texts[answer] || texts.confirm;
+    $('doneIcon').textContent = icon;
+    $('doneTitle').textContent = title;
+    $('doneText').textContent = text;
+    show('done');
+    signOut(auth);
+  }
+
+  function step(id) {
+    for (const s of ['choose', 'confirmStep', 'disputeForm', 'rejectForm']) $(s).hidden = s !== id;
+    setError('detailError', '');
+  }
+
+  async function load() {
+    try {
+      render((await openFn({token})).data);
+    } catch (e) {
+      closed('Açılamadı', messageOf(e));
+    }
+  }
+
+  async function finishSignIn(email) {
+    await signInWithEmailLink(auth, email.trim(), location.href);
+    store.clear();
+    history.replaceState(null, '', `/o/${token}`);
+    await load();
+  }
+
+  // Kullanıcının yazdığı tutarı küçük birime çevirir: "1.250,50" → 125050.
+  function parseAmount(text, asset) {
+    const scale = SCALE[asset] ?? 2;
+    let s = text.replace(/\s/g, '');
+    if (!s) return null;
+    s = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/\.(?=\d{3}(\D|$))/g, '');
+    if (!/^\d+(\.\d+)?$/.test(s)) throw new Error('Tutarı rakamla yazın (ör. 400,00).');
+    const [whole, fraction = ''] = s.split('.');
+    if (fraction.length > scale) throw new Error(`En fazla ${scale} ondalık hane yazabilirsiniz.`);
+    const minor = Number(whole) * 10 ** scale + Number(fraction.padEnd(scale, '0') || 0);
+    if (!Number.isSafeInteger(minor) || minor <= 0) throw new Error('Geçerli bir tutar yazın.');
+    return minor;
+  }
+
+  async function respond(data, button) {
+    button.disabled = true;
+    setError('detailError', '');
+    try {
+      const res = (await respondFn({token, ...data})).data;
+      renderDone(res.answer);
+    } catch (e) {
+      setError('detailError', messageOf(e));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  $('verifyForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const email = $('email').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return setError('verifyError', 'Geçerli bir e-posta adresi yazın.');
+    }
+    $('sendLink').disabled = true;
+    setError('verifyError', '');
+    try {
+      await sendSignInLinkToEmail(auth, email,
+        {url: `${location.origin}/o/${token}`, handleCodeInApp: true});
+      store.set(email);
+      $('sentTo').textContent = email;
+      show('sent');
+    } catch (e) {
+      setError('verifyError', e && e.code === 'auth/too-many-requests'
+        ? 'Çok fazla deneme yapıldı. Biraz sonra tekrar deneyin.'
+        : 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar deneyin.');
+    } finally {
+      $('sendLink').disabled = false;
+    }
+  });
+
+  $('resend').addEventListener('click', () => show('verify'));
+
+  $('askForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    setError('askError', '');
+    try {
+      await finishSignIn($('askInput').value);
+    } catch (e) {
+      setError('askError', e && e.code === 'auth/invalid-email'
+        ? 'Bu adres, bağlantının gönderildiği adresle aynı değil.'
+        : 'Bağlantı geçersiz ya da süresi dolmuş. Yeniden bağlantı isteyin.');
+    }
+  });
+
+  $('confirmBtn').addEventListener('click', () => step('confirmStep'));
+  $('disputeBtn').addEventListener('click', () => step('disputeForm'));
+  $('rejectBtn').addEventListener('click', () => step('rejectForm'));
+  document.querySelectorAll('.back').forEach((b) => b.addEventListener('click', () => step('choose')));
+  $('disputeReason').addEventListener('change', () => {
+    $('suggestWrap').hidden = $('disputeReason').value !== 'amount';
+  });
+
+  $('confirmSend').addEventListener('click', (ev) => respond({action: 'confirm'}, ev.currentTarget));
+
+  $('disputeForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const reason = $('disputeReason').value;
+    let suggested = null;
+    try {
+      if (reason === 'amount') suggested = parseAmount($('suggest').value, view.asset);
+    } catch (e) {
+      return setError('detailError', e.message);
+    }
+    respond({action: 'dispute', reason, note: $('disputeNote').value.trim(),
+      suggestedAmountMinor: suggested}, ev.submitter || ev.target.querySelector('button'));
+  });
+
+  $('rejectForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    respond({action: 'reject', reason: $('rejectReason').value,
+      note: $('rejectNote').value.trim()}, ev.submitter || ev.target.querySelector('button'));
+  });
+
+  (async () => {
+    if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return closed(...CLOSED.invalid);
+    try {
+      await setPersistence(auth, browserSessionPersistence);
+      if (isSignInWithEmailLink(auth, location.href)) {
+        const email = store.get();
+        if (!email) return show('askEmail');
+        try {
+          return await finishSignIn(email);
+        } catch {
+          history.replaceState(null, '', `/o/${token}`);
+          setError('verifyError', 'Bağlantı geçersiz ya da süresi dolmuş. Yeniden bağlantı isteyin.');
+        }
+      }
+      await auth.authStateReady();
+      await load();
+    } catch (e) {
+      closed('Açılamadı', messageOf(e));
+    }
+  })();
+</script>
+</body>
+</html>
