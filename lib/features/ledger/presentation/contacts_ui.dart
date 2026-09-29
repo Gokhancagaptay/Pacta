@@ -292,15 +292,35 @@ Future<void> confirmAddByCode(
   String code,
 ) async {
   final repo = ref.read(ledgerRepositoryProvider);
-  final ({bool self, String name}) preview;
+  final navigator = Navigator.of(context);
+  // Kod sorulurken bekleme göstergesi (link dokunulunca bir şey olmadı
+  // sanılmasın).
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const PopScope(
+      canPop: false,
+      child: Center(child: CircularProgressIndicator()),
+    ),
+  );
+  ({bool self, String name})? preview;
+  String? error;
   try {
     preview = await repo.previewCode(code);
   } on LedgerException catch (e) {
-    if (context.mounted) showSnack(context, e.message, error: true);
+    error = e.message;
+  } catch (e, st) {
+    reportError(e, st, reason: 'Davet kodu okunamadı');
+    error = 'Kişi bulunamadı. Tekrar deneyin.';
+  }
+  navigator.pop();
+  if (!context.mounted) return;
+  if (preview == null) {
+    showSnack(context, error ?? 'Kişi bulunamadı.', error: true);
     return;
   }
-  if (!context.mounted) return;
-  if (preview.self) {
+  final person = preview;
+  if (person.self) {
     showSnack(context, 'Bu sizin kodunuz. Arkadaşınızın okutması gerekiyor.');
     return;
   }
@@ -313,10 +333,10 @@ Future<void> confirmAddByCode(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(child: PersonAvatar(name: preview.name, size: 56)),
+            Center(child: PersonAvatar(name: person.name, size: 56)),
             const SizedBox(height: 12),
             Text(
-              preview.name,
+              person.name,
               textAlign: TextAlign.center,
               style: Theme.of(
                 sheet,
@@ -581,36 +601,57 @@ class _HiddenPeopleSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUidProvider);
     final hidden = ref.watch(hiddenLedgersProvider);
+    final repo = ref.read(ledgerRepositoryProvider);
+    // Uzun listede panel taşmasın; satıra dokununca defter açılır.
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const ListTile(
-            title: Text(
-              'Listeden kaldırılanlar',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-          if (hidden.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('Kaldırılan kimse yok.'),
-            ),
-          for (final l in hidden)
-            ListTile(
-              leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
-              title: Text(l.other(uid).displayName),
-              subtitle: l.other(uid).email == null
-                  ? null
-                  : Text(l.other(uid).email!),
-              trailing: TextButton(
-                onPressed: () => ref
-                    .read(ledgerRepositoryProvider)
-                    .setHidden(uid, l.id, false),
-                child: const Text('Geri getir'),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Listeden kaldırılanlar',
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-        ],
+            if (hidden.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('Kaldırılan kimse yok.'),
+              ),
+            for (final l in hidden)
+              ListTile(
+                leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
+                title: Text(l.other(uid).displayName),
+                subtitle: l.other(uid).email == null
+                    ? null
+                    : Text(l.other(uid).email!),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  openLedger(context, l.id);
+                },
+                trailing: TextButton(
+                  onPressed: () => repo.setHidden(uid, l.id, false).catchError((
+                    Object e,
+                    StackTrace st,
+                  ) {
+                    reportError(e, st, reason: 'Geri getirilemedi');
+                    if (context.mounted) {
+                      showSnack(
+                        context,
+                        'Geri getirilemedi. Tekrar deneyin.',
+                        error: true,
+                      );
+                    }
+                  }),
+                  child: const Text('Geri getir'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

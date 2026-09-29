@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:pacta/core/report.dart';
 import 'package:pacta/app/theme.dart';
@@ -42,11 +44,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _error = null;
     });
     try {
-      await FirestoreService().updateUser(widget.user.uid, {'adSoyad': name});
+      await FirestoreService()
+          .updateUser(widget.user.uid, {'adSoyad': name})
+          .timeout(const Duration(seconds: 10));
       if (!mounted) return;
       navigator.pop();
       messenger.showSnackBar(
         const SnackBar(content: Text('Adınız güncellendi.')),
+      );
+    } on TimeoutException {
+      // İnternet yok: yazım cihazda bekler, bağlantı gelince gider.
+      if (!mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('İnternet gelince adınız kaydedilecek.')),
       );
     } catch (e, st) {
       reportError(e, st, reason: 'Profil kaydedilemedi');

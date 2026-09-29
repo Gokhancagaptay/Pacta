@@ -50,7 +50,6 @@ class AuthService {
           iOSBundleId: AppConstants.iosBundleId,
           androidPackageName: AppConstants.androidPackageName,
           androidInstallApp: true,
-          androidMinimumVersion: '21',
         );
         await _auth.sendPasswordResetEmail(
           email: normalized,
@@ -193,7 +192,6 @@ class AuthService {
         iOSBundleId: AppConstants.iosBundleId,
         androidPackageName: AppConstants.androidPackageName,
         androidInstallApp: true,
-        androidMinimumVersion: '21',
       );
       await user.sendEmailVerification(settings);
     } on FirebaseAuthException catch (e) {

@@ -5,6 +5,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pacta/app/navigation.dart';
+import 'package:pacta/app/startup.dart';
+import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/core/report.dart';
 import 'package:pacta/features/ledger/presentation/home_shell.dart';
@@ -32,7 +34,7 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
+class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
   late Future<void> _init = _ensureFirebase();
   String? _profileEnsuredFor;
   bool _seenUser = false;
@@ -57,7 +59,51 @@ class _AuthWrapperState extends State<AuthWrapper> {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      // Açılışta başlatılamamıştı: servisler şimdi kurulur, Firebase'den
+      // önce okunmaya çalışılan oturum akışı yenilenir.
+      await startAppServices();
+      if (mounted) {
+        ProviderScope.containerOf(
+          context,
+          listen: false,
+        ).invalidate(authUserProvider);
+      }
     }
+  }
+
+  DateTime? _lastGoneCheck;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Uygulamaya dönünce: hesap başka cihazda silindiyse (oturum belirteci
+  /// bir saate kadar geçerli kalır) oturum kapatılır. Sık sorulmaz.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || Firebase.apps.isEmpty) return;
+    final now = DateTime.now();
+    final last = _lastGoneCheck;
+    if (last != null && now.difference(last) < const Duration(minutes: 5)) {
+      return;
+    }
+    _lastGoneCheck = now;
+    if (FirebaseAuth.instance.currentUser == null) return;
+    final auth = AuthService();
+    auth
+        .isCurrentUserGone()
+        .then((gone) {
+          if (gone) auth.signOut();
+        })
+        .catchError((Object _) {});
   }
 
   void _retry() => setState(() => _init = _ensureFirebase());

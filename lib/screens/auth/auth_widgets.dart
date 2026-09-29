@@ -113,22 +113,29 @@ class FormErrorBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.pacta;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: c.debtSoft,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline_rounded, color: c.debt, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message, style: TextStyle(color: c.debt, height: 1.4)),
-          ),
-        ],
+    // Canlı bölge: hata çıkınca ekran okuyucu kendiliğinden okur.
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.debtSoft,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline_rounded, color: c.debt, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(color: c.debt, height: 1.4),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

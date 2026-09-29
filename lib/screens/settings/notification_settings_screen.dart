@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pacta/services/push_notification_service.dart';
 import 'package:pacta/core/report.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pacta/app/theme.dart';
@@ -60,6 +61,26 @@ class NotificationSettingsScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
+              // Telefon ayarlarında kapalıysa anahtarlar işe yaramaz; söylenir.
+              FutureBuilder<bool>(
+                future: PushNotificationService.instance.notificationsBlocked(),
+                builder: (context, blocked) => blocked.data == true
+                    ? Container(
+                        margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: context.pacta.pendingSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'Telefonunuzun ayarlarında Pacta bildirimleri '
+                          'kapalı; aşağıdakiler açık olsa da bildirim gelmez. '
+                          'Ayarlar > Uygulamalar > Pacta > Bildirimler '
+                          'bölümünden açabilirsiniz.',
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                 child: Text(

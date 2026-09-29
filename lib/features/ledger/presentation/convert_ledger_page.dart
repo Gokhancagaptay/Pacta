@@ -141,16 +141,15 @@ class _ConvertLedgerPageState extends ConsumerState<ConvertLedgerPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Sayfa açıkken bakiye değişirse önizleme güncel kalır.
+    final ledger =
+        ref.watch(ledgerProvider(widget.ledger.id)).valueOrNull ??
+        widget.ledger;
     final c = context.pacta;
     final uid = ref.watch(currentUidProvider);
-    final name = widget.ledger.other(uid).displayName;
-    final lines = transferPlan(
-      widget.ledger,
-      withDescriptions: _withDescriptions,
-    );
-    final hasNotes = widget.ledger.dueItems.any(
-      (i) => i.description.isNotEmpty,
-    );
+    final name = ledger.other(uid).displayName;
+    final lines = transferPlan(ledger, withDescriptions: _withDescriptions);
+    final hasNotes = ledger.dueItems.any((i) => i.description.isNotEmpty);
     final approval = lines.any((l) => l.needsApproval);
     final mine = lines.any((l) => !l.needsApproval);
     final found = _found;

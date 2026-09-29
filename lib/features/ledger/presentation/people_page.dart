@@ -27,20 +27,22 @@ class PeoplePage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Kişiler'),
         actions: [
-          PopupMenuButton<PeopleSort>(
-            tooltip: 'Sırala',
-            icon: const Icon(Icons.sort_rounded),
-            initialValue: sort,
-            onSelected: (s) => ref.read(peopleSortProvider.notifier).state = s,
-            itemBuilder: (_) => [
-              for (final s in PeopleSort.values)
-                CheckedPopupMenuItem(
-                  value: s,
-                  checked: s == sort,
-                  child: Text(s.label),
-                ),
-            ],
-          ),
+          if (hasPeople)
+            PopupMenuButton<PeopleSort>(
+              tooltip: 'Sırala',
+              icon: const Icon(Icons.sort_rounded),
+              initialValue: sort,
+              onSelected: (s) =>
+                  ref.read(peopleSortProvider.notifier).state = s,
+              itemBuilder: (_) => [
+                for (final s in PeopleSort.values)
+                  CheckedPopupMenuItem(
+                    value: s,
+                    checked: s == sort,
+                    child: Text(s.label),
+                  ),
+              ],
+            ),
           IconButton(
             tooltip: 'Kişi ekle',
             icon: const Icon(Icons.person_add_alt_1_rounded),

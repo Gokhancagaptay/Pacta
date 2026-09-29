@@ -12,7 +12,10 @@ class FirestoreService {
   late final CollectionReference<UserModel> usersRef = _db
       .collection(_usersCollection)
       .withConverter<UserModel>(
-        fromFirestore: (snapshot, _) => UserModel.fromMap(snapshot.data()!),
+        // Kimlik belgeden gelir: "uid" alanı olmayan eski profillerde
+        // kaydetme sessizce boşa gitmesin.
+        fromFirestore: (snapshot, _) =>
+            UserModel.fromMap({...snapshot.data()!, 'uid': snapshot.id}),
         toFirestore: (user, _) => user.toMap(),
       );
 
@@ -84,11 +87,16 @@ class FirestoreService {
   }
 
   /// Profil alanlarını günceller; ad değiştiyse herkese açık ad da güncellenir.
+  /// Ad değişikliği profil ve herkese açık adla birlikte tek yazımdır.
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
     if (uid.isEmpty || data.isEmpty) return;
-    await usersRef.doc(uid).update(data);
+    final batch = _db.batch();
+    batch.update(_db.collection(_usersCollection).doc(uid), data);
     if (data.containsKey('adSoyad')) {
-      await syncPublicProfile(uid, data['adSoyad'] as String?);
+      batch.set(_db.collection(_publicProfilesCollection).doc(uid), {
+        'adSoyad': ((data['adSoyad'] as String?) ?? '').trim(),
+      });
     }
+    await batch.commit();
   }
 }

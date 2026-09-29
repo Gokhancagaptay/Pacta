@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,14 +10,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/app/app_lock.dart';
 import 'package:pacta/app/navigation.dart';
+import 'package:pacta/app/startup.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/constants/app_constants.dart';
-import 'package:pacta/core/report.dart';
 import 'package:pacta/firebase_options.dart';
 import 'package:pacta/providers/theme_provider.dart';
-import 'package:pacta/services/app_link_service.dart';
-import 'package:pacta/services/push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,28 +35,20 @@ Future<void> main() async {
     debugPrint('Firebase başlatılamadı: $e');
   }
 
-  // Çökme raporları (Crashlytics): yalnızca desteklenen platformlarda ve
-  // yayın sürümünde. Kullanıcı kimliği eklenmez. Uygulamayı kapatmayan
-  // hatalar "ölümcül değil" kaydedilir (çökmesiz oturum oranı doğru kalsın).
-  const crashPlatforms = {
-    TargetPlatform.android,
-    TargetPlatform.iOS,
-    TargetPlatform.macOS,
-  };
-  if (Firebase.apps.isNotEmpty &&
-      !kIsWeb &&
-      crashPlatforms.contains(defaultTargetPlatform)) {
-    try {
-      final crashlytics = FirebaseCrashlytics.instance;
-      await crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
-      FlutterError.onError = crashlytics.recordFlutterError;
-      PlatformDispatcher.instance.onError = (error, stack) {
-        crashlytics.recordError(error, stack);
-        return true;
-      };
-    } catch (e) {
-      debugPrint('Crashlytics başlatılamadı: $e');
-    }
+  // Yayın sürümünde bir ekran çizilemezse kırmızı hata yerine anlaşılır
+  // mesaj; geliştirmede asıl hata görünür.
+  if (kReleaseMode) {
+    ErrorWidget.builder = (details) => const Material(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Bu ekran açılamadı. Uygulamayı kapatıp yeniden açın.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
   }
 
   // Uygulama hemen açılır; bildirim ve link servisleri (izin sorusu, ağ)
@@ -67,29 +56,19 @@ Future<void> main() async {
   // Kilit ayarı önceden okunur: kilit açıksa uygulama ilk karesinden
   // itibaren kilitli açılır (içerik bir an bile görünmez).
   final lockEnabled = await AppLockController.readEnabled();
+  // Tema da önceden okunur: kayıtlı koyu tema ilk karede açık görünmesin.
+  final theme = await ThemeNotifier.readSaved();
   runApp(
     ProviderScope(
       overrides: [
         appLockInitiallyEnabledProvider.overrideWithValue(lockEnabled),
+        initialThemeProvider.overrideWithValue(theme),
       ],
       child: const MyApp(),
     ),
   );
 
-  if (Firebase.apps.isNotEmpty) {
-    unawaited(
-      PushNotificationService.instance.initialize().catchError(
-        (Object e, StackTrace st) =>
-            reportError(e, st, reason: 'Bildirim servisi başlatılamadı'),
-      ),
-    );
-    unawaited(
-      AppLinkService.initialize().catchError(
-        (Object e, StackTrace st) =>
-            reportError(e, st, reason: 'Link servisi başlatılamadı'),
-      ),
-    );
-  }
+  unawaited(startAppServices());
 }
 
 class MyApp extends ConsumerWidget {
@@ -114,21 +93,8 @@ class MyApp extends ConsumerWidget {
       supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
-      builder: (context, child) {
-        // Bir ekran çizilemezse kırmızı hata yerine anlaşılır bir mesaj.
-        ErrorWidget.builder = (details) => const Material(
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Bu ekran açılamadı. Uygulamayı kapatıp yeniden açın.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        );
-        return AppLockGate(child: child ?? const SizedBox.shrink());
-      },
+      builder: (context, child) =>
+          AppLockGate(child: child ?? const SizedBox.shrink()),
     );
   }
 }

@@ -19,6 +19,41 @@ import 'profile_providers.dart';
 /// Kilit anahtarı doğrulama sürerken ikinci isteği açmasın.
 bool _lockBusy = false;
 
+/// Çıkış onay ister; sürerken (internetsiz birkaç saniye) ekran kilitli.
+Future<void> _confirmSignOut(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Çıkış yapılsın mı?'),
+      content: const Text(
+        'Bu telefondaki kayıt önbelleği silinir; tekrar girdiğinizde '
+        'yeniden yüklenir.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialog, false),
+          child: const Text('Vazgeç'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialog, true),
+          child: const Text('Çıkış yap'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const PopScope(
+      canPop: false,
+      child: Center(child: CircularProgressIndicator()),
+    ),
+  );
+  // Oturum kapanınca AuthWrapper tüm sayfaları (bu göstergeyle) kapatır.
+  await AuthService().signOut();
+}
+
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
@@ -197,7 +232,7 @@ class ProfilePage extends ConsumerWidget {
                 link(
                   Icons.logout_rounded,
                   'Çıkış yap',
-                  () => AuthService().signOut(),
+                  () => _confirmSignOut(context),
                 ),
                 const Divider(indent: 56),
                 link(

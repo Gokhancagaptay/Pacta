@@ -44,6 +44,9 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
 
   LedgerRepository get _repo => ref.read(ledgerRepositoryProvider);
 
+  /// Davet paylaşılamadıysa: e-posta alanının değil kısayolların altında.
+  String? _inviteError;
+
   void _fail(String message) => setState(() {
     _busy = false;
     _queryError = message;
@@ -243,12 +246,22 @@ class _AddPersonSheetState extends ConsumerState<AddPersonSheet> {
                     context,
                     ref,
                     onError: (m) {
-                      if (mounted) _fail(m);
+                      if (mounted) setState(() => _inviteError = m);
                     },
                   ),
                 ),
               ],
             ),
+            if (_inviteError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _inviteError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _query,

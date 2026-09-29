@@ -57,9 +57,17 @@ class HomePage extends ConsumerWidget {
 
     return SafeArea(
       child: RefreshIndicator(
+        // Akışlar zaten canlı; yenileme ilk yeni değer gelene kadar sürer
+        // (anında kapanıp bir şey olmadı sanılmasın).
         onRefresh: () async {
-          ref.invalidate(ledgersProvider);
-          ref.invalidate(inboxProvider);
+          try {
+            await Future.wait([
+              ref.refresh(ledgersProvider.future),
+              ref.refresh(inboxProvider.future),
+            ]).timeout(const Duration(seconds: 10));
+          } catch (_) {
+            // Hata durumları ekranda ayrıca gösterilir.
+          }
         },
         child: ListView(
           padding: const EdgeInsets.only(bottom: 32),

@@ -74,7 +74,6 @@ class PushNotificationService {
       (m) => NotificationRoutes.open(m.data['route'] as String?),
     );
 
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
     await _fcm.setForegroundNotificationPresentationOptions(
       alert: true,
       badge: true,
@@ -83,10 +82,36 @@ class PushNotificationService {
 
     // userChanges: e-posta doğrulanınca da yayın yapar; anahtar ancak
     // doğrulanmış hesaba yazılır.
-    _auth.userChanges().listen((_) => unawaited(_saveCurrentToken()));
+    // İzin, giriş ekranının üstünde değil, oturum açılınca sorulur.
+    _auth.userChanges().listen((user) {
+      if (user != null) unawaited(_askPermissionOnce());
+      unawaited(_saveCurrentToken());
+    });
     _fcm.onTokenRefresh.listen((token) => unawaited(_saveToken(token)));
 
     FirebaseMessaging.onMessage.listen(_showForeground);
+  }
+
+  bool _askedPermission = false;
+
+  Future<void> _askPermissionOnce() async {
+    if (_askedPermission) return;
+    _askedPermission = true;
+    try {
+      await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    } catch (e, st) {
+      reportError(e, st, reason: 'Bildirim izni sorulamadı');
+    }
+  }
+
+  /// Telefon ayarlarında bu uygulamanın bildirimleri kapalı mı.
+  Future<bool> notificationsBlocked() async {
+    try {
+      final settings = await _fcm.getNotificationSettings();
+      return settings.authorizationStatus == AuthorizationStatus.denied;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Çıkışta: bu cihazın anahtarı hesaptan silinir ve FCM'de iptal edilir.
