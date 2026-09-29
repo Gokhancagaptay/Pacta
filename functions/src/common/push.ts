@@ -2,8 +2,16 @@ import {FieldValue} from "firebase-admin/firestore";
 import * as logger from "firebase-functions/logger";
 import {admin, db} from "./firebase";
 
+/** Cihazın artık geçerli olmadığını gösteren FCM hataları. */
+const DEAD_TOKEN_CODES = new Set([
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+]);
+
 /**
- * Kullanıcıya FCM üzerinden push bildirimi gönderir.
+ * Kullanıcının tüm cihazlarına FCM push bildirimi gönderir. Geçersiz
+ * anahtarlar (cihaz çıkış yaptı, uygulama kaldırıldı) hesaptan silinir;
+ * yalnızca hata veren anahtar silinir, bu arada kaydedilen yenisi kalır.
  * @param {string} toUserId Alıcı kullanıcı ID'si.
  * @param {string} title Bildirim başlığı.
  * @param {string} body Bildirim içeriği.
@@ -17,14 +25,16 @@ export async function sendPushNotification(
 ) {
   try {
     const userDoc = await db.collection("users").doc(toUserId).get();
-    const fcmToken = userDoc.get("fcmToken") as string | undefined;
+    const listed = (userDoc.get("fcmTokens") as string[] | undefined) ?? [];
+    const legacy = userDoc.get("fcmToken") as string | undefined;
+    const tokens = [...new Set([...listed, ...(legacy ? [legacy] : [])])];
 
-    if (!fcmToken) {
+    if (tokens.length === 0) {
       logger.warn(`[push] FCM token yok, atlandı: ${toUserId}`);
       return;
     }
-    await admin.messaging().send({
-      token: fcmToken,
+    const result = await admin.messaging().sendEachForMulticast({
+      tokens,
       notification: {title, body},
       data,
       android: {
@@ -38,20 +48,26 @@ export async function sendPushNotification(
         },
       },
     });
-    logger.info(`[push] Gönderildi: ${toUserId}`);
+    const dead = tokens.filter((_, i) => {
+      const code = result.responses[i].error?.code;
+      return code !== undefined && DEAD_TOKEN_CODES.has(code);
+    });
+    if (dead.length > 0) {
+      const update: {[field: string]: unknown} = {
+        fcmTokens: FieldValue.arrayRemove(...dead),
+      };
+      if (legacy && dead.includes(legacy)) {
+        update.fcmToken = FieldValue.delete();
+      }
+      await db.collection("users").doc(toUserId).update(update)
+        .catch(() => undefined);
+      logger.info(`[push] Geçersiz anahtar silindi: ${toUserId}`,
+        {count: dead.length});
+    }
+    logger.info(`[push] Gönderildi: ${toUserId}`,
+      {success: result.successCount, failure: result.failureCount});
   } catch (error) {
     const err = error as {message?: string; code?: string; stack?: string};
-    // Cihaz çıkış yaptı ya da uygulama kaldırıldı: eski anahtar silinir.
-    if (
-      err.code === "messaging/registration-token-not-registered" ||
-      err.code === "messaging/invalid-registration-token"
-    ) {
-      await db.collection("users").doc(toUserId)
-        .update({fcmToken: FieldValue.delete()})
-        .catch(() => undefined);
-      logger.info(`[push] Geçersiz anahtar silindi: ${toUserId}`);
-      return;
-    }
     logger.error(`[push] Gönderilemedi: ${toUserId}`, {
       errorMessage: err.message,
       errorCode: err.code,

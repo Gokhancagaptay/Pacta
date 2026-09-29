@@ -14,6 +14,7 @@ export {
   reviseEntry,
 } from "./ledger/commands";
 export {deleteAccount} from "./ledger/account";
+export {registerPushToken, unregisterPushToken} from "./ledger/devices";
 export {
   deletePrivateLedger,
   myPactaCode,
