@@ -14,9 +14,13 @@ import {purgeWebData} from "./web";
 //   kimliği taşıyan son defter de o zamana kadar silinmiş olur.
 // - Yanıtlanmayan web onay istekleri süresi dolduktan 30 gün sonra,
 //   yanıt vermeden kalan misafir girişleri bir gün sonra silinir (web.ts).
+// - Uygulama içi bildirimler (users/{uid}/notifications) 90 gün sonra
+//   silinir. Bildirim yalnızca bir haberdir: kayıt, onay ve geçmiş
+//   defterde, onay bekleyenler gelen kutusunda (inbox) kalır.
 
 export const UNVERIFIED_DAYS = 30;
 export const CLOSED_LEDGER_YEARS = 10;
+export const NOTIFICATION_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -174,6 +178,49 @@ async function purgeTombstones(now: Date): Promise<PurgeResult> {
   }
 }
 
+/** Kullanıcı bildirimi: users/{uid}/notifications/{id}. */
+const USER_NOTIFICATION = /^users\/[^/]+\/notifications\/[^/]+$/;
+
+/**
+ * Saklama süresi dolan uygulama içi bildirimleri siler. Koleksiyon grubu
+ * sorgusu v1'in kök "notifications" koleksiyonunu da getirir; onlar
+ * atlanır (ayrı, onaylı bir temizlikle ele alınacak). Atlanan ve
+ * silinemeyen belgeler yüzünden aynı sayfa dönmesin diye sorgu imleçle
+ * ilerler (deleteQuery bu yüzden kullanılmaz). Dizin:
+ * firestore.indexes.json, notifications.createdAt (COLLECTION_GROUP).
+ * @param {Date} now An.
+ * @return {Promise<PurgeResult>} Sonuç.
+ */
+async function purgeNotifications(now: Date): Promise<PurgeResult> {
+  const cutoff =
+    Timestamp.fromMillis(now.getTime() - NOTIFICATION_DAYS * DAY_MS);
+  const result = {removed: 0, failed: 0};
+  let last: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let query = db.collectionGroup("notifications")
+      .where("createdAt", "<", cutoff)
+      .orderBy("createdAt")
+      .limit(400);
+    if (last) query = query.startAfter(last);
+    const snap = await query.get();
+    const own = snap.docs.filter((d) => USER_NOTIFICATION.test(d.ref.path));
+    if (own.length > 0) {
+      const batch = db.batch();
+      own.forEach((doc) => batch.delete(doc.ref));
+      try {
+        await batch.commit();
+        result.removed += own.length;
+      } catch (error) {
+        result.failed += own.length;
+        logger.error("[maintenance] Bildirimler silinemedi",
+          {error: String(error)});
+      }
+    }
+    if (snap.size < 400) return result;
+    last = snap.docs[snap.docs.length - 1];
+  }
+}
+
 /**
  * Bakımın tamamı (testlerde saat verilebilir). Aşamalar birbirinden
  * bağımsızdır: biri hata verse de diğerleri çalışır.
@@ -185,6 +232,7 @@ export async function runMaintenance(now: Date): Promise<{
   closedLedgers: number;
   tombstones: number;
   web: number;
+  notifications: number;
   resumed: number;
   failed: number;
 }> {
@@ -208,14 +256,16 @@ export async function runMaintenance(now: Date): Promise<{
     const {requests, guests} = await purgeWebData(at);
     return {removed: requests + guests, failed: 0};
   });
+  const notifications = await stage("notifications", purgeNotifications);
   return {
     unverified: unverified.removed,
     closedLedgers: closed.removed,
     tombstones: tombstones.removed,
     web: web.removed,
+    notifications: notifications.removed,
     resumed: resumed.removed,
     failed: unverified.failed + closed.failed + tombstones.failed +
-      web.failed + resumed.failed,
+      web.failed + notifications.failed + resumed.failed,
   };
 }
 

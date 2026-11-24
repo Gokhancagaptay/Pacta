@@ -315,6 +315,21 @@ describe("v2 defterler", () => {
       {message: "Sahte", isRead: false}));
   });
 
+  it("bildirimi yalnızca sahibi siler; kimse bildirim oluşturamaz",
+    async () => {
+      await assertFails(deleteDoc(doc(ali(), "users/ayse/notifications/n1")));
+      await assertFails(deleteDoc(doc(anon(), "users/ayse/notifications/n1")));
+      await assertSucceeds(
+        deleteDoc(doc(ayse(), "users/ayse/notifications/n1")));
+      // Sahibi de oluşturamaz: silinen bildirim geri yazılamaz.
+      await assertFails(setDoc(doc(ayse(), "users/ayse/notifications/n1"),
+        {message: "Onayınız bekleniyor", isRead: false}));
+      await assertFails(addDoc(collection(ayse(), "users/ayse/notifications"),
+        {message: "Sahte", isRead: false}));
+      await assertFails(setDoc(doc(ali(), "users/ali/notifications/n3"),
+        {message: "Sahte", isRead: false}));
+    });
+
   it("tüm defterlerdeki kayıtlar yalnızca üyelik filtresiyle listelenir",
     async () => {
       const recent = (db, uid) => getDocs(query(
@@ -382,6 +397,7 @@ describe("uygulama ayarı", () => {
 describe("eski v1 koleksiyonları", () => {
   it("üst düzey bildirimler ve kayıtlı kişiler tamamen kapalı", async () => {
     await assertFails(getDoc(doc(ayse(), "notifications/n1")));
+    await assertFails(deleteDoc(doc(ayse(), "notifications/n1")));
     await assertFails(addDoc(collection(ali(), "notifications"),
       {toUserId: "ayse", message: "Sahte", isRead: false}));
     await assertFails(setDoc(doc(ali(), "users/ali/savedContacts/c1"),

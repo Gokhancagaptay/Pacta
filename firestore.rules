@@ -74,12 +74,14 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow write: if false;
       }
+      // Sahibi bildirimi okundu yapabilir ve silebilir; oluşturamaz.
       match /notifications/{notificationId} {
         allow read: if isSelf(uid);
         allow update: if isSelf(uid)
           && onlyChanges(['isRead'])
           && request.resource.data.isRead is bool;
-        allow create, delete: if false;
+        allow delete: if isSelf(uid);
+        allow create: if false;
       }
     }
 

@@ -83,6 +83,16 @@ class FakeRepo extends LedgerRepository {
   LedgerException? deleteError;
 
   @override
+  Future<void> deleteNotification(String uid, String notificationId) async {
+    calls.add('deleteNotification $notificationId');
+  }
+
+  @override
+  Future<void> deleteAllNotifications(String uid) async {
+    calls.add('deleteAllNotifications');
+  }
+
+  @override
   Future<String> myPactaCode() async => 'K7Q3XM';
 
   @override
@@ -327,6 +337,7 @@ Widget app(
   Map<String, DateTime> hidden = const {},
   Map<String, List<LedgerEntry>> entries = const {},
   Stream<bool>? serverSync,
+  Stream<List<AppNotification>>? notificationsStream,
 }) => ProviderScope(
   overrides: [
     serverSyncProvider.overrideWith((ref) => serverSync ?? Stream.value(true)),
@@ -337,7 +348,9 @@ Widget app(
       (ref) => Stream.value(people ?? [...ledgers, archivedLedger]),
     ),
     inboxProvider.overrideWith((ref) => inboxStream ?? Stream.value(inbox)),
-    notificationsProvider.overrideWith((ref) => Stream.value(const [])),
+    notificationsProvider.overrideWith(
+      (ref) => notificationsStream ?? Stream.value(const []),
+    ),
     recentEntriesProvider.overrideWith((ref) => Stream.value(recent)),
     todayProvider.overrideWith((ref) => today),
     ledgerProvider.overrideWith(

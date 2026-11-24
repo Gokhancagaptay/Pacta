@@ -1,9 +1,13 @@
-// Günlük bakım: 30 günde doğrulanmamış e-posta hesapları ve saklama süresi
-// (10 yıl) dolan kapalı ortak defterler silinir; diğer her şey kalır.
+// Günlük bakım: 30 günde doğrulanmamış e-posta hesapları, saklama süresi
+// (10 yıl) dolan kapalı ortak defterler ve 90 günden eski bildirimler
+// silinir; diğer her şey kalır.
 const {describe, it} = require("node:test");
 const assert = require("node:assert/strict");
 
-const {runMaintenance} = require("../lib/ledger/maintenance.js");
+const {
+  NOTIFICATION_DAYS,
+  runMaintenance,
+} = require("../lib/ledger/maintenance.js");
 const {
   call,
   db,
@@ -30,8 +34,8 @@ describe("runMaintenance", () => {
     await db.collection("users").doc("eski").set({adSoyad: "Eski"});
 
     assert.deepEqual(await runMaintenance(later(DAY)),
-      {unverified: 0, closedLedgers: 0, tombstones: 0, web: 0, resumed: 0,
-        failed: 0});
+      {unverified: 0, closedLedgers: 0, tombstones: 0, web: 0,
+        notifications: 0, resumed: 0, failed: 0});
     await auth.getUser("eski");
 
     const res = await runMaintenance(later(31 * DAY));
@@ -77,6 +81,68 @@ describe("runMaintenance", () => {
     assert.equal(res.closedLedgers, 0);
     assert.equal((await ledgerDoc(ledgerId)).exists, true);
   });
+});
+
+describe("bildirim saklama süresi", () => {
+  const {Timestamp} = require("firebase-admin/firestore");
+  const ago = (days) => Timestamp.fromMillis(Date.now() - days * DAY);
+  const note = (days) => ({
+    type: "entryRecorded", title: "Kayıt", message: "Yeni kayıt",
+    isRead: false, createdAt: ago(days),
+  });
+
+  it("90 günden eski bildirimleri siler, yenilere dokunmaz", async () => {
+    assert.equal(NOTIFICATION_DAYS, 90);
+    await Promise.all([
+      db.doc("users/ali/notifications/eski").set(note(100)),
+      db.doc("users/ali/notifications/yeni").set(note(5)),
+      db.doc("users/ayse/notifications/eski").set(note(91)),
+      db.doc("users/ayse/notifications/yeni").set(note(89)),
+      db.doc("users/ayse/inbox/e1").set({type: "confirmEntry",
+        createdAt: ago(100)}),
+    ]);
+
+    const res = await runMaintenance(new Date());
+    assert.equal(res.notifications, 2);
+    assert.equal(res.failed, 0);
+    assert.equal(await exists("users/ali/notifications/eski"), false);
+    assert.equal(await exists("users/ayse/notifications/eski"), false);
+    assert.equal(await exists("users/ali/notifications/yeni"), true);
+    assert.equal(await exists("users/ayse/notifications/yeni"), true);
+    // Kişinin diğer verisi kalır.
+    assert.equal(await exists("users/ali"), true);
+    assert.equal(await exists("users/ayse/inbox/e1"), true);
+
+    // Saat ileri alınınca kalanlar da süresini doldurur.
+    const later80 = await runMaintenance(later(80 * DAY));
+    assert.equal(later80.notifications, 1);
+    assert.equal(await exists("users/ali/notifications/yeni"), true);
+    assert.equal(await exists("users/ayse/notifications/yeni"), false);
+  });
+
+  it("v1 kök bildirimlerine ve başka yoldaki belgelere dokunmaz",
+    async () => {
+      // 450 eski kök belge: ilk sayfa tamamen atlanır, imleç ilerler.
+      for (let start = 0; start < 450; start += 150) {
+        const batch = db.batch();
+        for (let i = start; i < start + 150; i++) {
+          batch.set(db.doc(`notifications/v1_${i}`),
+            {toUserId: "ali", message: "Eski", createdAt: ago(400)});
+        }
+        await batch.commit();
+      }
+      await Promise.all([
+        db.doc("ledgers/x/notifications/n1").set(note(400)),
+        db.doc("users/ali/notifications/eski").set(note(100)),
+      ]);
+
+      const res = await runMaintenance(new Date());
+      assert.equal(res.notifications, 1);
+      assert.equal(res.failed, 0);
+      assert.equal(await exists("users/ali/notifications/eski"), false);
+      assert.equal((await db.collection("notifications").get()).size, 450);
+      assert.equal(await exists("ledgers/x/notifications/n1"), true);
+    });
 });
 
 describe("yarım kalan hesap silme", () => {

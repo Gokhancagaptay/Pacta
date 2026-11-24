@@ -76,7 +76,8 @@ iOS için ayrıca: privacy manifest (`PrivacyInfo.xcprivacy`), Apple ile giriş.
 | Veri | Yer | Saklama |
 |---|---|---|
 | Profil, tercihler, Pacta kodu | `users/{uid}`, `publicProfiles/{uid}` (yalnızca ad), `codes/{kod}` | Hesap silinince |
-| Bildirimler, gelen kutusu | `users/{uid}/notifications`, `users/{uid}/inbox` | Hesap silinince |
+| Bildirimler | `users/{uid}/notifications` | 90 gün (`dailyMaintenance`); kullanıcı daha önce silebilir; hesap silinince |
+| Gelen kutusu | `users/{uid}/inbox` | Hesap silinince |
 | Defterler ve kayıtlar | `ledgers/{id}` (+ `entries`, `events`) | Ortak: kapanıştan 10 yıl (`dailyMaintenance`); özel: silinince |
 | Silme işareti | `deletedAccounts/{uid}` | 10 yıl (`dailyMaintenance`) |
 | Doğrulanmamış hesaplar | Firebase Authentication | 30 gün (`dailyMaintenance`) |

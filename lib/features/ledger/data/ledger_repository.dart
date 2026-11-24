@@ -270,6 +270,28 @@ class LedgerRepository {
     await batch.commit();
   }
 
+  Future<void> deleteNotification(String uid, String notificationId) => _db
+      .collection('users')
+      .doc(uid)
+      .collection('notifications')
+      .doc(notificationId)
+      .delete();
+
+  /// Tüm bildirimleri 400'lük toplu silmelerle siler (ekranda yüklü 20 ile
+  /// sınırlı değil). Silinen belgeler yerel önbellekten de hemen düşer.
+  Future<void> deleteAllNotifications(String uid) async {
+    final notes = _db.collection('users').doc(uid).collection('notifications');
+    for (;;) {
+      final page = await notes.limit(400).get();
+      if (page.docs.isEmpty) return;
+      final batch = _db.batch();
+      for (final d in page.docs) {
+        batch.delete(d.reference);
+      }
+      await batch.commit();
+    }
+  }
+
   /// Bu kişinin hatırlatmaları push olarak gelmez; bildirim listesinde kalır.
   Future<void> setReminderMuted(String uid, String ledgerId, bool muted) =>
       _db.collection('users').doc(uid).set({
