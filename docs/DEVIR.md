@@ -168,8 +168,8 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
    - 09:00'dan hemen önce kuyruğa düşen push bir gün gecikebilir.
    - `AuthService` her çağrıda yeniden oluşturuluyor (tekil sağlayıcı olabilir).
 6. **Özellikler** (sırayı kullanıcı belirleyecek):
-   - Ek dosya; tarih aralıklı ekstre.
-   - Bildirim silme ve saklama süresi (TTL); gelen kutusunda toplu onay.
+   - Ek dosya.
+   - Gelen kutusunda toplu onay.
    - KVKK veri dışa aktarma; bakiye ve zincir tutarlılık denetimi.
    - Çevrimdışı şeridinin bekleme süreleri (8/3/2 sn) gerçek cihazda uçak moduyla denenip gerekirse ayarlanacak.
    - SMS OTP (web onayının güçlü sürümü) ve rehberden kişi seçici.
