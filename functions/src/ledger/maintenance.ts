@@ -1,8 +1,13 @@
-import {QueryDocumentSnapshot, Timestamp} from "firebase-admin/firestore";
+import {
+  Query,
+  QueryDocumentSnapshot,
+  Timestamp,
+} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import {admin, db, REGION} from "../common/firebase";
 import {RemovalReason, removeAccount} from "./account";
+import {AuditProblem, auditStoredLedger} from "./audit";
 import {purgeWebData} from "./web";
 
 // Günlük bakım (gizlilik politikasındaki saklama süreleri):
@@ -17,6 +22,9 @@ import {purgeWebData} from "./web";
 // - Uygulama içi bildirimler (users/{uid}/notifications) 90 gün sonra
 //   silinir. Bildirim yalnızca bir haberdir: kayıt, onay ve geçmiş
 //   defterde, onay bekleyenler gelen kutusunda (inbox) kalır.
+// - Son çalışmadan bu yana değişen defterler bakiye ve zincir
+//   tutarlılığı için denetlenir (audit.ts). Salt okunurdur; sorunlar
+//   "[audit]" önekiyle hata günlüğüne yazılır, hiçbir şey onarılmaz.
 
 export const UNVERIFIED_DAYS = 30;
 export const CLOSED_LEDGER_YEARS = 10;
@@ -222,10 +230,140 @@ async function purgeNotifications(now: Date): Promise<PurgeResult> {
 }
 
 /**
+ * Gece denetiminin sınırları (maliyet üst sınırı). Testlerde
+ * değiştirilebilsin diye nesnedir.
+ * - windowHours: son bu kadar saatte değişen defterler denetlenir. Bakım
+ *   günde bir çalışır; pencere biraz uzun tutulur, iki çalışma arasında
+ *   değişen defter kaçmaz.
+ * - ledgers: bir gecede denetlenen en fazla defter. Aşılırsa kalanlar o
+ *   gece denetlenmez (sayısı günlüğe ve özete yazılır); defter yeniden
+ *   değişince tekrar pencereye girer.
+ * - entriesPerLedger: bundan fazla kaydı olan defter atlanır (kısmi
+ *   denetim yanlış alarm verir); yönetici betiği daha yüksek sınırla
+ *   denetleyebilir.
+ * - entries: bir gecede okunan en fazla kayıt; aşılınca kalan defterler
+ *   atlanır.
+ */
+export const auditLimits = {
+  windowHours: 26,
+  ledgers: 500,
+  entriesPerLedger: 2000,
+  entries: 50000,
+};
+
+/** Bir defter için günlüğe yazılan en fazla sorun. */
+const LOGGED_PROBLEMS = 50;
+
+const AUDIT_PAGE = 100;
+
+/** Denetim aşamasının sonucu. */
+interface AuditResult {
+  audited: number;
+  problems: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Günlüğe yalnızca kod ve kimlikler gider; uyuşmayan sayılar için yönetici
+ * betiği (scripts/auditLedgers.js) çalıştırılır.
+ * @param {AuditProblem} p Sorun.
+ * @return {object} Günlük satırı.
+ */
+function forLog(p: AuditProblem) {
+  const {code, entryId, relatedEntryId, asset, field, seq, seqTo} = p;
+  return Object.fromEntries(
+    Object.entries({code, entryId, relatedEntryId, asset, field, seq, seqTo})
+      .filter(([, v]) => v !== undefined));
+}
+
+/**
+ * Son pencerede değişen defterleri denetler (salt okunur). Defter başına
+ * hata diğer defterleri durdurmaz.
+ * @param {Date} now An.
+ * @return {Promise<AuditResult>} Sonuç.
+ */
+async function auditRecentLedgers(now: Date): Promise<AuditResult> {
+  const since = Timestamp.fromMillis(
+    now.getTime() - auditLimits.windowHours * 60 * 60 * 1000);
+  // Tek alanlı aralık ve sıralama: otomatik dizin yeterli.
+  const recent = db.collection("ledgers")
+    .where("updatedAt", ">=", since)
+    .orderBy("updatedAt");
+  const result: AuditResult = {audited: 0, problems: 0, skipped: 0, failed: 0};
+  let entriesRead = 0;
+  let seen = 0;
+  let last: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let page = recent.select("updatedAt").limit(AUDIT_PAGE);
+    if (last) page = page.startAfter(last);
+    const snap = await page.get();
+    for (const doc of snap.docs) {
+      if (seen >= auditLimits.ledgers || entriesRead >= auditLimits.entries) {
+        result.skipped += await countAfter(recent, last);
+        logger.warn("[audit] Gece sınırına ulaşıldı; kalan defterler " +
+          "denetlenmedi", {skipped: result.skipped, seen, entriesRead,
+          limits: auditLimits});
+        return result;
+      }
+      seen++;
+      last = doc;
+      try {
+        const res = await auditStoredLedger(doc.id,
+          auditLimits.entriesPerLedger);
+        if (res.status === "missing") continue;
+        entriesRead += res.entriesRead;
+        if (res.status === "tooLarge") {
+          result.skipped++;
+          logger.warn("[audit] Defterin kaydı çok; atlandı",
+            {ledgerId: doc.id, limit: auditLimits.entriesPerLedger});
+          continue;
+        }
+        result.audited++;
+        if (res.problems.length > 0) {
+          result.problems += res.problems.length;
+          logger.error("[audit] Defterde tutarsızlık", {
+            ledgerId: doc.id,
+            count: res.problems.length,
+            problems: res.problems.slice(0, LOGGED_PROBLEMS).map(forLog),
+          });
+        }
+      } catch (error) {
+        result.failed++;
+        logger.error("[audit] Defter denetlenemedi",
+          {ledgerId: doc.id, error: String(error)});
+      }
+    }
+    if (snap.size < AUDIT_PAGE) return result;
+  }
+}
+
+/**
+ * Sınıra takılıp denetlenmeyen defter sayısı (yalnızca rapor için).
+ * @param {Query} recent Penceredeki defterler.
+ * @param {QueryDocumentSnapshot | undefined} last Son ele alınan defter.
+ * @return {Promise<number>} Sayı; sayılamazsa 0.
+ */
+async function countAfter(
+  recent: Query,
+  last: QueryDocumentSnapshot | undefined
+): Promise<number> {
+  try {
+    const rest = last ? recent.startAfter(last) : recent;
+    return (await rest.count().get()).data().count;
+  } catch (error) {
+    logger.error("[audit] Kalan defterler sayılamadı",
+      {error: String(error)});
+    return 0;
+  }
+}
+
+/**
  * Bakımın tamamı (testlerde saat verilebilir). Aşamalar birbirinden
  * bağımsızdır: biri hata verse de diğerleri çalışır.
  * @param {Date} now An.
- * @return {Promise<object>} Silinen sayıları ve silinemeyenler.
+ * @return {Promise<object>} Silinen sayıları, denetim sonucu ve
+ *     yarıda kalanlar.
  */
 export async function runMaintenance(now: Date): Promise<{
   unverified: number;
@@ -234,29 +372,38 @@ export async function runMaintenance(now: Date): Promise<{
   web: number;
   notifications: number;
   resumed: number;
+  audited: number;
+  auditProblems: number;
+  auditSkipped: number;
   failed: number;
 }> {
-  const stage = async (
+  const stage = async <T extends {failed: number}>(
     name: string,
-    run: (now: Date) => Promise<PurgeResult>
-  ): Promise<PurgeResult> => {
+    run: (now: Date) => Promise<T>,
+    empty: T
+  ): Promise<T> => {
     try {
       return await run(now);
     } catch (error) {
       logger.error("[maintenance] Aşama yarıda kaldı",
         {stage: name, error: String(error)});
-      return {removed: 0, failed: 1};
+      return {...empty, failed: 1};
     }
   };
-  const resumed = await stage("resume", resumeDeletions);
-  const unverified = await stage("unverified", purgeUnverified);
-  const closed = await stage("closedLedgers", purgeClosedLedgers);
-  const tombstones = await stage("tombstones", purgeTombstones);
+  const none: PurgeResult = {removed: 0, failed: 0};
+  const resumed = await stage("resume", resumeDeletions, none);
+  const unverified = await stage("unverified", purgeUnverified, none);
+  const closed = await stage("closedLedgers", purgeClosedLedgers, none);
+  const tombstones = await stage("tombstones", purgeTombstones, none);
   const web = await stage("web", async (at) => {
     const {requests, guests} = await purgeWebData(at);
     return {removed: requests + guests, failed: 0};
-  });
-  const notifications = await stage("notifications", purgeNotifications);
+  }, none);
+  const notifications =
+    await stage("notifications", purgeNotifications, none);
+  // Silmelerden sonra: saklama süresi dolup silinen defter denetlenmez.
+  const audit = await stage("audit", auditRecentLedgers,
+    {audited: 0, problems: 0, skipped: 0, failed: 0});
   return {
     unverified: unverified.removed,
     closedLedgers: closed.removed,
@@ -264,8 +411,11 @@ export async function runMaintenance(now: Date): Promise<{
     web: web.removed,
     notifications: notifications.removed,
     resumed: resumed.removed,
+    audited: audit.audited,
+    auditProblems: audit.problems,
+    auditSkipped: audit.skipped,
     failed: unverified.failed + closed.failed + tombstones.failed +
-      web.failed + notifications.failed + resumed.failed,
+      web.failed + notifications.failed + resumed.failed + audit.failed,
   };
 }
 

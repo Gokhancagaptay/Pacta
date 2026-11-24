@@ -4,8 +4,10 @@
 const {describe, it} = require("node:test");
 const assert = require("node:assert/strict");
 
+const logger = require("firebase-functions/logger");
 const {
   NOTIFICATION_DAYS,
+  auditLimits,
   runMaintenance,
 } = require("../lib/ledger/maintenance.js");
 const {
@@ -35,7 +37,8 @@ describe("runMaintenance", () => {
 
     assert.deepEqual(await runMaintenance(later(DAY)),
       {unverified: 0, closedLedgers: 0, tombstones: 0, web: 0,
-        notifications: 0, resumed: 0, failed: 0});
+        notifications: 0, resumed: 0, audited: 0, auditProblems: 0,
+        auditSkipped: 0, failed: 0});
     await auth.getUser("eski");
 
     const res = await runMaintenance(later(31 * DAY));
@@ -163,5 +166,114 @@ describe("yarım kalan hesap silme", () => {
     assert.equal(marker.get("pending"), false);
     await assert.rejects(require("firebase-admin").auth().getUser("ali"),
       (e) => e.code === "auth/user-not-found");
+  });
+});
+
+describe("gece tutarlılık denetimi", () => {
+  // Testte günlük çıktısı yerine çağrılar incelenir.
+  const silent = () => undefined;
+  const privateLedger = async (name, amounts = [1000]) => {
+    const {ledgerId} = await call(fns.createLedger, "ali",
+      {privateName: name});
+    for (const amount of amounts) await lend(ledgerId, "ali", amount);
+    return ledgerId;
+  };
+  const auditCalls = (mock) => mock.calls
+    .filter((c) => String(c.arguments[0]).startsWith("[audit]"));
+  /** Sınırları test sonunda geri koyar. */
+  const withLimits = async (limits, run) => {
+    const saved = {...auditLimits};
+    Object.assign(auditLimits, limits);
+    try {
+      return await run();
+    } finally {
+      Object.assign(auditLimits, saved);
+    }
+  };
+
+  it("değişen defterleri denetler; sorunu kod ve kimlikle günlüğe yazar, " +
+    "hiçbir şey yazmaz", async (t) => {
+    const error = t.mock.method(logger, "error", silent);
+    const ledgerId = await sharedLedger();
+    const e = await lend(ledgerId, "ali", 500);
+    await call(fns.confirmEntry, "ayse",
+      {ledgerId, entryId: e.entryId, expectedVersion: 1});
+    const broken = await privateLedger("Bakkal", [700, 300]);
+    await db.doc(`ledgers/${broken}`).update({"balances.TRY": 1});
+    const stamps = async () => {
+      const docs = [];
+      for (const id of [ledgerId, broken]) {
+        docs.push(await ledgerDoc(id));
+        docs.push(...(await db.collection(`ledgers/${id}/entries`).get())
+          .docs);
+      }
+      return docs.map((d) => `${d.ref.path}@${d.updateTime.toMillis()}`);
+    };
+    const before = await stamps();
+
+    const res = await runMaintenance(new Date());
+    assert.equal(res.audited, 2);
+    assert.equal(res.auditProblems, 1);
+    assert.equal(res.auditSkipped, 0);
+    assert.equal(res.failed, 0);
+    assert.deepEqual(await stamps(), before);
+
+    const logged = auditCalls(error.mock);
+    assert.equal(logged.length, 1);
+    assert.deepEqual(logged[0].arguments[1], {
+      ledgerId: broken,
+      count: 1,
+      problems: [{code: "BALANCE_MISMATCH", asset: "TRY"}],
+    });
+  });
+
+  it("yalnızca son 26 saatte değişen defterler denetlenir", async () => {
+    await sharedLedger();
+    assert.equal((await runMaintenance(later(DAY))).audited, 1);
+    assert.equal((await runMaintenance(later(25 * 60 * 60 * 1000)))
+      .audited, 1);
+    assert.equal((await runMaintenance(later(27 * 60 * 60 * 1000)))
+      .audited, 0);
+    assert.equal((await runMaintenance(later(2 * DAY))).audited, 0);
+  });
+
+  it("defter, defter başına kayıt ve toplam kayıt sınırları", async (t) => {
+    t.mock.method(logger, "warn", silent);
+    await privateLedger("Bir", [100]);
+    await privateLedger("İki", [100, 200]);
+    await privateLedger("Üç", [100]);
+
+    let res = await withLimits({ledgers: 2},
+      () => runMaintenance(new Date()));
+    assert.equal(res.audited, 2);
+    assert.equal(res.auditSkipped, 1);
+
+    res = await withLimits({entriesPerLedger: 1},
+      () => runMaintenance(new Date()));
+    assert.equal(res.audited, 2);
+    assert.equal(res.auditSkipped, 1);
+
+    res = await withLimits({entries: 1},
+      () => runMaintenance(new Date()));
+    assert.equal(res.audited, 1);
+    assert.equal(res.auditSkipped, 2);
+    assert.equal(res.failed, 0);
+  });
+
+  it("denetim aşaması düşerse diğer aşamalar yine çalışır", async (t) => {
+    const error = t.mock.method(logger, "error", silent);
+    await sharedLedger();
+    const {Timestamp} = require("firebase-admin/firestore");
+    await db.doc("users/ali/notifications/eski").set({
+      type: "entryRecorded", title: "Kayıt", message: "Yeni kayıt",
+      isRead: false, createdAt: Timestamp.fromMillis(Date.now() - 100 * DAY),
+    });
+    const res = await withLimits({windowHours: NaN},
+      () => runMaintenance(new Date()));
+    assert.equal(res.failed, 1);
+    assert.equal(res.audited, 0);
+    assert.equal(res.notifications, 1);
+    assert.ok(error.mock.calls.some((c) =>
+      c.arguments[1]?.stage === "audit"));
   });
 });
