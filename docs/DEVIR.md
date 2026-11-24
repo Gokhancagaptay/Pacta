@@ -146,8 +146,16 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 3b8bc09 | **Çevrimdışı göstergesi:** ana kabukta şerit (`offline_banner.dart`), tek ve açık bağlantı hatası mesajı |
 | a8f1a65 | **Bildirim silme ve saklama:** kaydırarak silme ("Geri al" 4 sn), tümünü sil, günlük bakımda 90 gün (`NOTIFICATION_DAYS`); kural, dizin ve `dailyMaintenance` kurulumu gerekir |
 | 7ee60cc | **Tarih aralıklı ekstre:** PDF/CSV için dönem seçimi; devreden bakiye, dönem hareketi, dönem sonu bakiye (`statement_period.dart`) |
+| c040451 | **Kayıt ekleme:** gönder düğmesi klavyenin üstünde kalır |
+| 7f08977 | **Tutarlılık denetimi:** salt okunur bakiye, sıra, zincir ve düzeltme bağlantısı denetimi (`audit.ts`); gece bakımında son 26 saatte değişen defterler; `functions/scripts/auditLedgers.js` |
 
-**Test sayıları:** sunucu 109, kural 26, Flutter 144. Son CI yeşil.
+**Test sayıları:** sunucu 137, kural 26, Flutter 144. Son CI yeşil.
+
+### Tutarlılık denetimi
+
+- Gece bakımı yalnızca o gün değişen defterlere bakar (gece başına en fazla 500 defter, 50.000 kayıt). Sorun bulursa günlüğe `[audit] Defterde tutarsızlık` hatası yazar; kimseye bildirim gitmez. Cloud Logging'de `[audit]` içeren hatalara uyarı kurulabilir (Console adımı).
+- Elle düzenleme ya da yalnızca itiraz/düzenleme içeren günler gece denetiminde görünmez. Hepsini taramak için: `functions/` içinde `npm run build`, yönetici kimliğiyle `node scripts/auditLedgers.js --hepsi` (tek defter için defter kimliği). Betik yalnızca okur.
+- Eylül'deki eski komut sürümleriyle yazılmış veriler hiç denetlenmedi; ilk tam taramada sorun çıkabilir.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
@@ -170,7 +178,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 6. **Özellikler** (sırayı kullanıcı belirleyecek):
    - Ek dosya.
    - Gelen kutusunda toplu onay.
-   - KVKK veri dışa aktarma; bakiye ve zincir tutarlılık denetimi.
+   - KVKK veri dışa aktarma.
    - Çevrimdışı şeridinin bekleme süreleri (8/3/2 sn) gerçek cihazda uçak moduyla denenip gerekirse ayarlanacak.
    - SMS OTP (web onayının güçlü sürümü) ve rehberden kişi seçici.
    - iOS: entitlements, AASA, Google iOS istemcisi, hedef sürüm 13, Apple ile giriş, privacy manifest.
