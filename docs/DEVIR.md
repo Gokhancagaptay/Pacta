@@ -139,8 +139,13 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 43efb26 | **G hataları:** ad değişikliği defterlere yansır, yarım silme tamamlanır, telefonla doğrulanmış hesap korunur, vade tetikleyicisi yeniden dener |
 | 507e8e8, 0bd17ca, 8fb304d | **Paket F:** dizin muafiyetleri, getAll, ortak yardımcılar, ölü kod temizliği, SDK 3.13, CI (biçim kontrolü + APK), statik `hosting/` |
 | 3299161 | **Hız:** `us-central1`, push tetikleyiciyle arka planda, günlük sınır ana transaction'da, **anlık çıkış** |
+| e790e75 | **Cihaz testi bulguları (24 Kasım):** bekleyen düzeltme metni, "Kimden" etiketi, geçmişte olay sırası |
+| 013a631 | **Zorunlu güncelleme:** `config/app.minBuild`, güncelleme ekranı, kural (bkz. bölüm 6) |
+| 05243b5 | **Belirli bir borca ödeme:** kayıt detayından borca bağlı ödeme (`linkedEntryId`), açık tutar hazır gelir |
+| 650cab0 | **Kayıt arama:** defter sayfasında açıklama, tutar, durum araması; ek okuma yok (kayıtlar zaten yüklü) |
+| 3b8bc09 | **Çevrimdışı göstergesi:** ana kabukta şerit (`offline_banner.dart`), tek ve açık bağlantı hatası mesajı |
 
-**Test sayıları:** sunucu 107, kural 25, Flutter 98. Son CI yeşil.
+**Test sayıları:** sunucu 107, kural 25, Flutter 119. Son CI yeşil.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
@@ -161,11 +166,10 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
    - 09:00'dan hemen önce kuyruğa düşen push bir gün gecikebilir.
    - `AuthService` her çağrıda yeniden oluşturuluyor (tekil sağlayıcı olabilir).
 6. **Özellikler** (sırayı kullanıcı belirleyecek):
-   - Kayıt arama; belirli bir borca ödeme arayüzü (sunucu `linkedEntryId`'yi destekliyor, uygulama göndermiyor).
    - Ek dosya; tarih aralıklı ekstre.
    - Bildirim silme ve saklama süresi (TTL); gelen kutusunda toplu onay.
    - KVKK veri dışa aktarma; bakiye ve zincir tutarlılık denetimi.
-   - Çevrimdışı göstergesi.
+   - Çevrimdışı şeridinin bekleme süreleri (8/3/2 sn) gerçek cihazda uçak moduyla denenip gerekirse ayarlanacak.
    - SMS OTP (web onayının güçlü sürümü) ve rehberden kişi seçici.
    - iOS: entitlements, AASA, Google iOS istemcisi, hedef sürüm 13, Apple ile giriş, privacy manifest.
    - google_sign_in 7 + FlutterFire büyük sürüm geçişi, Gradle/AGP 9.
