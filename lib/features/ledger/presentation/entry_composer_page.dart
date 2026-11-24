@@ -24,10 +24,19 @@ class EntryComposerPage extends ConsumerStatefulWidget {
     this.ledgerId,
     this.initialMode,
     this.initialAsset,
-  });
+    this.linkedEntry,
+    this.initialAmount,
+  }) : assert(linkedEntry == null || ledgerId != null);
 
   final String? ledgerId;
   final ComposerMode? initialMode;
+
+  /// Ödemenin karşıladığı borç (kayıt detayından "bu borca ödeme"). Tür ve
+  /// birim borca göre sabitlenir; borcu sunucu doğrular.
+  final LedgerEntry? linkedEntry;
+
+  /// Önerilen tutar (borcun açık kalan kısmı); kullanıcı değiştirebilir.
+  final Money? initialAmount;
 
   /// Hızlı ödemede bakiyenin birimi (altın borcu altınla ödenir).
   final Asset? initialAsset;
@@ -37,16 +46,22 @@ class EntryComposerPage extends ConsumerStatefulWidget {
 }
 
 class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
-  final _amount = TextEditingController();
+  late final _amount = TextEditingController(
+    text: widget.initialAmount?.format(withSymbol: false) ?? '',
+  );
   final _description = TextEditingController();
   late ComposerMode _mode = widget.initialMode ?? ComposerMode.lent;
+
+  /// Belirli bir borca ödeme: tür ve birim değiştirilemez.
+  bool get _linked => widget.linkedEntry != null;
   late String? _ledgerId = widget.ledgerId;
 
   /// Aynı form tekrar gönderilirse aynı kimlik kullanılır (sunucu tek kayıt
   /// üretir). Başarısız denemeden sonra form değiştiyse yeni kimlik alınır.
   late String _entryId = ref.read(ledgerRepositoryProvider).newId();
   String? _lastAttempt;
-  late Asset _asset = widget.initialAsset ?? Asset.tryLira;
+  late Asset _asset =
+      widget.linkedEntry?.asset ?? widget.initialAsset ?? Asset.tryLira;
   _Due _due = _Due.none;
   LocalDate? _customDue;
 
@@ -175,6 +190,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
       _isPayment ? '' : _dueOn?.toIso(),
       _description.text.trim(),
       _occurredOn.toIso(),
+      widget.linkedEntry?.id ?? '',
     ].join('|');
     if (_lastAttempt != null && _lastAttempt != attempt) {
       _entryId = ref.read(ledgerRepositoryProvider).newId();
@@ -193,6 +209,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
             occurredOn: _occurredOn,
             dueOn: _isPayment ? null : _dueOn,
             description: _description.text.trim(),
+            linkedEntryId: widget.linkedEntry?.id,
           );
     });
     if (!mounted) return;
@@ -238,50 +255,58 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
           ),
           titleSpacing: 0,
-          title: const Text('Yeni kayıt'),
+          title: Text(_linked ? 'Borca ödeme' : 'Yeni kayıt'),
         ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Borç')),
-                ButtonSegment(value: true, label: Text('Ödeme')),
-              ],
-              selected: {_isPayment},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(
-                () =>
-                    _mode = s.first ? ComposerMode.received : ComposerMode.lent,
+            if (_linked)
+              _LinkedDebtCard(
+                entry: widget.linkedEntry!,
+                received: _mode == ComposerMode.received,
               ),
-            ),
-            const SizedBox(height: 8),
-            SegmentedButton<ComposerMode>(
-              segments: _isPayment
-                  ? const [
-                      ButtonSegment(
-                        value: ComposerMode.received,
-                        label: Text('Ödeme aldım'),
-                      ),
-                      ButtonSegment(
-                        value: ComposerMode.paid,
-                        label: Text('Ödeme yaptım'),
-                      ),
-                    ]
-                  : const [
-                      ButtonSegment(
-                        value: ComposerMode.lent,
-                        label: Text('Borç verdim'),
-                      ),
-                      ButtonSegment(
-                        value: ComposerMode.borrowed,
-                        label: Text('Borç aldım'),
-                      ),
-                    ],
-              selected: {_mode},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _mode = s.first),
-            ),
+            if (!_linked)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Borç')),
+                  ButtonSegment(value: true, label: Text('Ödeme')),
+                ],
+                selected: {_isPayment},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(
+                  () => _mode = s.first
+                      ? ComposerMode.received
+                      : ComposerMode.lent,
+                ),
+              ),
+            if (!_linked) const SizedBox(height: 8),
+            if (!_linked)
+              SegmentedButton<ComposerMode>(
+                segments: _isPayment
+                    ? const [
+                        ButtonSegment(
+                          value: ComposerMode.received,
+                          label: Text('Ödeme aldım'),
+                        ),
+                        ButtonSegment(
+                          value: ComposerMode.paid,
+                          label: Text('Ödeme yaptım'),
+                        ),
+                      ]
+                    : const [
+                        ButtonSegment(
+                          value: ComposerMode.lent,
+                          label: Text('Borç verdim'),
+                        ),
+                        ButtonSegment(
+                          value: ComposerMode.borrowed,
+                          label: Text('Borç aldım'),
+                        ),
+                      ],
+                selected: {_mode},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(() => _mode = s.first),
+              ),
             const SizedBox(height: 12),
             SurfaceCard(
               margin: EdgeInsets.zero,
@@ -337,7 +362,9 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                         for (final a in Asset.values)
                           DropdownMenuItem(value: a, child: Text(a.symbol)),
                       ],
-                      onChanged: (a) => setState(() => _asset = a ?? _asset),
+                      onChanged: _linked
+                          ? null
+                          : (a) => setState(() => _asset = a ?? _asset),
                     ),
                   ),
                 ),
@@ -453,6 +480,54 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Ödemenin bağlandığı borcun özeti.
+class _LinkedDebtCard extends StatelessWidget {
+  const _LinkedDebtCard({required this.entry, required this.received});
+
+  final LedgerEntry entry;
+
+  /// Ödemeyi ben mi aldım (borcu ben vermiştim).
+  final bool received;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final what = entry.description.isEmpty ? 'Borç' : entry.description;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.creditSoft,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link_rounded, color: c.credit),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  received
+                      ? 'Ödeme aldım · şu borca karşılık'
+                      : 'Ödeme yaptım · şu borca karşılık',
+                  style: TextStyle(fontSize: 12, color: c.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$what · ${entry.occurredOn.formatShort()} · '
+                  '${entry.amount.format()}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pacta/app/theme.dart';
 import 'package:pacta/core/dates/local_date.dart';
+import 'package:pacta/core/money/asset.dart';
 import 'package:pacta/core/money/money.dart';
 import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/features/ledger/data/ledger_repository.dart';
@@ -155,6 +156,7 @@ class FakeRepo extends LedgerRepository {
       'description': description,
       'dueOn': dueOn,
       'occurredOn': occurredOn,
+      if (linkedEntryId != null) 'linkedEntryId': linkedEntryId,
     };
     return EntryState.pending;
   }
@@ -828,6 +830,54 @@ void main() {
     expect(repo.lastCreate?['kind'], EntryKind.payment);
     expect(repo.lastCreate?['iGave'], false);
     expect(repo.lastCreate?['amountMinor'], 30000);
+  });
+
+  testWidgets('borca ödeme: tür ve birim sabit, tutar hazır, borç bağlanır', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    final repo = FakeRepo();
+    final debt = LedgerEntry.fromMap('e-borc', {
+      'ledgerId': 'p_ayse',
+      'kind': 'debt',
+      'direction': 'aToB',
+      'asset': 'USD',
+      'amountMinor': 10000,
+      'deltaMinor': 10000,
+      'occurredOn': '2026-09-10',
+      'description': 'Kira',
+      'state': 'confirmed',
+      'version': 1,
+      'proposedBy': 'a',
+      'proposedByUid': 'gokhan',
+    });
+    await tester.pumpWidget(
+      app(
+        EntryComposerPage(
+          ledgerId: 'p_ayse',
+          initialMode: ComposerMode.received,
+          linkedEntry: debt,
+          initialAmount: const Money(4000, Asset.usd),
+        ),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Borca ödeme'), findsOneWidget);
+    expect(find.text('Ödeme aldım · şu borca karşılık'), findsOneWidget);
+    expect(find.textContaining('Kira'), findsOneWidget);
+    // Tür seçimi yok; tutar açık kalan kısımla dolu.
+    expect(find.text('Borç verdim'), findsNothing);
+    expect(find.text('Ödeme yaptım'), findsNothing);
+    expect(find.text('40,00'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Kaydet'));
+    await tester.pumpAndSettle();
+    expect(repo.lastCreate?['kind'], EntryKind.payment);
+    expect(repo.lastCreate?['iGave'], false);
+    expect(repo.lastCreate?['amountMinor'], 4000);
+    expect(repo.lastCreate?['linkedEntryId'], 'e-borc');
   });
 
   testWidgets(

@@ -13,6 +13,40 @@ import '../data/ledger_repository.dart';
 import '../domain/entry_text.dart';
 import '../domain/models.dart';
 import 'common.dart';
+import 'entry_composer_page.dart';
+
+/// Bir borca bağlı ödeme önerisi: tür, önerilen tutar ve düğme metni.
+typedef PayOption = ({ComposerMode mode, Money amount, String label});
+
+/// Onaylı bir borcun hâlâ açık kısmı varsa ona ödeme kaydı önerilir.
+/// Ödemeler önce en eski borçtan düştüğü için açık tutar o birimdeki
+/// bakiyeyi aşamaz; bakiye borcun yönünde değilse borç kapanmıştır. Vadeli
+/// borçta sunucunun hesapladığı açık tutar kullanılır.
+PayOption? payOptionFor(LedgerEntry e, Ledger ledger, Side me) {
+  if (e.kind != EntryKind.debt || !e.canBeReversed || ledger.isClosed) {
+    return null;
+  }
+  final mine = e.deltaFor(me);
+  final balance = ledger.balances[e.asset.code] ?? 0;
+  final myBalance = me == Side.a ? balance : -balance;
+  if (mine == 0 || myBalance == 0 || myBalance.sign != mine.sign) return null;
+
+  var open = e.amountMinor < myBalance.abs() ? e.amountMinor : myBalance.abs();
+  final due = ledger.dueItems.where((d) => d.entryId == e.id).firstOrNull;
+  if (due != null) {
+    if (due.open.minor < open) open = due.open.minor;
+  } else if (e.dueOn != null && ledger.dueItems.length < 50) {
+    // Vadeli borç açık vadeler arasında yoksa tamamı ödenmiştir.
+    return null;
+  }
+  if (open <= 0) return null;
+  final iLent = mine > 0;
+  return (
+    mode: iLent ? ComposerMode.received : ComposerMode.paid,
+    amount: Money(open, e.asset),
+    label: iLent ? 'Bu borç için ödeme aldım' : 'Bu borca ödeme yap',
+  );
+}
 
 /// Tek kaydın ayrıntısı ve kullanıcının yapabileceği eylemler.
 class EntryDetailPage extends ConsumerStatefulWidget {
@@ -81,6 +115,19 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
       bottomNavigationBar: entryAsync.valueOrNull == null || ledger == null
           ? null
           : _actions(entryAsync.value!, ledger, ledger.sideOf(uid) ?? Side.a),
+    );
+  }
+
+  void _payDebt(LedgerEntry e, Ledger ledger, PayOption pay) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EntryComposerPage(
+          ledgerId: ledger.id,
+          initialMode: pay.mode,
+          linkedEntry: e,
+          initialAmount: pay.amount,
+        ),
+      ),
     );
   }
 
@@ -172,7 +219,18 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
     } else if (e.canBeReversed) {
       // Özel defterde karşı taraf uygulamada değildir; linkle onaylayabilir.
       final askWeb = ledger.isPrivate && e.canRequestWebConfirmation;
+      final pay = payOptionFor(e, ledger, me);
+      void openPayment() => _payDebt(e, ledger, pay!);
       children = [
+        // Asıl eylem tek olsun: onay istenebiliyorsa ödeme ikincil düğmedir.
+        if (pay != null && !askWeb) ...[
+          FilledButton.icon(
+            onPressed: _busy ? null : openPayment,
+            icon: const Icon(Icons.payments_outlined),
+            label: Text(pay.label),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (askWeb) ...[
           FilledButton.icon(
             onPressed: _busy ? null : () => _askWeb(e),
@@ -182,6 +240,14 @@ class _EntryDetailPageState extends ConsumerState<EntryDetailPage> {
                   ? 'Karşı taraftan onay iste'
                   : 'Onay linkini yeniden gönder',
             ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (pay != null && askWeb) ...[
+          OutlinedButton.icon(
+            onPressed: _busy ? null : openPayment,
+            icon: const Icon(Icons.payments_outlined),
+            label: Text(pay.label),
           ),
           const SizedBox(height: 10),
         ],
