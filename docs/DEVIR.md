@@ -144,8 +144,10 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 05243b5 | **Belirli bir borca ödeme:** kayıt detayından borca bağlı ödeme (`linkedEntryId`), açık tutar hazır gelir |
 | 650cab0 | **Kayıt arama:** defter sayfasında açıklama, tutar, durum araması; ek okuma yok (kayıtlar zaten yüklü) |
 | 3b8bc09 | **Çevrimdışı göstergesi:** ana kabukta şerit (`offline_banner.dart`), tek ve açık bağlantı hatası mesajı |
+| a8f1a65 | **Bildirim silme ve saklama:** kaydırarak silme ("Geri al" 4 sn), tümünü sil, günlük bakımda 90 gün (`NOTIFICATION_DAYS`); kural, dizin ve `dailyMaintenance` kurulumu gerekir |
+| 7ee60cc | **Tarih aralıklı ekstre:** PDF/CSV için dönem seçimi; devreden bakiye, dönem hareketi, dönem sonu bakiye (`statement_period.dart`) |
 
-**Test sayıları:** sunucu 107, kural 25, Flutter 119. Son CI yeşil.
+**Test sayıları:** sunucu 109, kural 26, Flutter 143. Son CI yeşil.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
