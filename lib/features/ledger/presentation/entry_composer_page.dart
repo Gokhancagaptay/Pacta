@@ -233,6 +233,8 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
     final other = ledger?.other(uid);
     final isPrivate = ledger?.isPrivate ?? false;
     final money = _money;
+    // Klavye açıkken gönder düğmesi klavyenin üstünde kalır.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
     final String buttonLabel;
     if (ledger == null) {
@@ -453,7 +455,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
         ),
         bottomNavigationBar: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 12 + keyboard),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -467,7 +469,10 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                         )
                       : Text(buttonLabel),
                 ),
-                if (ledger != null && !isPrivate && !_againstMe) ...[
+                if (ledger != null &&
+                    !isPrivate &&
+                    !_againstMe &&
+                    keyboard == 0) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Onaylanınca ikinizin bakiyesine işlenir. O zamana kadar '

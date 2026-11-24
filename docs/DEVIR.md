@@ -147,7 +147,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | a8f1a65 | **Bildirim silme ve saklama:** kaydırarak silme ("Geri al" 4 sn), tümünü sil, günlük bakımda 90 gün (`NOTIFICATION_DAYS`); kural, dizin ve `dailyMaintenance` kurulumu gerekir |
 | 7ee60cc | **Tarih aralıklı ekstre:** PDF/CSV için dönem seçimi; devreden bakiye, dönem hareketi, dönem sonu bakiye (`statement_period.dart`) |
 
-**Test sayıları:** sunucu 109, kural 26, Flutter 143. Son CI yeşil.
+**Test sayıları:** sunucu 109, kural 26, Flutter 144. Son CI yeşil.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 

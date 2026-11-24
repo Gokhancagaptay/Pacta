@@ -823,6 +823,34 @@ void main() {
     });
   });
 
+  testWidgets('klavye açıkken gönder düğmesi klavyenin üstünde kalır', (
+    tester,
+  ) async {
+    phoneSize(tester);
+    await tester.pumpWidget(
+      app(const EntryComposerPage(ledgerId: 'p_ayse'), FakeRepo()),
+    );
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(FilledButton, 'Onay için gönder');
+    final closed = tester.getBottomLeft(button).dy;
+
+    // 300 mantıksal piksel yüksekliğinde klavye.
+    const keyboard = 300.0;
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboard * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+
+    final screen =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final open = tester.getBottomLeft(button).dy;
+    expect(open, lessThanOrEqualTo(screen - keyboard));
+    expect(open, lessThan(closed));
+    // Dar alanda açıklama satırı gizlenir, düğme çalışır durumda kalır.
+    expect(find.textContaining('geri çekebilirsiniz'), findsNothing);
+  });
+
   testWidgets('aleyhe kayıt onaysız işleneceğini söyler', (tester) async {
     phoneSize(tester);
     final repo = FakeRepo();
