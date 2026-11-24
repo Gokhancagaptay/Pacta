@@ -1,6 +1,6 @@
 # Pacta — devir notu (yeni ajan için)
 
-Son güncelleme: 2026-09-30. Dal: `faz-3-hesap-silme` (son commit `3299161`, push'lu). `main` henüz birleştirilmedi.
+Son güncelleme: 2026-11-24. Dal: `faz-3-hesap-silme` (push'lu). `main` henüz birleştirilmedi.
 Bu dosya projeyi hızlıca devralmak içindir: ne var, nasıl çalışılır, ne yapıldı, ne kaldı.
 
 ---
@@ -21,7 +21,7 @@ Pacta, iki kişinin **karşılıklı onayla** tuttuğu borç–alacak defteri (�
 | Katman | Ayrıntı |
 |---|---|
 | Uygulama | Flutter 3.47 (Dart 3.13, SDK kısıtı `^3.13.0`), Riverpod 2.6, Material 3; paket `app.pacta.mobile` |
-| Sunucu | Cloud Functions v2, Node 22, TypeScript, zod. Bölge **`us-central1`** (kodda; canlıda hâlâ `europe-west1`, sonraki kurulumda taşınır) |
+| Sunucu | Cloud Functions v2, Node 22, TypeScript, zod. Bölge **`us-central1`** (veritabanıyla aynı) |
 | Veri | Firestore `nam5` (ABD). İstemci defterlere **yazamaz**; tüm durum geçişleri callable fonksiyonlarla yapılır |
 | Kimlik | Firebase Auth: e-posta+şifre (doğrulama zorunlu), Google. Web onayında e-posta bağlantısıyla giriş |
 | Bildirim | FCM (cihaz başına anahtar) + `users/{uid}/notifications` |
@@ -111,11 +111,11 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 6. Canlıdaki durum
 
-- **Canlıda:** 2026-09-28 kurulumu (commit `5eb44bc`). Fonksiyonlar `europe-west1`'de, 17 adet. Hosting en son 2026-09-26'da, eski Flutter web ile kuruldu.
-- **Canlıda OLMAYAN** (bu daldaki her şey): Faz 2c web onayı, denetim düzeltmeleri A–G, bölge taşıma, statik hosting.
-- Kuru çalıştırma (`--dry-run --force`) 2026-09-29'da temiz geçti. Kurulum 7 yeni fonksiyon ekleyecek. Bölge değiştiği için europe-west1'deki eski fonksiyonlar `--force` ile silinecek.
-- **Kurulumdan önce kullanıcının yapması gereken:** Firebase Console → Authentication → Email/Password bölümünde "Email link (passwordless sign-in)" açılmalı ve herkese görünen proje adı "Pacta" yapılmalı.
-- **Kurulumdan hemen sonra** telefona yeni APK kurulmalı (`flutter build apk --release`). Eski uygulama yeni bölgeye ulaşamaz ve koşul kontrolüne takılır.
+- **Canlıda:** 2026-11-24 kurulumu (commit `32b1c55`): firestore kuralları ve dizinleri, 24 fonksiyon (`us-central1`), statik hosting. Bu daldaki her şey canlıda: Faz 2c web onayı, denetim düzeltmeleri A–G, bölge taşıma.
+- `europe-west1`'deki 17 eski fonksiyon silindi. 2026-11-24 öncesi derlenmiş uygulama çalışmaz (eski bölgeyi arar).
+- Konsol ayarları yapıldı: "Email link (passwordless sign-in)" açık, herkese görünen proje adı "Pacta".
+- Yasal sayfalar (`/gizlilik`, `/kosullar`, `/hesap-sil`) bilerek yayın dışı; 404 döner.
+- Kurulum öncesi doğrulama (aynı gün): biçim ve analiz temiz, Flutter 93, sunucu 107, kural 24 test geçti.
 
 ## 7. Bu dalda yapılanlar (özet)
 
@@ -136,7 +136,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
-1. **Kurulum** (kullanıcı onayı ve konsol ayarından sonra) → yeni APK → `docs/test-listesi.md` üzerinden cihaz testi, özellikle 7b (web onayı) uçtan uca. Web onay sayfası gerçek e-postayla henüz hiç denenmedi.
+1. **Cihaz testi:** yeni APK (`flutter build apk --release`) → `docs/test-listesi.md`, özellikle 7b (web onayı) uçtan uca. Web onay sayfası gerçek e-postayla henüz hiç denenmedi.
 2. Cihaz testinden gelen hataları düzelt → `faz-3-hesap-silme` dalını `main`'e PR ile birleştir (AI imzası yok).
 3. **Google Play:** kullanıcı geliştirici hesabı açınca:
    - Yeni kişisel hesaplar için en az 12 kişilik kapalı test, 14 gün kesintisiz.
