@@ -122,6 +122,25 @@ void main() {
     expect(utf8.encode(csv), isNotEmpty);
   });
 
+  test('CSV: tüm kayıtların çıktısı dönem eklenmeden önceki hâliyle aynı', () {
+    // Dönem özelliğinden önceki sürümün ürettiği dosya, bayt bayt.
+    const before =
+        '﻿İşlem tarihi;Kayıt;Açıklama;Birim;Tutar (sizin açınızdan);'
+        'Bakiyeye etki;Durum;Vade;Kaydı giren\r\n'
+        '01.09.2026;Borç verdiniz;Kira payı;TRY;1200,00;1200,00;Onaylı;'
+        '01.10.2026;Gökhan\r\n'
+        '10.09.2026;Borç aldınız;;USD;-5,00;-5,00;Onaylı;;Gökhan\r\n'
+        '20.09.2026;Ödeme aldınız;Havale;TRY;-200,00;-200,00;Onaylı;;Gökhan\r\n'
+        '25.09.2026;Borç verdiniz;;TRY;50,00;0,00;Karşı tarafın onayı '
+        'bekleniyor;;Gökhan\r\n'
+        "26.09.2026;Borç verdiniz;'=HYPERLINK();TRY;70,00;0,00;Reddedildi;;"
+        'Gökhan\r\n';
+    final st = Statement.of(ledger, entries, 'gokhan');
+    expect(st.period, isNull);
+    expect(st.summary, isEmpty);
+    expect(utf8.encode(st.toCsv()), utf8.encode(before));
+  });
+
   test('düz tutar ve dosya adı', () {
     expect(plainAmount(const Money(-125050, Asset.tryLira)), '-1250,50');
     expect(plainAmount(Money(5, Asset.fromCode('GAU'))), '0,005');

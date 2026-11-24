@@ -28,8 +28,11 @@ Future<Uint8List> buildStatementPdf(
   final bold = pw.Font.ttf(
     await rootBundle.load('assets/google_fonts/Poppins-SemiBold.ttf'),
   );
+  // Dönemli ekstre: başlıklarda dönem yazılır; tüm kayıtlarda boş kalır.
+  final period = st.period;
+  final periodTag = period == null ? '' : ' · ${period.label}';
   final doc = pw.Document(
-    title: 'Pacta hesap ekstresi · ${st.other.displayName}',
+    title: 'Pacta hesap ekstresi · ${st.other.displayName}$periodTag',
     author: 'Pacta',
     creator: 'Pacta',
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
@@ -123,7 +126,8 @@ Future<Uint8List> buildStatementPdf(
           : pw.Padding(
               padding: const pw.EdgeInsets.only(bottom: 8),
               child: pw.Text(
-                'Pacta · ${st.other.displayName} ile hesap ekstresi',
+                'Pacta · ${st.other.displayName} ile hesap ekstresi'
+                '$periodTag',
                 style: small,
               ),
             ),
@@ -166,6 +170,15 @@ Future<Uint8List> buildStatementPdf(
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
+                  if (period != null)
+                    pw.Text(
+                      'Dönem: ${period.start.format()} - '
+                      '${period.end.format()}',
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
                   pw.Text('Oluşturma: $created', style: small),
                 ],
               ),
@@ -218,21 +231,25 @@ Future<Uint8List> buildStatementPdf(
             ],
           ),
         ),
-        section('Bakiye'),
-        if (balances.isEmpty)
-          pw.Text('Hesap denk.', style: const pw.TextStyle(fontSize: 10))
-        else
-          for (final m in balances)
-            pw.Text(
-              m.minor > 0
-                  ? '${st.other.displayName} size ${m.format()} borçlu.'
-                  : '${st.other.displayName} kişisine ${(-m).format()} '
-                        'borcunuz var.',
-              style: pw.TextStyle(
-                fontSize: 11,
-                color: m.minor > 0 ? _green : _red,
+        if (period != null)
+          ..._periodSummary(st, period, section: section, amount: amount)
+        else ...[
+          section('Bakiye'),
+          if (balances.isEmpty)
+            pw.Text('Hesap denk.', style: const pw.TextStyle(fontSize: 10))
+          else
+            for (final m in balances)
+              pw.Text(
+                m.minor > 0
+                    ? '${st.other.displayName} size ${m.format()} borçlu.'
+                    : '${st.other.displayName} kişisine ${(-m).format()} '
+                          'borcunuz var.',
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  color: m.minor > 0 ? _green : _red,
+                ),
               ),
-            ),
+        ],
         // Özel defterde karşı tarafın onayı yoktur; "onaylı" denmez.
         section(
           ledger.isPrivate ? 'Kayıtlar' : 'Onaylı kayıtlar',
@@ -240,13 +257,27 @@ Future<Uint8List> buildStatementPdf(
         ),
         if (st.confirmed.isEmpty)
           pw.Text(
-            ledger.isPrivate ? 'Kayıt yok.' : 'Onaylı kayıt yok.',
+            period != null
+                ? (ledger.isPrivate
+                      ? 'Bu dönemde kayıt yok.'
+                      : 'Bu dönemde onaylı kayıt yok.')
+                : (ledger.isPrivate ? 'Kayıt yok.' : 'Onaylı kayıt yok.'),
             style: small,
           )
         else
           table(
             ['Tarih', 'Kayıt', 'Açıklama', 'Tutar', 'Bakiye'],
             [
+              // Yürüyen bakiye devreden bakiyeden başlar; önce o yazılır.
+              if (period != null)
+                for (final b in st.summary)
+                  [
+                    cell(date.format(period.start.toDateTime())),
+                    cell('Devreden bakiye'),
+                    cell(''),
+                    cell(''),
+                    amount(b.opening, colored: false),
+                  ],
               for (final l in st.confirmed)
                 [
                   cell(date.format(l.entry.occurredOn.toDateTime())),
@@ -289,7 +320,11 @@ Future<Uint8List> buildStatementPdf(
           ),
         ],
         if (ledger.dueItems.isNotEmpty && !ledger.isClosed) ...[
-          section('Açık vadeler'),
+          // Vadeler dönemden bağımsız, bugünkü durumdur.
+          section(
+            'Açık vadeler',
+            note: period == null ? null : 'Bugün itibarıyla',
+          ),
           table(
             ['Vade', 'Kim ödeyecek', 'Açıklama', 'Tutar'],
             [
@@ -316,6 +351,94 @@ Future<Uint8List> buildStatementPdf(
     ),
   );
   return doc.save();
+}
+
+/// Dönemli ekstrenin bakiye bölümü: birim başına devreden bakiye, dönem
+/// hareketi ve dönem sonu bakiye; altında dönem sonunun cümlesi.
+List<pw.Widget> _periodSummary(
+  Statement st,
+  StatementPeriod period, {
+  required pw.Widget Function(String title, {String? note}) section,
+  required pw.Widget Function(Money m, {bool colored}) amount,
+}) {
+  pw.Widget pad(pw.Widget child, {bool right = false}) => pw.Padding(
+    padding: const pw.EdgeInsets.all(5),
+    child: right
+        ? pw.Align(alignment: pw.Alignment.centerRight, child: child)
+        : child,
+  );
+  pw.Widget head(String text, {bool right = false}) => pad(
+    pw.Text(
+      text,
+      textAlign: right ? pw.TextAlign.right : null,
+      style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+    ),
+    right: right,
+  );
+  final closing = [
+    for (final b in st.summary)
+      if (!b.closing.isZero) b.closing,
+  ];
+  return [
+    section(
+      'Dönem özeti',
+      note: 'Devreden bakiye + dönem hareketi = dönem sonu bakiye',
+    ),
+    if (st.summary.isNotEmpty)
+      pw.Table(
+        border: const pw.TableBorder(
+          horizontalInside: pw.BorderSide(color: _line, width: 0.5),
+          bottom: pw.BorderSide(color: _line, width: 0.5),
+        ),
+        columnWidths: const {
+          0: pw.FlexColumnWidth(),
+          1: pw.FixedColumnWidth(100),
+          2: pw.FixedColumnWidth(100),
+          3: pw.FixedColumnWidth(100),
+        },
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: _soft),
+            children: [
+              head('Birim'),
+              head('Devreden bakiye', right: true),
+              head('Dönem hareketi', right: true),
+              head('Dönem sonu bakiye', right: true),
+            ],
+          ),
+          for (final b in st.summary)
+            pw.TableRow(
+              children: [
+                pad(
+                  pw.Text(
+                    b.asset.label,
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                ),
+                pad(amount(b.opening, colored: false), right: true),
+                pad(amount(b.movement), right: true),
+                pad(amount(b.closing, colored: false), right: true),
+              ],
+            ),
+        ],
+      ),
+    pw.SizedBox(height: 6),
+    if (closing.isEmpty)
+      pw.Text(
+        'Dönem sonunda hesap denk.',
+        style: const pw.TextStyle(fontSize: 10),
+      )
+    else
+      for (final m in closing)
+        pw.Text(
+          m.minor > 0
+              ? 'Dönem sonunda ${st.other.displayName} size ${m.format()} '
+                    'borçlu.'
+              : 'Dönem sonunda ${st.other.displayName} kişisine '
+                    '${(-m).format()} borcunuz var.',
+          style: pw.TextStyle(fontSize: 11, color: m.minor > 0 ? _green : _red),
+        ),
+  ];
 }
 
 /// Kişiler özeti (görünen satırlar): kişi, TL bakiye, diğer birimler,

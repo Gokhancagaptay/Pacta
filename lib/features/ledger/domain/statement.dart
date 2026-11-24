@@ -5,6 +5,9 @@ import '../../../core/money/asset.dart';
 import '../../../core/money/money.dart';
 import 'entry_text.dart';
 import 'models.dart';
+import 'statement_period.dart';
+
+export 'statement_period.dart';
 
 /// Hesap ekstresinde onaylı bir satır.
 class StatementLine {
@@ -26,6 +29,11 @@ class StatementLine {
 /// Bir kişiyle hesabın dökümü (PDF ekstre ve CSV için). Bakiyeye yalnızca
 /// onaylı kayıtlar girer; bekleyenler ayrı listelenir, reddedilen ve geri
 /// çekilenler yalnızca CSV'de durur.
+///
+/// [period] verilirse yalnızca işlem tarihi dönem içinde olan kayıtlar
+/// listelenir (onaysızlar da aynı kuralla); yürüyen bakiye her birimde
+/// devreden bakiyeden başlar ve [summary] birim başına devreden, hareket ve
+/// dönem sonu bakiyesini verir.
 class Statement {
   const Statement._({
     required this.ledger,
@@ -34,14 +42,33 @@ class Statement {
     required this.open,
     required this.closedCount,
     required this.all,
+    this.period,
+    this.summary = const [],
   });
 
-  factory Statement.of(Ledger ledger, List<LedgerEntry> entries, String uid) {
+  factory Statement.of(
+    Ledger ledger,
+    List<LedgerEntry> entries,
+    String uid, {
+    StatementPeriod? period,
+  }) {
     final me = ledger.sideOf(uid) ?? Side.a;
-    final ordered = [...entries]..sort(_byDate);
-    final running = <Asset, int>{};
+    final sorted = [...entries]..sort(_byDate);
+    final summary = period == null
+        ? const <PeriodBalance>[]
+        : periodBalances(sorted, me, period);
+    final ordered = period == null
+        ? sorted
+        : [
+            for (final e in sorted)
+              if (period.contains(e.occurredOn)) e,
+          ];
+    // Dönemli ekstrede yürüyen bakiye devreden bakiyeden başlar.
+    final running = <Asset, int>{
+      for (final b in summary) b.asset: b.opening.minor,
+    };
     final confirmed = <StatementLine>[];
-    for (final e in ordered.where((e) => e.state == EntryState.confirmed)) {
+    for (final e in ordered.where(countsInBalance)) {
       final delta = e.deltaFor(me);
       final total = (running[e.asset] ?? 0) + delta;
       running[e.asset] = total;
@@ -69,11 +96,20 @@ class Statement {
           )
           .length,
       all: ordered,
+      period: period,
+      summary: summary,
     );
   }
 
   final Ledger ledger;
   final Side me;
+
+  /// Ekstre dönemi; null ise tüm kayıtlar.
+  final StatementPeriod? period;
+
+  /// Dönemli ekstrede birim başına devreden, hareket ve dönem sonu bakiye.
+  /// Tüm kayıtların ekstresinde boştur.
+  final List<PeriodBalance> summary;
 
   /// Onaylı kayıtlar, işlem tarihine göre (yürüyen bakiyeyle).
   final List<StatementLine> confirmed;
@@ -100,15 +136,23 @@ class Statement {
     ];
   }
 
-  /// Dosya adı: "pacta-ayse-yilmaz-2026-09-27".
+  /// Dosya adı: "pacta-ayse-yilmaz-2026-09-27"; dönemli ekstrede tarih
+  /// yerine dönem: "pacta-ayse-yilmaz-2026-11-01_2026-11-24".
   String fileName(LocalDate today) =>
-      'pacta-${_slug(other.displayName)}-${today.toIso()}';
+      'pacta-${_slug(other.displayName)}-${period?.fileTag ?? today.toIso()}';
 
   /// Excel'in Türkçe ayarıyla açılan CSV: noktalı virgül ayraç, virgüllü
   /// ondalık, UTF-8 BOM (Türkçe harfler bozulmasın).
+  ///
+  /// Dönemli ekstrede ilk satır dönemdir; kayıtlardan önce her birimin
+  /// "Devreden bakiye" satırı, sonra "Dönem sonu bakiye" satırı gelir.
+  /// Devreden tutar "Bakiyeye etki" sütununa yazılır, dönem sonu yazılmaz:
+  /// böylece sütun birim başına toplanınca yine dönem sonu bakiyeyi verir.
   String toCsv() {
     final date = DateFormat('dd.MM.yyyy');
+    final p = period;
     final rows = <List<String>>[
+      if (p != null) ['Dönem', p.label],
       [
         'İşlem tarihi',
         'Kayıt',
@@ -121,6 +165,19 @@ class Statement {
         'Vade',
         'Kaydı giren',
       ],
+      if (p != null)
+        for (final b in summary)
+          [
+            date.format(p.start.toDateTime()),
+            'Devreden bakiye',
+            '',
+            b.asset.code,
+            plainAmount(b.opening),
+            plainAmount(b.opening),
+            '',
+            '',
+            '',
+          ],
       for (final e in all)
         [
           date.format(e.occurredOn.toDateTime()),
@@ -138,6 +195,19 @@ class Statement {
           e.dueOn == null ? '' : date.format(e.dueOn!.toDateTime()),
           e.proposedBy == me ? mine.displayName : other.displayName,
         ],
+      if (p != null)
+        for (final b in summary)
+          [
+            date.format(p.end.toDateTime()),
+            'Dönem sonu bakiye',
+            '',
+            b.asset.code,
+            plainAmount(b.closing),
+            '',
+            '',
+            '',
+            '',
+          ],
     ];
     return '\uFEFF${rows.map((r) => r.map(csvCell).join(';')).join('\r\n')}'
         '\r\n';
