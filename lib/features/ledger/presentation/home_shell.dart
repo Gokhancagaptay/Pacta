@@ -13,6 +13,7 @@ import 'common.dart';
 import 'contacts_ui.dart';
 import 'entry_composer_page.dart';
 import 'home_page.dart';
+import 'offline_banner.dart';
 import 'people_page.dart';
 
 /// Giriş sonrası ana kabuk: dört sekme ve ortada "Kayıt ekle".
@@ -91,18 +92,21 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Widget build(BuildContext context) {
     final pending = ref.watch(inboxProvider).valueOrNull?.length ?? 0;
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          HomePage(
-            onSeeAllPeople: () => _go(1),
-            onOpenActivity: () => _go(2),
-            onAddEntry: _addEntry,
-          ),
-          const PeoplePage(),
-          const ActivityPage(),
-          const ProfilePage(),
-        ],
+      // Çevrimdışıyken üstte ince bir şerit; veri önbellekten gösterilir.
+      body: OfflineBanner(
+        child: IndexedStack(
+          index: _index,
+          children: [
+            HomePage(
+              onSeeAllPeople: () => _go(1),
+              onOpenActivity: () => _go(2),
+              onAddEntry: _addEntry,
+            ),
+            const PeoplePage(),
+            const ActivityPage(),
+            const ProfilePage(),
+          ],
+        ),
       ),
       bottomNavigationBar: _NavBar(
         index: _index,

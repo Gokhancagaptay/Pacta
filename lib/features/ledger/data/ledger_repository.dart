@@ -77,21 +77,30 @@ class AddedPerson {
   final bool created;
 }
 
+/// İnternet yokken (ya da sunucuya ulaşılamazken) komut hatası.
+const networkErrorMessage =
+    'Bağlantı kurulamadı. İnternet bağlantınız gelince tekrar deneyin.';
+
 /// Sunucu hatasını kullanıcıya gösterilecek metne çevirir. Uygulama
 /// hataları (geçersiz giriş, sınır, izin...) sunucudan Türkçe gelir; ağ ve
 /// altyapı hataları ise İngilizce ya da "INTERNAL" gibi gelir, bunlar
 /// burada Türkçeleşir.
 String commandMessage(String code, String? message) {
   switch (code) {
+    // Android'de bağlantı hatası (çevrimdışı) "unavailable" olarak gelir.
     case 'unavailable':
     case 'deadline-exceeded':
     case 'cancelled':
-      return 'Sunucuya ulaşılamadı. İnternetinizi kontrol edip tekrar '
-          'deneyin.';
+      return networkErrorMessage;
     case 'internal':
     case 'unknown':
     case 'data-loss':
     case 'unimplemented':
+      // Ağ hatası kimi zaman bu kodlarla ve İngilizce bir iletiyle gelir
+      // (ör. oturum anahtarı yenilenemediğinde).
+      if ((message ?? '').toLowerCase().contains('network')) {
+        return networkErrorMessage;
+      }
       return 'Bir sorun oluştu. Biraz sonra tekrar deneyin.';
   }
   final text = message?.trim() ?? '';
@@ -225,6 +234,16 @@ class LedgerRepository {
         (s) =>
             parseEach(s.docs, (d) => AppNotification.fromMap(d.id, d.data())),
       );
+
+  /// Ekrandaki veri sunucuyla eşit mi: false ise veri önbellekten geliyor
+  /// (çevrimdışı ya da açılışta henüz yükleniyor). Profil belgesi zaten
+  /// dinleniyor; Firestore aynı belgenin dinlemesini paylaşır.
+  Stream<bool> watchServerSync(String uid) => _db
+      .collection('users')
+      .doc(uid)
+      .snapshots(includeMetadataChanges: true)
+      .map((d) => !d.metadata.isFromCache)
+      .distinct();
 
   Future<void> markNotificationRead(String uid, String notificationId) => _db
       .collection('users')
@@ -481,9 +500,7 @@ class LedgerRepository {
         needsReauth: (e.message ?? '').startsWith('REAUTH_REQUIRED'),
       );
     } catch (_) {
-      throw const LedgerException(
-        'Bağlantı kurulamadı. İnternetinizi kontrol edip tekrar deneyin.',
-      );
+      throw const LedgerException(networkErrorMessage);
     }
   }
 }

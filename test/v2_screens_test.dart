@@ -326,8 +326,10 @@ Widget app(
   Stream<List<InboxItem>>? inboxStream,
   Map<String, DateTime> hidden = const {},
   Map<String, List<LedgerEntry>> entries = const {},
+  Stream<bool>? serverSync,
 }) => ProviderScope(
   overrides: [
+    serverSyncProvider.overrideWith((ref) => serverSync ?? Stream.value(true)),
     authUserProvider.overrideWith((ref) => Stream.value(null)),
     currentUidProvider.overrideWith((ref) => 'gokhan'),
     ledgerRepositoryProvider.overrideWithValue(repo),
@@ -1022,7 +1024,7 @@ void main() {
   test('sunucu altyapı hataları Türkçeleşir', () {
     expect(
       commandMessage('unavailable', 'The service is currently unavailable.'),
-      startsWith('Sunucuya ulaşılamadı'),
+      startsWith('Bağlantı kurulamadı'),
     );
     expect(commandMessage('internal', 'INTERNAL'), startsWith('Bir sorun'));
     expect(

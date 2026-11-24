@@ -67,6 +67,14 @@ final notificationsProvider = StreamProvider.autoDispose<List<AppNotification>>(
   },
 );
 
+/// Veri sunucuyla eşit mi (true) yoksa önbellekten mi geliyor (false).
+/// Çevrimdışı şeridi bunu süzerek kullanır; testlerde değiştirilir.
+final serverSyncProvider = StreamProvider.autoDispose<bool>((ref) {
+  final uid = ref.watch(currentUidProvider);
+  if (uid.isEmpty) return const Stream.empty();
+  return ref.watch(ledgerRepositoryProvider).watchServerSync(uid);
+});
+
 /// Kullanıcının bakış açısından toplamlar.
 class Totals {
   const Totals({
