@@ -8,6 +8,7 @@ import '../../../core/ui/widgets.dart';
 import '../../profile/profile_providers.dart';
 import '../application/providers.dart';
 import '../data/ledger_repository.dart';
+import '../domain/entry_search.dart';
 import '../domain/models.dart';
 import '../domain/reminder.dart';
 import '../domain/summary.dart';
@@ -25,6 +26,11 @@ final _visibleEntriesProvider = StateProvider.autoDispose.family<int, String>(
   (ref, ledgerId) => ledgerPageSize,
 );
 
+/// Kayıt araması: null ise kapalı, boş metin ise açık ama sorgu yok.
+final _searchProvider = StateProvider.autoDispose.family<String?, String>(
+  (ref, ledgerId) => null,
+);
+
 class LedgerPage extends ConsumerWidget {
   const LedgerPage({super.key, required this.ledgerId});
 
@@ -35,6 +41,7 @@ class LedgerPage extends ConsumerWidget {
     final uid = ref.watch(currentUidProvider);
     final ledgerAsync = ref.watch(ledgerProvider(ledgerId));
     final entriesAsync = ref.watch(entriesProvider(ledgerId));
+    final search = ref.watch(_searchProvider(ledgerId));
     final c = context.pacta;
 
     return ledgerAsync.when(
@@ -60,6 +67,9 @@ class LedgerPage extends ConsumerWidget {
         }
         final other = ledger.other(uid);
         final me = ledger.sideOf(uid) ?? Side.a;
+        if (search != null) {
+          return _searchScaffold(context, ref, ledger, me, search);
+        }
         final all = ledger.balancesFor(uid);
         final balance = ledger.primaryBalance(uid);
         final others = all.where((m) => m.asset != balance.asset);
@@ -130,6 +140,13 @@ class LedgerPage extends ConsumerWidget {
               ],
             ),
             actions: [
+              if (entriesAsync.valueOrNull?.isNotEmpty ?? false)
+                IconButton(
+                  tooltip: 'Kayıtlarda ara',
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: () =>
+                      ref.read(_searchProvider(ledgerId).notifier).state = '',
+                ),
               // Arşivdeki defter listelerde görünmez; favori anlamsız.
               if (!ledger.isArchived)
                 IconButton(
@@ -522,6 +539,103 @@ class LedgerPage extends ConsumerWidget {
     return y.id.compareTo(x.id);
   }
 
+  /// Arama açıkken sayfa. Defterin tüm kayıtları zaten yüklüdür
+  /// ([entriesProvider]); süzülen onlardır, sayfada çizilen ilk 100 değil.
+  /// Geri tuşu aramayı kapatır.
+  Widget _searchScaffold(
+    BuildContext context,
+    WidgetRef ref,
+    Ledger ledger,
+    Side me,
+    String query,
+  ) {
+    final c = context.pacta;
+    void close() => ref.read(_searchProvider(ledgerId).notifier).state = null;
+    final entriesAsync = ref.watch(entriesProvider(ledgerId));
+    final name = ledger.other(ref.watch(currentUidProvider)).displayName;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) close();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Aramayı kapat',
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: close,
+          ),
+          titleSpacing: 0,
+          title: _SearchField(
+            ledgerId: ledgerId,
+            hint: '$name ile kayıtlarda ara',
+          ),
+          actions: const [SizedBox(width: 12)],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.only(bottom: 32),
+          children: entriesAsync.when(
+            loading: () => [
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ],
+            error: (e, _) => [
+              ErrorState(
+                message: 'Kayıtlar yüklenemedi.',
+                onRetry: () => ref.invalidate(entriesProvider(ledgerId)),
+              ),
+            ],
+            data: (entries) {
+              if (entrySearchTerms(query).isEmpty) {
+                return const [
+                  EmptyState(
+                    icon: Icons.search_rounded,
+                    title: 'Kayıtlarda arayın',
+                    message:
+                        'Açıklama, tutar ya da durum yazın. '
+                        'Örnek: kira, 250, onaylı.',
+                  ),
+                ];
+              }
+              final found = searchEntries(
+                entries,
+                me,
+                query,
+                isPrivate: ledger.isPrivate,
+              );
+              if (found.isEmpty) {
+                return [
+                  EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'Sonuç yok',
+                    message: 'Bu aramaya uyan kayıt bulunamadı.',
+                    action: OutlinedButton(
+                      onPressed: close,
+                      child: const Text('Aramayı kapat'),
+                    ),
+                  ),
+                ];
+              }
+              return [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: Text(
+                    '${found.length} kayıt bulundu',
+                    style: TextStyle(fontSize: 13, color: c.muted),
+                  ),
+                ),
+                ..._grouped(context, ref, found, me, ledger.isPrivate),
+              ];
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Taşıma başarılıysa bu sayfa ortak defterle değişir.
   Future<void> _convert(BuildContext context, Ledger ledger) async {
     final result = await openConvertLedgerPage(context, ledger);
@@ -818,6 +932,65 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Defterdeki kayıt araması; yazdıkça sonuçlar süzülür.
+class _SearchField extends ConsumerStatefulWidget {
+  const _SearchField({required this.ledgerId, required this.hint});
+
+  final String ledgerId;
+
+  /// Kiminle olan defterde arandığı; başlıkta ad görünmediği için.
+  final String hint;
+
+  @override
+  ConsumerState<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends ConsumerState<_SearchField> {
+  late final _controller = TextEditingController(
+    text: ref.read(_searchProvider(widget.ledgerId)),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _set(String query) =>
+      ref.read(_searchProvider(widget.ledgerId).notifier).state = query;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasText =
+        (ref.watch(_searchProvider(widget.ledgerId)) ?? '').isNotEmpty;
+    return TextField(
+      controller: _controller,
+      autofocus: true,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: widget.hint,
+        hintMaxLines: 1,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 10,
+        ),
+        suffixIcon: !hasText
+            ? null
+            : IconButton(
+                tooltip: 'Aramayı temizle',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () {
+                  _controller.clear();
+                  _set('');
+                },
+              ),
+      ),
+      onChanged: _set,
     );
   }
 }
