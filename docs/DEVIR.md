@@ -132,7 +132,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 507e8e8, 0bd17ca, 8fb304d | **Paket F:** dizin muafiyetleri, getAll, ortak yardımcılar, ölü kod temizliği, SDK 3.13, CI (biçim kontrolü + APK), statik `hosting/` |
 | 3299161 | **Hız:** `us-central1`, push tetikleyiciyle arka planda, günlük sınır ana transaction'da, **anlık çıkış** |
 
-**Test sayıları:** sunucu 107, kural 24, Flutter 93. Son CI yeşil.
+**Test sayıları:** sunucu 107, kural 24, Flutter 94. Son CI yeşil.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 

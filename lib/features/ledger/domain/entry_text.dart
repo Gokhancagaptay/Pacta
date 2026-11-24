@@ -29,9 +29,21 @@ class EntryText {
     final byMe = e.proposedBy == me;
     switch (e.kind) {
       case EntryKind.reversal:
-        return byMe
-            ? 'Bir kaydı düzelttiniz: $amount.'
-            : '$otherName bir kaydı düzeltti: $amount.';
+        // Düzeltme ancak onaylanınca gerçekleşir; o zamana kadar istektir.
+        return switch (e.state) {
+          EntryState.confirmed =>
+            byMe
+                ? 'Bir kaydı düzelttiniz: $amount.'
+                : '$otherName bir kaydı düzeltti: $amount.',
+          EntryState.pending || EntryState.disputed =>
+            byMe
+                ? 'Bir kaydı düzeltmek istiyorsunuz: $amount.'
+                : '$otherName bir kaydı düzeltmek istiyor: $amount.',
+          EntryState.rejected || EntryState.cancelled =>
+            byMe
+                ? 'Bir kaydı düzeltmek istediniz: $amount.'
+                : '$otherName bir kaydı düzeltmek istedi: $amount.',
+        };
       case EntryKind.debt:
         if (byMe) {
           return mine > 0

@@ -193,9 +193,16 @@ class LedgerRepository {
       .snapshots()
       .map((s) {
         final events = parseEach(s.docs, (d) => LedgerEvent.fromMap(d.data()));
-        events.sort(
-          (x, y) => (x.at ?? DateTime.now()).compareTo(y.at ?? DateTime.now()),
-        );
+        // Onaysız işlenen kayıtta "kaydedildi" ve "onaylandı" aynı anda
+        // yazılır; eşit zamanda kayıt olayı öne alınır.
+        final now = DateTime.now();
+        events.sort((x, y) {
+          final byTime = (x.at ?? now).compareTo(y.at ?? now);
+          if (byTime != 0) return byTime;
+          final byVersion = x.version.compareTo(y.version);
+          if (byVersion != 0) return byVersion;
+          return (x.type == 'created' ? 0 : 1) - (y.type == 'created' ? 0 : 1);
+        });
         return events;
       });
 

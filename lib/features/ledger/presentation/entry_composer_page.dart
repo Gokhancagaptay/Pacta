@@ -298,7 +298,7 @@ class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
                     : PersonAvatar(name: other.displayName, size: 38),
                 title: Text(other?.displayName ?? 'Kişi seçin'),
                 subtitle: Text(
-                  isPrivate ? 'Özel defter' : 'Kime',
+                  isPrivate ? 'Özel defter' : (_iGave ? 'Kime' : 'Kimden'),
                   style: TextStyle(fontSize: 12, color: c.muted),
                 ),
                 trailing: widget.ledgerId == null

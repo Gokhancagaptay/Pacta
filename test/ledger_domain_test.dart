@@ -88,6 +88,32 @@ void main() {
       expect(EntryText.title(entry(), Side.b), 'Borç aldınız');
     });
 
+    test('düzeltme onaylanana kadar istek olarak anlatılır', () {
+      LedgerEntry reversal(String state) => entry(
+        kind: 'reversal',
+        direction: 'bToA',
+        state: state,
+        proposedBy: 'b',
+        awaiting: state == 'pending' ? 'a' : null,
+      );
+      expect(
+        EntryText.sentence(reversal('pending'), Side.a, 'Ayşe Yılmaz'),
+        'Ayşe Yılmaz bir kaydı düzeltmek istiyor: 400,00 ₺.',
+      );
+      expect(
+        EntryText.sentence(reversal('pending'), Side.b, 'Gökhan'),
+        'Bir kaydı düzeltmek istiyorsunuz: 400,00 ₺.',
+      );
+      expect(
+        EntryText.sentence(reversal('confirmed'), Side.a, 'Ayşe Yılmaz'),
+        'Ayşe Yılmaz bir kaydı düzeltti: 400,00 ₺.',
+      );
+      expect(
+        EntryText.sentence(reversal('rejected'), Side.b, 'Gökhan'),
+        'Bir kaydı düzeltmek istediniz: 400,00 ₺.',
+      );
+    });
+
     test('durum etiketleri', () {
       expect(EntryText.status(entry(), Side.b).label, 'Onayınız bekleniyor');
       expect(
