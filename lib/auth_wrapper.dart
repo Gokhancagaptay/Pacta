@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pacta/app/navigation.dart';
 import 'package:pacta/app/startup.dart';
+import 'package:pacta/app/update_gate.dart';
 import 'package:pacta/features/ledger/application/providers.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/core/report.dart';
@@ -63,10 +64,9 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
       // önce okunmaya çalışılan oturum akışı yenilenir.
       await startAppServices();
       if (mounted) {
-        ProviderScope.containerOf(
-          context,
-          listen: false,
-        ).invalidate(authUserProvider);
+        final container = ProviderScope.containerOf(context, listen: false);
+        container.invalidate(authUserProvider);
+        container.invalidate(minBuildProvider);
       }
     }
   }

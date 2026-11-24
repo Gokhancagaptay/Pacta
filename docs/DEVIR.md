@@ -117,6 +117,14 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 - Yasal sayfalar (`/gizlilik`, `/kosullar`, `/hesap-sil`) bilerek yayın dışı; 404 döner.
 - Kurulum öncesi doğrulama (aynı gün): biçim ve analiz temiz, Flutter 93, sunucu 107, kural 24 test geçti.
 
+### Zorunlu güncelleme
+
+- Uygulama `config/app` belgesindeki `minBuild` değerini okur (`lib/app/update_gate.dart`). Değer uygulamanın derleme numarasından (`AppConstants.buildNumber`) büyükse "Güncelleme gerekli" ekranı açılır ve başka hiçbir ekrana geçilemez.
+- Belge yoksa ya da okunamazsa uygulama engellenmez. Belge şu an **yok**; gerektiğinde Firebase Console → Firestore → `config/app` → `minBuild` (sayı) olarak eklenir.
+- Kullanım: sunucuda eski uygulamayı kıracak bir değişiklik kurulmadan önce yeni sürüm mağazada yayınlanır, sonra `minBuild` yükseltilir.
+- Her yeni sürümde `pubspec.yaml` içindeki `+N` ile `AppConstants.buildNumber` birlikte artırılır; ikisi farklıysa test düşer.
+- Bu kontrol 2026-11-24 sonrası derlemelerde vardır; daha eski kurulu sürümler ekranı göstermez.
+
 ## 7. Bu dalda yapılanlar (özet)
 
 | Commit | İçerik |
@@ -132,7 +140,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 507e8e8, 0bd17ca, 8fb304d | **Paket F:** dizin muafiyetleri, getAll, ortak yardımcılar, ölü kod temizliği, SDK 3.13, CI (biçim kontrolü + APK), statik `hosting/` |
 | 3299161 | **Hız:** `us-central1`, push tetikleyiciyle arka planda, günlük sınır ana transaction'da, **anlık çıkış** |
 
-**Test sayıları:** sunucu 107, kural 24, Flutter 94. Son CI yeşil.
+**Test sayıları:** sunucu 107, kural 25, Flutter 98. Son CI yeşil.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
@@ -157,7 +165,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
    - Ek dosya; tarih aralıklı ekstre.
    - Bildirim silme ve saklama süresi (TTL); gelen kutusunda toplu onay.
    - KVKK veri dışa aktarma; bakiye ve zincir tutarlılık denetimi.
-   - Çevrimdışı göstergesi, zorunlu güncelleme kontrolü.
+   - Çevrimdışı göstergesi.
    - SMS OTP (web onayının güçlü sürümü) ve rehberden kişi seçici.
    - iOS: entitlements, AASA, Google iOS istemcisi, hedef sürüm 13, Apple ile giriş, privacy manifest.
    - google_sign_in 7 + FlutterFire büyük sürüm geçişi, Gradle/AGP 9.

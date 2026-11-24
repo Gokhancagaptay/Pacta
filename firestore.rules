@@ -126,6 +126,14 @@ service cloud.firestore {
       }
     }
 
+    // Uygulama ayarı: desteklenen en düşük derleme numarası (minBuild).
+    // Giriş ekranı da okur, o yüzden herkese açıktır; gizli bilgi içermez.
+    // Yalnızca konsoldan yazılır.
+    match /config/app {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
     // Hareketler ekranı: kullanıcının tüm defterlerindeki son kayıtlar
     // (collection group). Sorgu memberUids filtresi içermek zorundadır.
     match /{path=**}/entries/{entryId} {

@@ -25,6 +25,11 @@ class AppConstants {
   static const String termsVersion = '2026-09-27';
 
   // Android paket adı ve iOS bundle id.
+  /// Derleme numarası: pubspec.yaml'daki `version: x.y.z+N` içindeki N ile
+  /// aynıdır (test karşılaştırır). Zorunlu güncelleme kontrolü bununla
+  /// yapılır (config/app.minBuild).
+  static const int buildNumber = 2;
+
   static const String androidPackageName = 'app.pacta.mobile';
   static const String iosBundleId = 'app.pacta.mobile';
 }

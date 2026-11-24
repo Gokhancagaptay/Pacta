@@ -12,6 +12,7 @@ import 'package:pacta/app/app_lock.dart';
 import 'package:pacta/app/navigation.dart';
 import 'package:pacta/app/startup.dart';
 import 'package:pacta/app/theme.dart';
+import 'package:pacta/app/update_gate.dart';
 import 'package:pacta/auth_wrapper.dart';
 import 'package:pacta/constants/app_constants.dart';
 import 'package:pacta/firebase_options.dart';
@@ -93,8 +94,9 @@ class MyApp extends ConsumerWidget {
       supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
-      builder: (context, child) =>
-          AppLockGate(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => UpdateGate(
+        child: AppLockGate(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

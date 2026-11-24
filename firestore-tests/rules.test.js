@@ -366,6 +366,19 @@ describe("v2 defterler", () => {
   });
 });
 
+describe("uygulama ayarı", () => {
+  it("en düşük sürümü herkes okur, kimse yazamaz", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "config/app"), {minBuild: 2}));
+    const snap = await assertSucceeds(getDoc(doc(anon(), "config/app")));
+    assert.equal(snap.get("minBuild"), 2);
+    await assertSucceeds(getDoc(doc(ali(), "config/app")));
+    await assertFails(setDoc(doc(ali(), "config/app"), {minBuild: 99}));
+    await assertFails(getDocs(collection(ali(), "config")));
+    await assertFails(getDoc(doc(ali(), "config/other")));
+  });
+});
+
 describe("eski v1 koleksiyonları", () => {
   it("üst düzey bildirimler ve kayıtlı kişiler tamamen kapalı", async () => {
     await assertFails(getDoc(doc(ayse(), "notifications/n1")));
