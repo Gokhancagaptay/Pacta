@@ -49,10 +49,11 @@ void main() {
   test('derleme numarası pubspec ile aynı', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final build = RegExp(
-      r'^version:\s*\S+\+(\d+)\s*$',
+      r'^version:\s*(\S+)\+(\d+)\s*$',
       multiLine: true,
     ).firstMatch(pubspec);
     expect(build, isNotNull);
-    expect(int.parse(build![1]!), AppConstants.buildNumber);
+    expect(int.parse(build![2]!), AppConstants.buildNumber);
+    expect(build[1], AppConstants.appVersion);
   });
 }

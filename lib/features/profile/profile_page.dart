@@ -13,6 +13,7 @@ import '../../screens/settings/notification_settings_screen.dart';
 import '../../services/auth_service.dart';
 import '../ledger/application/providers.dart';
 import '../ledger/presentation/contacts_ui.dart';
+import 'data_export_ui.dart';
 import 'delete_account_page.dart';
 import 'profile_providers.dart';
 
@@ -224,6 +225,12 @@ class ProfilePage extends ConsumerWidget {
                   Icons.logout_rounded,
                   'Çıkış yap',
                   () => _confirmSignOut(context),
+                ),
+                const Divider(indent: 56),
+                link(
+                  Icons.download_rounded,
+                  'Verilerimi indir',
+                  () => exportMyData(context, ref),
                 ),
                 const Divider(indent: 56),
                 link(

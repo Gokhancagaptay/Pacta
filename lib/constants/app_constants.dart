@@ -30,6 +30,10 @@ class AppConstants {
   /// yapılır (config/app.minBuild).
   static const int buildNumber = 2;
 
+  /// Sürüm adı: pubspec.yaml'daki `version: x.y.z+N` içindeki x.y.z (test
+  /// karşılaştırır). Veri dışa aktarma dosyasına yazılır.
+  static const String appVersion = '1.0.0';
+
   static const String androidPackageName = 'app.pacta.mobile';
   static const String iosBundleId = 'app.pacta.mobile';
 }
