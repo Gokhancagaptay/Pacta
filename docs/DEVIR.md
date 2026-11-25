@@ -148,8 +148,11 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | 7ee60cc | **Tarih aralıklı ekstre:** PDF/CSV için dönem seçimi; devreden bakiye, dönem hareketi, dönem sonu bakiye (`statement_period.dart`) |
 | c040451 | **Kayıt ekleme:** gönder düğmesi klavyenin üstünde kalır |
 | 7f08977 | **Tutarlılık denetimi:** salt okunur bakiye, sıra, zincir ve düzeltme bağlantısı denetimi (`audit.ts`); gece bakımında son 26 saatte değişen defterler; `functions/scripts/auditLedgers.js` |
+| 1d1e352 | **Hatırlatma:** istek kimliğiyle tekrar denemede çift gönderim yok; 2 dakikadan kısa bekleyecek push kuyruğa alınmaz (`PUSH_QUEUE_MARGIN_MS`) |
+| bb4e9f1 | **AuthService** uygulama boyunca tek örnek |
+| 5dcf600 | **Verilerimi indir (KVKK):** Profil > Hesap; uygulamanın okuyabildiği tüm veri tek JSON; dosyada olmayanlar ve nedenleri yazılı |
 
-**Test sayıları:** sunucu 137, kural 26, Flutter 144. Son CI yeşil.
+**Test sayıları:** sunucu 139, kural 26, Flutter 160. Son CI yeşil.
 
 ### Tutarlılık denetimi
 
@@ -170,15 +173,12 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
    - Veri beyanlarını tamamla (`docs/magaza/veri-beyanlari.md`).
 4. **Eski v1 verisi:** canlıda `debts` ve kök `notifications` koleksiyonlarında belge var mı, kullanıcı Console'dan baksın. Varsa tek seferlik temizlik betiği yazılacak; çalıştırmadan önce sorulacak.
 5. **Bilerek bırakılan düşük önemli maddeler:**
-   - `sendReminder` tekrar denenince "yakın zamanda gönderildi" diyor (idempotency anahtarı yok).
-   - Gelen kutusu belge kimliği `entryId`; defterler arasında teorik çakışma var (`ledgerId_entryId` olmalı; geçiş gerekir).
-   - `createLedger` ve `convertPrivateLedger` hâlâ ayrı `consumeDaily` kullanıyor.
-   - 09:00'dan hemen önce kuyruğa düşen push bir gün gecikebilir.
-   - `AuthService` her çağrıda yeniden oluşturuluyor (tekil sağlayıcı olabilir).
+   - Gelen kutusu belge kimliği `entryId`. Çakışma pratikte yok: istemci kimlikleri Firestore'un 20 karakterlik rastgele kimliği, taşıma kimlikleri `t_<defter>_<sıra>` biçiminde defter kimliğini içerir. Geçiş gerekmez.
+   - `createLedger` ve `convertPrivateLedger` günlük sınırı ana işlemden önce ayrı düşer. Bu bilerek: başarısız kişi aramaları da sayılır, e-postayla kullanıcı taraması sınırlanır. Değiştirmeyin.
+   - (Çözüldü: hatırlatma tekrar denemesi ve 09:00 push gecikmesi `1d1e352`; `AuthService` tek örnek `bb4e9f1`.)
 6. **Özellikler** (sırayı kullanıcı belirleyecek):
    - Ek dosya.
    - Gelen kutusunda toplu onay.
-   - KVKK veri dışa aktarma.
    - Çevrimdışı şeridinin bekleme süreleri (8/3/2 sn) gerçek cihazda uçak moduyla denenip gerekirse ayarlanacak.
    - SMS OTP (web onayının güçlü sürümü) ve rehberden kişi seçici.
    - iOS: entitlements, AASA, Google iOS istemcisi, hedef sürüm 13, Apple ile giriş, privacy manifest.

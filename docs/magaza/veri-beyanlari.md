@@ -78,7 +78,9 @@ iOS için ayrıca: privacy manifest (`PrivacyInfo.xcprivacy`), Apple ile giriş.
 | Profil, tercihler, Pacta kodu | `users/{uid}`, `publicProfiles/{uid}` (yalnızca ad), `codes/{kod}` | Hesap silinince |
 | Bildirimler | `users/{uid}/notifications` | 90 gün (`dailyMaintenance`); kullanıcı daha önce silebilir; hesap silinince |
 | Gelen kutusu | `users/{uid}/inbox` | Hesap silinince |
-| Defterler ve kayıtlar | `ledgers/{id}` (+ `entries`, `events`) | Ortak: kapanıştan 10 yıl (`dailyMaintenance`); özel: silinince |
+| Defterler ve kayıtlar | `ledgers/{id}` (+ `entries`, `entries/*/revisions`, `events`) | Ortak: kapanıştan 10 yıl (`dailyMaintenance`); özel: silinince |
+| Web onay istekleri (karşı tarafın tam e-postası, IP, tarayıcı bilgisi, yanıtı) | `webRequests/{sha256}` | Yanıtsız: süre dolduktan 30 gün sonra (`dailyMaintenance`); yanıtlanan: defter ya da hesap silinince |
+| Web onayı için açılan geçici giriş hesabı | Firebase Authentication + `webGuests/{uid}` | Yanıttan hemen sonra, yanıtlanmazsa 24 saat içinde (`dailyMaintenance`) |
 | Silme işareti | `deletedAccounts/{uid}` | 10 yıl (`dailyMaintenance`) |
 | Doğrulanmamış hesaplar | Firebase Authentication | 30 gün (`dailyMaintenance`) |
 | Bekleyen push, günlük sayaçlar | `pushQueue`, `rateLimits` | Gönderilince / hesapla |
@@ -86,3 +88,5 @@ iOS için ayrıca: privacy manifest (`PrivacyInfo.xcprivacy`), Apple ile giriş.
 | Sunucu kayıtları | Cloud Logging | 30 gün |
 
 E-postayla gelen silme talepleri: `functions/scripts/deleteAccount.js`.
+
+Erişim hakkı (KVKK md. 11): kullanıcı Profil > Verilerimi indir ile uygulamanın okuyabildiği verisini tek dosya olarak alır (`lib/features/profile/data_export.dart`). Dosya, içermediği verileri ve nedenlerini de yazar.
