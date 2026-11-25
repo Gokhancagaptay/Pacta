@@ -111,7 +111,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 6. Canlıdaki durum
 
-- **Canlıda:** 2026-11-24 kurulumu (commit `32b1c55`): firestore kuralları ve dizinleri, 24 fonksiyon (`us-central1`), statik hosting. Bu daldaki her şey canlıda: Faz 2c web onayı, denetim düzeltmeleri A–G, bölge taşıma.
+- **Canlıda:** 25 Kasım kurulumu: 24 fonksiyon `faz-3-hesap-silme` `1bf3af2`'den (`firebase-functions` 7.4, `firebase-admin` 13.10; tutarlılık denetimi, hatırlatma düzeltmeleri dahil). Firestore kuralları ve dizinleri 24 Kasım'dan (bildirim silme, `config/app`). Statik hosting 24 Kasım'dan.
 - `europe-west1`'deki 17 eski fonksiyon silindi. 2026-11-24 öncesi derlenmiş uygulama çalışmaz (eski bölgeyi arar).
 - Konsol ayarları yapıldı: "Email link (passwordless sign-in)" açık, herkese görünen proje adı "Pacta".
 - Yasal sayfalar (`/gizlilik`, `/kosullar`, `/hesap-sil`) bilerek yayın dışı; 404 döner.
@@ -168,10 +168,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 - `gece-calismasi` (faz-3 üstünde, push'lu, CI yeşil): hatırlatma tekrar denemesi ve sabah push gecikmesi (`1d1e352`), `AuthService` tek örnek, Verilerimi indir (KVKK), Profil tema satırı, gizlilik taslağı düzeltmeleri, belge güncellemeleri. Uygun bulunursa faz-3'e hızlı ileri birleşir.
 - `deneme-bagimliliklar` (gece-calismasi üstünde; `gecis-paketler`'e alındı): `firebase-functions` 7.4, `firebase-admin` 13.10. Kod değişmedi; lint, 139 sunucu + 26 kural testi ve kurulumun kuru çalıştırması temiz. `firebase-admin` 14 ad alanlı yazımı (`admin.firestore()`) kaldırdığı için 13'te kalındı.
 - `deneme-gradle9` (gece-calismasi üstünde; `gecis-paketler`'e alındı ve tam yerleşik Kotlin'e geçildi): AGP 9.0.1 + Gradle 9.1.0, geçici köprü (`android.builtInKotlin=false`, `android.newDsl=false`, `kotlin-android` duruyor). Debug ve imzalı release APK derlendi; Flutter'ın "yakında desteklenmeyecek" uyarıları kalktı. Tam geçiş için `cloud_functions`, `share_plus`, `shared_preferences_android` eklentilerinin yerleşik Kotlin destekli sürümleri gerekir.
-- **Canlıya kurulmayı bekleyen** (her biri kullanıcı onayıyla):
-  - `dailyMaintenance`: tutarlılık denetimi aşaması (`7f08977`).
-  - `sendReminder` ve `onNotificationCreated`: `gece-calismasi` alınırsa (`1d1e352`).
-  - `gecis-paketler` alınırsa bütün fonksiyonlar (sunucu paketleri değişti).
+- **Canlıya kurulmayı bekleyen:** yok (25 Kasım itibarıyla kod ve canlı aynı).
 - **Mağaza kontrolü:** release APK'daki yerel kütüphanelerin hepsi 16 KB sayfa boyutuna hizalı (ELF yükleme bölümleri 0x4000 ya da 0x10000, `zipalign -P 16` temiz). Play'in Android 15 şartı karşılanıyor.
 ### Paket geçişi (`gecis-paketler`, 25 Kasım)
 
@@ -183,7 +180,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
-1. **Canlıya kurulum:** `main`'e birleşince bütün fonksiyonlar (sunucu paketleri, gece denetimi, hatırlatma düzeltmesi), kullanıcı onayıyla.
+1. **Canlıya kurulum:** yapıldı (25 Kasım). Sonraki kurulumlarda: `functions` içinde `npm run build`, `firestore-tests` içinden `npx firebase deploy --only functions --project pacta-76686 --force --non-interactive`, her seferinde kullanıcı onayıyla.
 2. **Kalan cihaz testleri:** `docs/test-listesi.md`, özellikle 7b (web onayı gerçek e-postayla; henüz hiç denenmedi), uygulama kilidi, QR, yeni hesapla kayıt, hesap silme.
 3. **Google Play:** kullanıcı geliştirici hesabı açınca:
    - Yeni kişisel hesaplar için en az 12 kişilik kapalı test, 14 gün kesintisiz.
