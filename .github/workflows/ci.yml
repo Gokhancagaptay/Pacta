@@ -43,7 +43,19 @@ jobs:
           flutter-version: 3.47.5
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --debug
+      - name: flutter build apk --debug
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee build.log
+      # Günlük indirmek giriş ister; hata özeti herkese açık açıklama olarak
+      # yazılır (Actions > çalıştırma > Annotations).
+      - name: Derleme hatasını özetle
+        if: failure()
+        run: |
+          msg=$(grep -E -A12 "What went wrong|FAILURE:|e: |error:" build.log \
+            | head -80 | tr -d '\r' | sed -e 's/%/%25/g' \
+            | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Android derlemesi::${msg:-ozet bulunamadi}"
 
   functions:
     name: Functions lint + derleme
