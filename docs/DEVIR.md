@@ -152,13 +152,26 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | bb4e9f1 | **AuthService** uygulama boyunca tek örnek |
 | 5dcf600 | **Verilerimi indir (KVKK):** Profil > Hesap; uygulamanın okuyabildiği tüm veri tek JSON; dosyada olmayanlar ve nedenleri yazılı |
 
-**Test sayıları:** sunucu 139, kural 26, Flutter 160. Son CI yeşil.
+**Test sayıları:** sunucu 139, kural 26, Flutter 164. Son CI yeşil.
 
 ### Tutarlılık denetimi
 
 - Gece bakımı yalnızca o gün değişen defterlere bakar (gece başına en fazla 500 defter, 50.000 kayıt). Sorun bulursa günlüğe `[audit] Defterde tutarsızlık` hatası yazar; kimseye bildirim gitmez. Cloud Logging'de `[audit]` içeren hatalara uyarı kurulabilir (Console adımı).
 - Elle düzenleme ya da yalnızca itiraz/düzenleme içeren günler gece denetiminde görünmez. Hepsini taramak için: `functions/` içinde `npm run build`, yönetici kimliğiyle `node scripts/auditLedgers.js --hepsi` (tek defter için defter kimliği). Betik yalnızca okur.
 - Eylül'deki eski komut sürümleriyle yazılmış veriler hiç denetlenmedi; ilk tam taramada sorun çıkabilir.
+
+## 7b. Dallar ve canlıya kurulum bekleyenler (25 Kasım sabahı)
+
+- `faz-3-hesap-silme`: ana iş dalı, push'lu, CI yeşil. `main`'e birleştirilmedi.
+- `gece-calismasi` (faz-3 üstünde, push'lu, CI yeşil): hatırlatma tekrar denemesi ve sabah push gecikmesi (`1d1e352`), `AuthService` tek örnek, Verilerimi indir (KVKK), Profil tema satırı, gizlilik taslağı düzeltmeleri, belge güncellemeleri. Uygun bulunursa faz-3'e hızlı ileri birleşir.
+- `deneme-bagimliliklar` (gece-calismasi üstünde, birleştirilmedi): `firebase-functions` 7.4, `firebase-admin` 13.10. Kod değişmedi; lint, 139 sunucu + 26 kural testi ve kurulumun kuru çalıştırması temiz. `firebase-admin` 14 ad alanlı yazımı (`admin.firestore()`) kaldırdığı için 13'te kalındı.
+- `deneme-gradle9` (gece-calismasi üstünde, birleştirilmedi): AGP 9.0.1 + Gradle 9.1.0, geçici köprü (`android.builtInKotlin=false`, `android.newDsl=false`, `kotlin-android` duruyor). Debug ve imzalı release APK derlendi; Flutter'ın "yakında desteklenmeyecek" uyarıları kalktı. Tam geçiş için `cloud_functions`, `share_plus`, `shared_preferences_android` eklentilerinin yerleşik Kotlin destekli sürümleri gerekir.
+- **Canlıya kurulmayı bekleyen** (her biri kullanıcı onayıyla):
+  - `dailyMaintenance`: tutarlılık denetimi aşaması (`7f08977`).
+  - `sendReminder` ve `onNotificationCreated`: `gece-calismasi` alınırsa (`1d1e352`).
+  - Bağımlılık dalı alınırsa bütün fonksiyonlar.
+- **Mağaza kontrolü:** release APK'daki yerel kütüphanelerin hepsi 16 KB sayfa boyutuna hizalı (ELF yükleme bölümleri 0x4000 ya da 0x10000, `zipalign -P 16` temiz). Play'in Android 15 şartı karşılanıyor.
+- Flutter paketlerinde büyük sürüm geçişleri (FlutterFire iki büyük sürüm, Riverpod 3, google_sign_in 7, flutter_local_notifications, share_plus, google_fonts) denenmedi: Google ile giriş ve push'un telefonda denenmesini gerektirir, ayrı planlanmalı.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
