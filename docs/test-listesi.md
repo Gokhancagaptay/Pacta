@@ -93,6 +93,22 @@ Sorun bulursanız: ekran adı, ne yaptınız, ne oldu, varsa ekran görüntüsü
 - [ ] İnternetsiz açılış takılmıyor.
 - [ ] Telefonda büyük yazı boyutunda taşan/kesilen metin yok.
 
+## 13. 24-25 Kasım'da eklenenler
+[x] olanlar 24 Kasım'da telefonda (adb ile) denendi; kalanlar senin.
+- [x] Onaylı borcun detayında "Bu borç için ödeme aldım / Bu borca ödeme yap": tür ve birim sabit, tutar açık kalan kısımla hazır; kısmi ödemeden sonra kalan doğru öneriliyor, vade güncelleniyor.
+- [x] Defter sayfasında arama (üstteki büyüteç): tutar, açıklama, durum; geri tuşu önce aramayı kapatıyor.
+- [x] Uçak modunda ana ekranda "Çevrimdışısınız" şeridi birkaç saniyede çıkıyor, bağlantı gelince kalkıyor.
+- [x] Ekstre / Tablo dışa aktarırken dönem soruluyor; dosya adında dönem var.
+- [ ] Dönemli PDF'in görünümü: "Dönem özeti" tablosu, devreden bakiye satırları, Türkçe harfler.
+- [x] Bildirimi yana kaydırınca siliniyor, "Geri al" çalışıyor.
+- [ ] Bildirimler > "Tümünü sil": onay soruyor, liste boşalıyor.
+- [x] Kayıt eklerken klavye açıkken gönder düğmesi klavyenin üstünde.
+- [x] Uygulama açıkken gelen bildirime dokununca doğru kayıt açılıyor.
+- [ ] Profil > Verilerimi indir: açıklama, ilerleme, paylaşılan JSON dosyası (gece eklendi, yeni APK gerekir).
+- [ ] Profil > Görünüm satırı büyük yazıda taşmıyor, seçici alta iniyor (gece eklendi).
+- [ ] Hatırlatma gönderirken bağlantı kopup tekrar basınca "yakın zamanda gönderdiniz" hatası yerine "gönderildi" (gece eklendi; sunucu kurulumundan sonra).
+- [ ] (Yalnız `oneri-toplu-onay` dalı alınırsa) Hareketler > "Toplu onayla": başta hiçbiri seçili değil, etki birim birim yazıyor, onaylananlar listeden düşüyor.
+
 ## Beklenen, hata sayılmaz
 - Gizlilik / Koşullar bağlantıları şimdilik "Sayfa bulunamadı" açar (yasal sayfalar hukukçu onayından sonra yayınlanacak).
 - https://pacta-76686.web.app ana adresi artık yalnızca kısa bir tanıtım sayfası (web uygulaması yayında değil).
