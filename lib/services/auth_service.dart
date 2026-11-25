@@ -27,7 +27,13 @@ class AuthService {
   final FirestoreService _firestoreService = FirestoreService();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  AuthService() {
+  /// Uygulama boyunca tek örnek: her ekran aynı Google oturumunu ve
+  /// ayarları kullanır. İlk kullanımda oluşur (Firebase başlatıldıktan
+  /// sonra); oluşturma hata verirse sonraki çağrıda yeniden denenir.
+  factory AuthService() => _instance ??= AuthService._();
+  static AuthService? _instance;
+
+  AuthService._() {
     // E-posta şablonlarının dilini Türkçe yap
     try {
       _auth.setLanguageCode('tr');
