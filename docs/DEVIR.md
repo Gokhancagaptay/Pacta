@@ -1,6 +1,6 @@
 # Pacta — devir notu (yeni ajan için)
 
-Son güncelleme: 2026-11-24. Dal: `faz-3-hesap-silme` (push'lu). `main` henüz birleştirilmedi.
+Son güncelleme: 2026-11-25. Dal: `faz-3-hesap-silme` (push'lu). `main`'e birleştirme PR'ı açıldı.
 Bu dosya projeyi hızlıca devralmak içindir: ne var, nasıl çalışılır, ne yapıldı, ne kaldı.
 
 ---
@@ -152,7 +152,7 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 | bb4e9f1 | **AuthService** uygulama boyunca tek örnek |
 | 5dcf600 | **Verilerimi indir (KVKK):** Profil > Hesap; uygulamanın okuyabildiği tüm veri tek JSON; dosyada olmayanlar ve nedenleri yazılı |
 
-**Test sayıları:** sunucu 139, kural 26, Flutter 164. Son CI yeşil.
+**Test sayıları:** sunucu 139, kural 26, Flutter 171. Son CI yeşil.
 
 ### Tutarlılık denetimi
 
@@ -162,9 +162,9 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 7b. Dallar ve canlıya kurulum bekleyenler (25 Kasım)
 
-- **`gecis-paketler`** (önerilen birleştirme noktası): `gece-calismasi` + `deneme-gradle9` + `deneme-bagimliliklar` + paket geçişi. Ayrıntı aşağıda "Paket geçişi". Telefonda Google ile giriş kullanıcı tarafından doğrulandı (25 Kasım). Derleme numarası 3.
+- **`faz-3-hesap-silme`** (25 Kasım, `main`'e PR açık): `gece-calismasi` + `gecis-paketler` (paket geçişi, Gradle 9, sunucu paketleri) + `oneri-toplu-onay` hızlı ileri birleştirildi. Telefonda Google ile giriş ve push (arka planda bildirim, dokununca doğru kayıt) doğrulandı. Derleme numarası 3.
 
-- `faz-3-hesap-silme`: ana iş dalı, push'lu, CI yeşil. `main`'e birleştirilmedi.
+- Yan dallar (`gece-calismasi`, `gecis-paketler`, `deneme-*`, `oneri-toplu-onay`) faz-3'e alındı; silinebilir.
 - `gece-calismasi` (faz-3 üstünde, push'lu, CI yeşil): hatırlatma tekrar denemesi ve sabah push gecikmesi (`1d1e352`), `AuthService` tek örnek, Verilerimi indir (KVKK), Profil tema satırı, gizlilik taslağı düzeltmeleri, belge güncellemeleri. Uygun bulunursa faz-3'e hızlı ileri birleşir.
 - `deneme-bagimliliklar` (gece-calismasi üstünde; `gecis-paketler`'e alındı): `firebase-functions` 7.4, `firebase-admin` 13.10. Kod değişmedi; lint, 139 sunucu + 26 kural testi ve kurulumun kuru çalıştırması temiz. `firebase-admin` 14 ad alanlı yazımı (`admin.firestore()`) kaldırdığı için 13'te kalındı.
 - `deneme-gradle9` (gece-calismasi üstünde; `gecis-paketler`'e alındı ve tam yerleşik Kotlin'e geçildi): AGP 9.0.1 + Gradle 9.1.0, geçici köprü (`android.builtInKotlin=false`, `android.newDsl=false`, `kotlin-android` duruyor). Debug ve imzalı release APK derlendi; Flutter'ın "yakında desteklenmeyecek" uyarıları kalktı. Tam geçiş için `cloud_functions`, `share_plus`, `shared_preferences_android` eklentilerinin yerleşik Kotlin destekli sürümleri gerekir.
@@ -183,8 +183,8 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
-1. **Cihaz testi:** yeni APK (`flutter build apk --release`) → `docs/test-listesi.md`, özellikle 7b (web onayı) uçtan uca. Web onay sayfası gerçek e-postayla henüz hiç denenmedi.
-2. Cihaz testinden gelen hataları düzelt → `faz-3-hesap-silme` dalını `main`'e PR ile birleştir (AI imzası yok).
+1. **Canlıya kurulum:** `main`'e birleşince bütün fonksiyonlar (sunucu paketleri, gece denetimi, hatırlatma düzeltmesi), kullanıcı onayıyla.
+2. **Kalan cihaz testleri:** `docs/test-listesi.md`, özellikle 7b (web onayı gerçek e-postayla; henüz hiç denenmedi), uygulama kilidi, QR, yeni hesapla kayıt, hesap silme.
 3. **Google Play:** kullanıcı geliştirici hesabı açınca:
    - Yeni kişisel hesaplar için en az 12 kişilik kapalı test, 14 gün kesintisiz.
    - `assetlinks.json`'dan debug parmak izini çıkar, Play App Signing parmak izini ekle.
