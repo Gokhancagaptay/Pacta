@@ -776,6 +776,10 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Bu pencereden gönderilen istek; bağlantı kopunca tekrar denemede aynı
+  /// kimlik gider, hatırlatma iki kez gitmez.
+  late final String _requestId = ref.read(ledgerRepositoryProvider).newId();
+
   Future<void> _send() async {
     setState(() {
       _busy = true;
@@ -786,7 +790,7 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
     try {
       final result = await ref
           .read(ledgerRepositoryProvider)
-          .sendReminder(widget.ledger.id);
+          .sendReminder(widget.ledger.id, requestId: _requestId);
       // Pencere bu arada kapandıysa arkadaki sayfa kapatılmaz.
       if (mounted) navigator.pop();
       messenger.hideCurrentSnackBar();

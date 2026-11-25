@@ -490,8 +490,16 @@ class LedgerRepository {
   }
 
   /// Karşı tarafa nazik bir uygulama içi hatırlatma; metni sunucu seçer.
-  Future<ReminderResult> sendReminder(String ledgerId) async {
-    final r = await _call('sendReminder', {'ledgerId': ledgerId});
+  /// [requestId]: aynı pencereden tekrar gönderimde aynı kimlik; sunucu
+  /// ikinci kez göndermez, ilk sonucu döner.
+  Future<ReminderResult> sendReminder(
+    String ledgerId, {
+    String? requestId,
+  }) async {
+    final r = await _call('sendReminder', {
+      'ledgerId': ledgerId,
+      'requestId': ?requestId,
+    });
     return ReminderResult(
       kind: ReminderKind.values.byName(r['kind'] as String),
       queued: r['queued'] == true,

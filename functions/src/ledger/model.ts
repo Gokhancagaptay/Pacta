@@ -47,7 +47,14 @@ export interface Ledger {
   /** Günlük vade hatırlatmasının en son gönderildiği gün. */
   dueRemindedOn?: string;
   /** Tarafın karşı tarafa gönderdiği son hatırlatma. */
-  reminders?: {[side in Side]?: {lastOn: string; kind: string}};
+  reminders?: {[side in Side]?: {
+    lastOn: string;
+    kind: string;
+    /** Son isteğin kimliği; aynı istek tekrar gelirse yeniden gönderilmez. */
+    requestId?: string;
+    queued?: boolean;
+    nextOn?: string;
+  }};
   /** Bu taraf karşı tarafı engelledi (yeni kayıt ve hatırlatma alamaz). */
   blockedBy?: {[side in Side]?: boolean};
 }

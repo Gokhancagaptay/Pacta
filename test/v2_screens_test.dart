@@ -28,6 +28,7 @@ import 'package:pacta/models/user_model.dart';
 class FakeRepo extends LedgerRepository {
   final calls = <String>[];
   Map<String, Object?>? lastCreate;
+  String? lastReminderRequestId;
 
   @override
   String newId() => 'test-entry-0001';
@@ -136,8 +137,12 @@ class FakeRepo extends LedgerRepository {
   }
 
   @override
-  Future<ReminderResult> sendReminder(String ledgerId) async {
+  Future<ReminderResult> sendReminder(
+    String ledgerId, {
+    String? requestId,
+  }) async {
     calls.add('remind $ledgerId');
+    lastReminderRequestId = requestId;
     return const ReminderResult(
       kind: ReminderKind.overdue,
       queued: false,
@@ -789,6 +794,7 @@ void main() {
     await tester.tap(find.text('Hatırlatma gönder'));
     await tester.pumpAndSettle();
     expect(repo.calls, ['remind p_ayse']);
+    expect(repo.lastReminderRequestId, 'test-entry-0001');
     expect(find.text('Hatırlatma gönderildi.'), findsOneWidget);
   });
 

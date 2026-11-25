@@ -130,7 +130,19 @@ export function quietUntil(now: Date): Date | undefined {
   return new Date(`${day}T${hh}:00:00+03:00`);
 }
 
-const ReminderInput = z.object({ledgerId: Id}).strict();
+const ReminderInput = z.object({
+  ledgerId: Id,
+  // Bağlantı kopup aynı istek yeniden gönderilirse ikinci hatırlatma
+  // gitmez, ilk sonucun aynısı döner ("yakın zamanda gönderdiniz" değil).
+  requestId: Id.optional(),
+}).strict();
+
+/** sendReminder yanıtı. */
+interface ReminderResult {
+  kind: ReminderKind;
+  queued: boolean;
+  nextOn: string;
+}
 
 /**
  * Karşı tarafa nazik bir uygulama içi hatırlatma gönderir. Yalnızca karşı
@@ -138,14 +150,31 @@ const ReminderInput = z.object({ledgerId: Id}).strict();
  */
 export const sendReminder = onCall<unknown>(OPTS, async (req) => {
   const uid = await requireUid(req);
-  const {ledgerId} = parse(ReminderInput, req.data);
+  const {ledgerId, requestId} = parse(ReminderInput, req.data);
   const now = clock.now();
   const today = todayIstanbul(now);
   const ledgerRef = db.collection("ledgers").doc(ledgerId);
   const limitRef = db.collection("rateLimits").doc(`reminders_${uid}`);
 
-  const {notice, result} = await db.runTransaction(async (tx) => {
+  const {notice, result} = await db.runTransaction(async (tx): Promise<{
+    notice: Notice | null;
+    result: ReminderResult;
+  }> => {
     const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const last = ledger.reminders?.[side];
+    if (
+      requestId && last?.requestId === requestId &&
+      last.kind && last.nextOn
+    ) {
+      return {
+        notice: null,
+        result: {
+          kind: last.kind as ReminderKind,
+          queued: last.queued === true,
+          nextOn: last.nextOn,
+        },
+      };
+    }
     assertNotBlocked(ledger, side);
     const other = otherSide(side);
     const otherUid = ledger.sides[other].uid;
@@ -190,15 +219,20 @@ export const sendReminder = onCall<unknown>(OPTS, async (req) => {
         "gönderebilirsiniz.");
     }
 
+    const pushAfter = quietUntil(now);
+    const queued = pushAfter !== undefined;
+    const nextOn = addDays(today, interval);
     tx.set(limitRef, {day: today, count: count + 1});
     tx.update(ledgerRef, {
       [`reminders.${side}`]: {
         lastAt: Timestamp.fromDate(now),
         lastOn: today,
         kind,
+        queued,
+        nextOn,
+        ...(requestId ? {requestId} : {}),
       },
     });
-    const pushAfter = quietUntil(now);
     const notice: Notice = {
       uid: otherUid,
       setting: "reminders",
@@ -208,14 +242,10 @@ export const sendReminder = onCall<unknown>(OPTS, async (req) => {
       entryId: null,
       pushAfter,
     };
-    const queued = pushAfter !== undefined;
-    return {
-      notice,
-      result: {kind, queued, nextOn: addDays(today, interval)},
-    };
+    return {notice, result: {kind, queued, nextOn}};
   });
 
-  await deliver([notice]);
+  if (notice) await deliver([notice]);
   return result;
 });
 

@@ -57,6 +57,17 @@ export function notificationData(n: Notice) {
   };
 }
 
+/** Testlerde değiştirilen saat. */
+export const pushClock = {now: (): Date => new Date()};
+
+/**
+ * Bekletme süresi bu kadar içinde dolacaksa push kuyruğa alınmaz, hemen
+ * gider. Bildirim tetikleyicisi bildirimden birkaç saniye sonra çalışır:
+ * 08:59'da yazılan bildirimin push'u kuyruğa 09:00'ı geçince düşerse
+ * 09:00'daki boşaltma onu görmez ve push bir gün gecikirdi.
+ */
+export const PUSH_QUEUE_MARGIN_MS = 2 * 60 * 1000;
+
 /**
  * Kullanıcı izin veriyorsa push gönderir (sessiz saatteyse kuyruğa alır).
  * Uygulama içi bildirim ayrıca yazılmış olmalıdır. Silinmiş hesaba gitmez.
@@ -78,7 +89,10 @@ async function push(n: Notice, user: DocumentSnapshot): Promise<void> {
     entryId: n.entryId ?? "",
     route: routeOf(n),
   };
-  if (n.pushAfter) {
+  const wait = n.pushAfter ?
+    n.pushAfter.getTime() - pushClock.now().getTime() :
+    0;
+  if (n.pushAfter && wait > PUSH_QUEUE_MARGIN_MS) {
     await db.collection("pushQueue").add({
       uid: n.uid,
       title: n.title,

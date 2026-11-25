@@ -5,6 +5,8 @@ const {randomUUID} = require("node:crypto");
 
 const {recomputeDue} = require("../lib/ledger/due.js");
 const reminders = require("../lib/ledger/reminders.js");
+const notify = require("../lib/ledger/notify.js");
+const {pushForNotification} = notify;
 const {
   call,
   db,
@@ -21,8 +23,10 @@ const {
 
 useEmulator();
 
+// Hatırlatma ve push aynı saati görür (push tetikleyicisi hemen çalışır).
 const at = (iso) => {
   reminders.clock.now = () => new Date(iso);
+  notify.pushClock.now = () => new Date(iso);
 };
 const noon = `${today}T12:00:00+03:00`;
 afterEach(() => at(noon));
@@ -41,8 +45,6 @@ const remind = (uid, ledgerId) =>
   call(fns.sendReminder, uid, {ledgerId});
 
 const pushQueue = () => db.collection("pushQueue").get();
-const {pushForNotification} = require("../lib/ledger/notify.js");
-
 /** Testte tetikleyici çalışmaz; bildirimlerin push adımı elle yürütülür. */
 async function runPushes(uid) {
   const notes = await db.collection("users").doc(uid)
@@ -132,6 +134,26 @@ describe("sendReminder", () => {
     assert.match(note.get("message"), /yanıtınızı bekleyen 1 kayıt/);
   });
 
+  it("aynı istek yeniden gelirse ikinci hatırlatma gitmez", async () => {
+    const ledgerId = await sharedLedger();
+    await confirmedLoan(ledgerId, 50000);
+    const send = () => call(fns.sendReminder, "ali",
+      {ledgerId, requestId: "istek-0001"});
+    const first = await send();
+    const again = await send();
+    assert.deepEqual(again, first);
+    const notes = await notifications("ayse");
+    assert.equal(
+      notes.docs.filter((d) => d.get("type") === "reminder").length, 1);
+    const limit = await db.collection("rateLimits")
+      .doc("reminders_ali").get();
+    assert.equal(limit.get("count"), 1);
+    // Yeni istek (yeni kimlik) yine aralık sınırına takılır.
+    await rejectsWith(
+      call(fns.sendReminder, "ali", {ledgerId, requestId: "istek-0002"}),
+      "resource-exhausted");
+  });
+
   it("vadesi geçmişse 3 günde bir hatırlatılabilir", async () => {
     const ledgerId = await sharedLedger();
     await confirmedLoan(ledgerId, 50000,
@@ -158,6 +180,32 @@ describe("sendReminder", () => {
 
     await reminders.runDailyReminders(new Date("2026-09-26T09:00:00+03:00"));
     assert.equal((await pushQueue()).size, 0);
+  });
+
+  it("sabah saati geçtikten sonra işlenen push kuyruğa düşmez", async () => {
+    const ledgerId = await sharedLedger();
+    await confirmedLoan(ledgerId, 50000);
+    // Hatırlatma 08:59'da gönderildi; bildirim tetikleyicisi 09:00:05'te
+    // çalışıyor. Kuyruğa düşseydi 09:00'daki boşaltmayı kaçırırdı.
+    at(`${today}T08:59:00+03:00`);
+    assert.equal((await remind("ali", ledgerId)).queued, true);
+    notify.pushClock.now = () => new Date(`${today}T09:00:05+03:00`);
+    await runPushes("ayse");
+    assert.equal((await pushQueue()).size, 0);
+
+    // Sabaha saatler varken kuyruğa düşer.
+    at(`${today}T23:30:00+03:00`);
+    await db.collection("ledgers").doc(ledgerId)
+      .update({"reminders.a": null});
+    await remind("ali", ledgerId);
+    // Yeni bildirimin push'u 23:30'da işlenir; 08:59'daki zaten gitti.
+    const notes = await notifications("ayse");
+    const late = notes.docs.filter((d) =>
+      d.get("pushAfter")?.toDate().toISOString() ===
+        "2026-09-26T06:00:00.000Z");
+    assert.equal(late.length, 1);
+    await pushForNotification("ayse", late[0].data());
+    assert.equal((await pushQueue()).size, 1);
   });
 
   it("sessize alan alıcıya push gitmez, bildirim listesine düşer",
