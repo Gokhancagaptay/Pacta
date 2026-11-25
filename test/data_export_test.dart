@@ -538,9 +538,7 @@ void main() {
       WidgetTester tester,
       FakeSource source,
     ) async {
-      // Test yazı tipi geniş: Görünüm satırı 400 pikselde taşar (mevcut
-      // durum); geniş telefon boyutu kullanılır.
-      tester.view.physicalSize = const Size(1800, 3000);
+      tester.view.physicalSize = const Size(1200, 3000);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
       SharedPreferences.setMockInitialValues({});

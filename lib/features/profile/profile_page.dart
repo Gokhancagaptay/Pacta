@@ -174,32 +174,10 @@ class ProfilePage extends ConsumerWidget {
                 const Divider(indent: 56),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.contrast_rounded),
-                      const SizedBox(width: 16),
-                      const Expanded(child: Text('Görünüm')),
-                      SegmentedButton<ThemeMode>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(
-                            value: ThemeMode.system,
-                            label: Text('Sistem'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.light,
-                            label: Text('Açık'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.dark,
-                            label: Text('Koyu'),
-                          ),
-                        ],
-                        selected: {themeMode},
-                        onSelectionChanged: (s) =>
-                            ref.read(themeProvider.notifier).setTheme(s.first),
-                      ),
-                    ],
+                  child: _ThemeRow(
+                    selected: themeMode,
+                    onChanged: (mode) =>
+                        ref.read(themeProvider.notifier).setTheme(mode),
                   ),
                 ),
               ],
@@ -266,6 +244,57 @@ class ProfilePage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Tema seçimi. Dar ekranda ya da büyük yazıda seçici başlığın altına
+/// iner; yan yana sığmayınca satır taşmasın.
+class _ThemeRow extends StatelessWidget {
+  const _ThemeRow({required this.selected, required this.onChanged});
+
+  final ThemeMode selected;
+  final ValueChanged<ThemeMode> onChanged;
+
+  /// Yan yana dizilim için gereken en az genişlik (simge, başlık ve
+  /// üç seçenek; normal yazı boyutunda).
+  static const _rowWidth = 340.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final picker = SegmentedButton<ThemeMode>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(value: ThemeMode.system, label: Text('Sistem')),
+        ButtonSegment(value: ThemeMode.light, label: Text('Açık')),
+        ButtonSegment(value: ThemeMode.dark, label: Text('Koyu')),
+      ],
+      selected: {selected},
+      onSelectionChanged: (s) => onChanged(s.first),
+    );
+    const title = Row(
+      children: [
+        Icon(Icons.contrast_rounded),
+        SizedBox(width: 16),
+        Expanded(child: Text('Görünüm')),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = MediaQuery.textScalerOf(context).scale(1);
+        if (constraints.maxWidth >= _rowWidth * scale) {
+          return Row(
+            children: [
+              const Expanded(child: title),
+              picker,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [title, const SizedBox(height: 10), picker],
+        );
+      },
     );
   }
 }
