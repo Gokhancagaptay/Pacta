@@ -11,6 +11,7 @@ import '../application/providers.dart';
 import '../domain/entry_text.dart';
 import '../domain/models.dart';
 import '../domain/summary.dart';
+import 'bulk_confirm_sheet.dart';
 import 'common.dart';
 
 /// Hareketler: "ne olacak" (onayınızı bekleyenler, vadeler) ve "ne oldu"
@@ -45,6 +46,7 @@ class _UpcomingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final inboxAsync = ref.watch(inboxProvider);
     final inbox = inboxAsync.valueOrNull ?? const [];
+    final confirmable = bulkConfirmable(inbox);
     final schedule = ref.watch(dueScheduleProvider);
     final today = ref.watch(todayProvider);
 
@@ -94,12 +96,25 @@ class _UpcomingTab extends ConsumerWidget {
             if (inbox.isNotEmpty) ...[
               SectionHeader(
                 title: 'Onayınızı bekleyen',
-                trailing: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: StatusChip(
-                    label: '${inbox.length}',
-                    tone: ChipTone.pending,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Tek tek onay her zaman var; toplu onay iki ve daha
+                    // fazla kayıtta önerilir.
+                    if (confirmable.length >= 2)
+                      TextButton(
+                        onPressed: () =>
+                            showBulkConfirmSheet(context, confirmable),
+                        child: const Text('Toplu onayla'),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: StatusChip(
+                        label: '${inbox.length}',
+                        tone: ChipTone.pending,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               for (final item in inbox) ...[
