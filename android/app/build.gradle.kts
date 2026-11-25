@@ -8,8 +8,9 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     // END: FlutterFire Configuration
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // Kotlin, AGP 9'un yerleşik Kotlin desteğiyle derlenir (kotlin-android
+    // eklentisi uygulanmaz; gradle.properties: android.builtInKotlin=true).
+    // The Flutter Gradle Plugin must be applied after the Android plugin.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
