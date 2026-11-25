@@ -14,6 +14,11 @@ import 'notification_routes.dart';
 /// dokununca ilgili ekranın açılması. Anahtar sunucuya callable ile
 /// kaydedilir; sunucu aynı anahtarı başka hesaplardan siler (bkz.
 /// functions/src/ledger/devices.ts).
+// FCM token'ı: firebase_messaging 17 getToken/onTokenRefresh/deleteToken'ı
+// register()/onRegistered lehine kullanımdan kaldırdı. Yeni yol FCM token'ı
+// değil Firebase Installation ID verir; sunucu push'u token'a gönderdiği
+// için (functions/src/common/push.ts) geçiş sunucuyla birlikte yapılmalı.
+// O zamana kadar eski çağrılar bilerek kullanılıyor (17'de çalışıyor).
 class PushNotificationService {
   PushNotificationService._();
 
@@ -87,6 +92,7 @@ class PushNotificationService {
       if (user != null) unawaited(_askPermissionOnce());
       unawaited(_saveCurrentToken());
     });
+    // ignore: deprecated_member_use
     _fcm.onTokenRefresh.listen((token) => unawaited(_saveToken(token)));
 
     FirebaseMessaging.onMessage.listen(_showForeground);
@@ -123,6 +129,7 @@ class PushNotificationService {
   }) async {
     _savedFor = null;
     try {
+      // ignore: deprecated_member_use
       await _fcm.deleteToken().timeout(wait);
       await _setPendingDelete(false);
     } catch (_) {
@@ -134,6 +141,7 @@ class PushNotificationService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_pendingDeleteKey) != true) return;
+      // ignore: deprecated_member_use
       await _fcm.deleteToken();
       await prefs.remove(_pendingDeleteKey);
     } catch (_) {
@@ -174,6 +182,7 @@ class PushNotificationService {
 
   Future<void> _saveCurrentToken() async {
     try {
+      // ignore: deprecated_member_use
       final token = await _fcm.getToken();
       if (token != null) await _saveToken(token);
     } catch (e, st) {

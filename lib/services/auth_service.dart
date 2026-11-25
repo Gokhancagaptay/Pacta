@@ -25,7 +25,53 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreService _firestoreService = FirestoreService();
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  /// google_sign_in 7: tek örnek, kullanılmadan önce bir kez başlatılır.
+  /// Android'de istemci kimlikleri google-services.json'dan okunur (web
+  /// istemcisi orada kayıtlı). Başlatma düşerse sonraki çağrıda yeniden
+  /// denenir.
+  static Future<void>? _googleReady;
+
+  static Future<GoogleSignIn> _google() async {
+    final ready = _googleReady ??= GoogleSignIn.instance.initialize();
+    try {
+      await ready;
+    } catch (_) {
+      _googleReady = null;
+      rethrow;
+    }
+    return GoogleSignIn.instance;
+  }
+
+  /// Google hesap seçicisini açar ve Firebase kimliğini döndürür. Kullanıcı
+  /// seçiciyi kapatırsa null döner.
+  Future<AuthCredential?> _googleCredential() async {
+    final google = await _google();
+    final GoogleSignInAccount account;
+    try {
+      account = await google.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled ||
+          e.code == GoogleSignInExceptionCode.interrupted) {
+        return null;
+      }
+      rethrow;
+    }
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw StateError('Google kimlik belirteci alınamadı.');
+    }
+    return GoogleAuthProvider.credential(idToken: idToken);
+  }
+
+  /// Google oturumunu kapatır; başlatılamıyorsa ya da internet yoksa
+  /// beklemez.
+  static Future<void> _googleSignOut({Duration? wait}) async {
+    try {
+      final signOut = _google().then((g) => g.signOut());
+      await (wait == null ? signOut : signOut.timeout(wait));
+    } catch (_) {}
+  }
 
   /// Uygulama boyunca tek örnek: her ekran aynı Google oturumunu ve
   /// ayarları kullanır. İlk kullanımda oluşur (Firebase başlatıldıktan
@@ -259,15 +305,8 @@ class AuthService {
   Future<String?> googleSignIn() async {
     try {
       await waitForSignOutCleanup();
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return googleCancelled;
-
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+      final credential = await _googleCredential();
+      if (credential == null) return googleCancelled;
 
       // Profil AuthWrapper'da oluşturulur/tamamlanır.
       await _auth.signInWithCredential(credential);
@@ -304,7 +343,7 @@ class AuthService {
     const wait = Duration(seconds: 3);
     await Future.wait([
       PushNotificationService.instance.forgetDevice(wait: wait),
-      _googleSignIn.signOut().timeout(wait).then((_) {}, onError: (_) {}),
+      _googleSignOut(wait: wait),
     ]);
     await clearLocalData();
   }
@@ -382,11 +421,7 @@ class AuthService {
   /// Geri alınamaz işlemden (hesap silme) önce kimliği yeniden doğrular.
   /// Başarısız girişten sonra: Google son hesabı sessizce yeniden seçmesin,
   /// kullanıcı başka hesap seçebilsin.
-  Future<void> _forgetGoogleAccount() async {
-    try {
-      await _googleSignIn.signOut();
-    } catch (_) {}
-  }
+  Future<void> _forgetGoogleAccount() => _googleSignOut();
 
   /// Şifreli hesapta [password] gerekir; Google hesabında Google seçici açılır.
   /// Başarılıysa null, değilse Türkçe hata mesajı döner.
@@ -404,16 +439,10 @@ class AuthService {
       } else {
         // Önce çıkış: yoksa son hesap sessizce yeniden kullanılır, seçici
         // açılmaz (kilidi açık telefon koruması tek dokunuşa iner).
-        try {
-          await _googleSignIn.signOut();
-        } catch (_) {}
-        final account = await _googleSignIn.signIn();
-        if (account == null) return 'Google hesabı seçilmedi.';
-        final auth = await account.authentication;
-        credential = GoogleAuthProvider.credential(
-          accessToken: auth.accessToken,
-          idToken: auth.idToken,
-        );
+        await _googleSignOut();
+        final google = await _googleCredential();
+        if (google == null) return 'Google hesabı seçilmedi.';
+        credential = google;
       }
       await user.reauthenticateWithCredential(credential);
       // Sunucu, belirteçteki giriş zamanına bakar.
