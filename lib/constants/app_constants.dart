@@ -28,7 +28,7 @@ class AppConstants {
   /// Derleme numarası: pubspec.yaml'daki `version: x.y.z+N` içindeki N ile
   /// aynıdır (test karşılaştırır). Zorunlu güncelleme kontrolü bununla
   /// yapılır (config/app.minBuild).
-  static const int buildNumber = 2;
+  static const int buildNumber = 3;
 
   /// Sürüm adı: pubspec.yaml'daki `version: x.y.z+N` içindeki x.y.z (test
   /// karşılaştırır). Veri dışa aktarma dosyasına yazılır.

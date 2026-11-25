@@ -160,18 +160,26 @@ contracts/        Dart–TS ortak birim tanımları ve hash test vektörleri
 - Elle düzenleme ya da yalnızca itiraz/düzenleme içeren günler gece denetiminde görünmez. Hepsini taramak için: `functions/` içinde `npm run build`, yönetici kimliğiyle `node scripts/auditLedgers.js --hepsi` (tek defter için defter kimliği). Betik yalnızca okur.
 - Eylül'deki eski komut sürümleriyle yazılmış veriler hiç denetlenmedi; ilk tam taramada sorun çıkabilir.
 
-## 7b. Dallar ve canlıya kurulum bekleyenler (25 Kasım sabahı)
+## 7b. Dallar ve canlıya kurulum bekleyenler (25 Kasım)
+
+- **`gecis-paketler`** (önerilen birleştirme noktası): `gece-calismasi` + `deneme-gradle9` + `deneme-bagimliliklar` + paket geçişi. Ayrıntı aşağıda "Paket geçişi". Telefonda Google ile giriş kullanıcı tarafından doğrulandı (25 Kasım). Derleme numarası 3.
 
 - `faz-3-hesap-silme`: ana iş dalı, push'lu, CI yeşil. `main`'e birleştirilmedi.
 - `gece-calismasi` (faz-3 üstünde, push'lu, CI yeşil): hatırlatma tekrar denemesi ve sabah push gecikmesi (`1d1e352`), `AuthService` tek örnek, Verilerimi indir (KVKK), Profil tema satırı, gizlilik taslağı düzeltmeleri, belge güncellemeleri. Uygun bulunursa faz-3'e hızlı ileri birleşir.
-- `deneme-bagimliliklar` (gece-calismasi üstünde, birleştirilmedi): `firebase-functions` 7.4, `firebase-admin` 13.10. Kod değişmedi; lint, 139 sunucu + 26 kural testi ve kurulumun kuru çalıştırması temiz. `firebase-admin` 14 ad alanlı yazımı (`admin.firestore()`) kaldırdığı için 13'te kalındı.
-- `deneme-gradle9` (gece-calismasi üstünde, birleştirilmedi): AGP 9.0.1 + Gradle 9.1.0, geçici köprü (`android.builtInKotlin=false`, `android.newDsl=false`, `kotlin-android` duruyor). Debug ve imzalı release APK derlendi; Flutter'ın "yakında desteklenmeyecek" uyarıları kalktı. Tam geçiş için `cloud_functions`, `share_plus`, `shared_preferences_android` eklentilerinin yerleşik Kotlin destekli sürümleri gerekir.
+- `deneme-bagimliliklar` (gece-calismasi üstünde; `gecis-paketler`'e alındı): `firebase-functions` 7.4, `firebase-admin` 13.10. Kod değişmedi; lint, 139 sunucu + 26 kural testi ve kurulumun kuru çalıştırması temiz. `firebase-admin` 14 ad alanlı yazımı (`admin.firestore()`) kaldırdığı için 13'te kalındı.
+- `deneme-gradle9` (gece-calismasi üstünde; `gecis-paketler`'e alındı ve tam yerleşik Kotlin'e geçildi): AGP 9.0.1 + Gradle 9.1.0, geçici köprü (`android.builtInKotlin=false`, `android.newDsl=false`, `kotlin-android` duruyor). Debug ve imzalı release APK derlendi; Flutter'ın "yakında desteklenmeyecek" uyarıları kalktı. Tam geçiş için `cloud_functions`, `share_plus`, `shared_preferences_android` eklentilerinin yerleşik Kotlin destekli sürümleri gerekir.
 - **Canlıya kurulmayı bekleyen** (her biri kullanıcı onayıyla):
   - `dailyMaintenance`: tutarlılık denetimi aşaması (`7f08977`).
   - `sendReminder` ve `onNotificationCreated`: `gece-calismasi` alınırsa (`1d1e352`).
-  - Bağımlılık dalı alınırsa bütün fonksiyonlar.
+  - `gecis-paketler` alınırsa bütün fonksiyonlar (sunucu paketleri değişti).
 - **Mağaza kontrolü:** release APK'daki yerel kütüphanelerin hepsi 16 KB sayfa boyutuna hizalı (ELF yükleme bölümleri 0x4000 ya da 0x10000, `zipalign -P 16` temiz). Play'in Android 15 şartı karşılanıyor.
-- Flutter paketlerinde büyük sürüm geçişleri (FlutterFire iki büyük sürüm, Riverpod 3, google_sign_in 7, flutter_local_notifications, share_plus, google_fonts) denenmedi: Google ile giriş ve push'un telefonda denenmesini gerektirir, ayrı planlanmalı.
+### Paket geçişi (`gecis-paketler`, 25 Kasım)
+
+- **Yükseltilenler:** FlutterFire (core 5, auth 7, firestore 7, functions 7, messaging 17, crashlytics 6), `share_plus` 13, `shared_preferences_android` 2.5, `google_sign_in` 7, AGP 9.0.1, Gradle 9.1.0. Sunucu: `firebase-functions` 7.4, `firebase-admin` 13.10.
+- **Android derlemesi yerleşik Kotlin'le:** `android.builtInKotlin=true`, `kotlin-android` eklentisi yok; hiçbir eklenti KGP uygulamıyor. `android.newDsl=false` duruyor (Flutter'ın yeni DSL desteği gelince kaldırılacak).
+- **Google ile giriş:** `google_sign_in` 7 Credential Manager kullanır. `AuthService._google()` bir kez `initialize()` eder; kimlik yalnızca `idToken` ile alınır. İstemci kimlikleri `google-services.json` içindeki web istemcisinden okunur. Firebase'de yükleme anahtarı (SHA-1 `a7e378…`) ve debug anahtarı kayıtlı; Play App Signing açılınca onun SHA-1'i de eklenmeli, yoksa mağazadan inen sürümde Google ile giriş çalışmaz.
+- **Bilerek yükseltilmeyenler:** Riverpod 3 ve `google_fonts` 9 (yalnız kod değişikliği, kazanç yok), `flutter_local_notifications` 23 (compileSdk 37 ve AGP 9.1.1 ister; KGP sorunu yok), `flutter_lints` 6.
+- **Push token'ı (FID) ertelendi:** `firebase_messaging` 17, `getToken`/`onTokenRefresh`/`deleteToken`'ı kullanımdan kaldırdı; yeni `register()`/`onRegistered` FCM token'ı değil Firebase Installation ID (FID) verir. Firebase'e göre iki yol da şu an tam destekli, token'lar için kapanış tarihi açıklanmadı; geçiş döneminde sunucunun `token` alanı FID'leri de kabul ediyor. Tam geçiş için: Android manifest'e `firebase_messaging_installation_id_enabled=true`, istemcide `onRegistered`, sunucuda `fid`/`fids` (kurulu `firebase-admin` 13.10'da `fids` yok; 14 ise `admin.firestore()` gibi ad alanlı yazımı kaldırıyor, sunucu kodu modüler içe aktarmaya geçmeli). İki API birlikte kullanılmamalı (Firebase uyarısı). Ayrı iş olarak, telefonda push testiyle yapılmalı.
 
 ## 8. Yapılacaklar (öncelik sırasıyla)
 
