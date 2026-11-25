@@ -1,0 +1,218 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/ui/widgets.dart';
+import 'models.dart';
+
+/// Kayıtları kullanıcının bakış açısından anlatan metinler.
+///
+/// Terimler tasarım kurallarındaki sözlüğe uyar: "borç yazdı",
+/// "ödeme bildirdi", "onayla / itiraz et / reddet". Bekleyen kaydı
+/// değiştirmek "düzenle / düzenlendi"; onaylı kaydı ters kayıtla geri almak
+/// "düzelt / düzeltildi".
+class EntryText {
+  EntryText._();
+
+  /// Liste başlığı: "Borç verdiniz", "Ödeme aldınız"...
+  static String title(LedgerEntry e, Side me) {
+    final mine = e.deltaFor(me);
+    return switch (e.kind) {
+      EntryKind.reversal => 'Düzeltme',
+      EntryKind.debt => mine > 0 ? 'Borç verdiniz' : 'Borç aldınız',
+      EntryKind.payment => mine < 0 ? 'Ödeme aldınız' : 'Ödeme yaptınız',
+    };
+  }
+
+  /// Ayrıntı cümlesi: "Mert Kaya size 400,00 ₺ borç yazdı."
+  static String sentence(LedgerEntry e, Side me, String otherName) {
+    final amount = e.amount.format();
+    final mine = e.deltaFor(me);
+    final byMe = e.proposedBy == me;
+    switch (e.kind) {
+      case EntryKind.reversal:
+        // Düzeltme ancak onaylanınca gerçekleşir; o zamana kadar istektir.
+        return switch (e.state) {
+          EntryState.confirmed =>
+            byMe
+                ? 'Bir kaydı düzelttiniz: $amount.'
+                : '$otherName bir kaydı düzeltti: $amount.',
+          EntryState.pending || EntryState.disputed =>
+            byMe
+                ? 'Bir kaydı düzeltmek istiyorsunuz: $amount.'
+                : '$otherName bir kaydı düzeltmek istiyor: $amount.',
+          EntryState.rejected || EntryState.cancelled =>
+            byMe
+                ? 'Bir kaydı düzeltmek istediniz: $amount.'
+                : '$otherName bir kaydı düzeltmek istedi: $amount.',
+        };
+      case EntryKind.debt:
+        if (byMe) {
+          return mine > 0
+              ? 'Borç verdiğinizi kaydettiniz: $amount.'
+              : 'Borç aldığınızı kaydettiniz: $amount.';
+        }
+        return mine < 0
+            ? '$otherName size $amount borç yazdı.'
+            : '$otherName, sizden $amount borç aldığını kaydetti.';
+      case EntryKind.payment:
+        if (byMe) {
+          return mine < 0
+              ? 'Ödeme aldığınızı kaydettiniz: $amount.'
+              : 'Ödeme yaptığınızı kaydettiniz: $amount.';
+        }
+        return mine < 0
+            ? '$otherName size $amount ödeme yaptığını bildirdi.'
+            : '$otherName, sizden $amount ödeme aldığını kaydetti.';
+    }
+  }
+
+  /// Durum etiketi ve rengi.
+  static ({String label, ChipTone tone, IconData icon}) status(
+    LedgerEntry e,
+    Side me, {
+    bool isPrivate = false,
+  }) {
+    switch (e.state) {
+      case EntryState.pending:
+        return e.awaitingSide == me
+            ? (
+                label: 'Onayınız bekleniyor',
+                tone: ChipTone.pending,
+                icon: Icons.schedule_rounded,
+              )
+            : (
+                label: 'Karşı tarafın onayı bekleniyor',
+                tone: ChipTone.pending,
+                icon: Icons.schedule_rounded,
+              );
+      case EntryState.disputed:
+        return e.awaitingSide == me
+            ? (
+                label: 'İtiraz edildi · düzenlemeniz bekleniyor',
+                tone: ChipTone.dispute,
+                icon: Icons.edit_note_rounded,
+              )
+            : (
+                label: 'İtirazınız iletildi',
+                tone: ChipTone.dispute,
+                icon: Icons.edit_note_rounded,
+              );
+      case EntryState.rejected:
+        if (e.rejectionReason == 'accountDeleted') {
+          // Kimse reddetmedi: karşı taraf hesabını sildiği için kapandı.
+          return (
+            label: 'Hesap silindiği için kapandı',
+            tone: ChipTone.neutral,
+            icon: Icons.person_off_outlined,
+          );
+        }
+        return (
+          label: 'Reddedildi',
+          tone: ChipTone.debt,
+          icon: Icons.block_rounded,
+        );
+      case EntryState.cancelled:
+        return (
+          label: 'Geri çekildi',
+          tone: ChipTone.neutral,
+          icon: Icons.undo_rounded,
+        );
+      case EntryState.confirmed:
+        if (e.kind == EntryKind.reversal) {
+          // Asıl kayıtla birbirini sıfırlar; kendi başına bakiye değildir.
+          return (
+            label: 'Düzeltme işlendi',
+            tone: ChipTone.neutral,
+            icon: Icons.history_rounded,
+          );
+        }
+        if (e.reversedBy != null) {
+          return (
+            label: 'Düzeltildi',
+            tone: ChipTone.neutral,
+            icon: Icons.history_rounded,
+          );
+        }
+        if (e.reversalPendingId != null) {
+          return (
+            label: 'Düzeltme onay bekliyor',
+            tone: ChipTone.pending,
+            icon: Icons.schedule_rounded,
+          );
+        }
+        if (isPrivate && e.webConfirmation != null) {
+          return webStatus(e.webConfirmation!);
+        }
+        return (
+          // Kaydı girenin aleyhine olduğu için onay beklemeden işlenmiş kayıt
+          // karşı taraf onaylamış gibi gösterilmez.
+          label: isPrivate
+              ? 'Kaydedildi'
+              : (e.autoConfirmed ? 'Onay gerekmedi' : 'Onaylı'),
+          tone: ChipTone.credit,
+          icon: Icons.check_circle_rounded,
+        );
+    }
+  }
+
+  /// Özel defterde karşı tarafın web yanıtı.
+  static ({String label, ChipTone tone, IconData icon}) webStatus(
+    WebConfirmation w, {
+    DateTime? now,
+  }) => switch (w.state) {
+    WebConfirmationState.confirmed => (
+      label: 'Karşı taraf onayladı',
+      tone: ChipTone.credit,
+      icon: Icons.verified_rounded,
+    ),
+    WebConfirmationState.disputed => (
+      label: 'Karşı taraf itiraz etti',
+      tone: ChipTone.dispute,
+      icon: Icons.edit_note_rounded,
+    ),
+    WebConfirmationState.rejected => (
+      label: 'Karşı taraf reddetti',
+      tone: ChipTone.debt,
+      icon: Icons.block_rounded,
+    ),
+    WebConfirmationState.requested when w.isExpired(now ?? DateTime.now()) => (
+      label: 'Onay linkinin süresi doldu',
+      tone: ChipTone.neutral,
+      icon: Icons.link_off_rounded,
+    ),
+    // Paylaşım menüsünde gönderilip gönderilmediği bilinemez.
+    WebConfirmationState.requested => (
+      label: 'Onay linki oluşturuldu',
+      tone: ChipTone.pending,
+      icon: Icons.schedule_rounded,
+    ),
+  };
+
+  static const disputeReasons = {
+    'amount': 'Tutar yanlış',
+    'date': 'Tarih yanlış',
+    'description': 'Açıklama yanlış',
+    'duplicate': 'Mükerrer kayıt',
+    'other': 'Diğer',
+  };
+
+  static const rejectReasons = {
+    'notAgreed': 'Böyle bir anlaşmamız yok',
+    'unknownPerson': 'Bu kişiyi tanımıyorum',
+    'other': 'Diğer',
+  };
+
+  static String eventLabel(String type, {String? reason}) => switch (type) {
+    _ when reason == 'accountDeleted' => 'Hesap silindiği için kapandı',
+    'created' => 'Kaydedildi',
+    'confirmed' => 'Onaylandı',
+    'disputed' => 'İtiraz edildi',
+    'revised' => 'Düzenlendi',
+    'rejected' => 'Reddedildi',
+    'cancelled' => 'Geri çekildi',
+    'webRequested' => 'Onay linki oluşturuldu',
+    'webConfirmed' => "Web'de onaylandı",
+    'webDisputed' => "Web'de itiraz edildi",
+    'webRejected' => "Web'de reddedildi",
+    _ => type,
+  };
+}

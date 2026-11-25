@@ -1,0 +1,2 @@
+# ESLint (linebreak-style) LF bekliyor; Windows'ta da LF ile çalış.
+* text=auto eol=lf

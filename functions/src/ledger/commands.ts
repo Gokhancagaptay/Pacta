@@ -1,0 +1,1327 @@
+import {
+  DocumentReference,
+  DocumentSnapshot,
+  FieldValue,
+  Transaction,
+} from "firebase-admin/firestore";
+import {onCall} from "firebase-functions/v2/https";
+import {z} from "zod";
+import {db} from "../common/firebase";
+import {ASSET_CODES, MAX_MINOR, formatMinor} from "./assets";
+import {
+  OPTS,
+  Id,
+  assertNotBlocked,
+  consumeDaily,
+  readDailyInTx,
+  useDailyInTx,
+  fail,
+  isDeletedAccount,
+  parse,
+  readLedger,
+  requireUid,
+} from "./callable";
+import {authInfo, uidForCode, uidForEmail} from "./contacts";
+import {DueSource, openDueItems, toSource} from "./due";
+import {
+  Entry,
+  EntryContent,
+  Ledger,
+  LedgerSide,
+  Side,
+  chainHash,
+  contentHash,
+  deltaFor,
+  deltaForSide,
+  directionFor,
+  isAgainstProposer,
+  dateRangeError,
+  isValidDate,
+  otherSide,
+  todayIstanbul,
+} from "./model";
+import {Notice, deliver} from "./notify";
+import {cleanName} from "./profile";
+
+// Durum geçişleri yalnızca bu komutlarla yapılır; istemci ledgers altına
+// yazamaz (firestore.rules). Kayıt komutları tek transaction'dır; defter
+// açma ve taşıma kişiyi bulmak için önce ayrı okumalar yapar.
+
+const DateStr = z.string().refine(isValidDate, "Geçersiz tarih.");
+export const Amount = z.number().int().positive().max(MAX_MINOR);
+export const Text = z.string().trim().max(280);
+const EntryKey = {ledgerId: Id, entryId: Id, expectedVersion: z.number().int()};
+/** İstemcinin ürettiği kayıt kimliği; "t_" taşıma kayıtlarına ayrılmıştır. */
+const ClientId = Id.refine((v) => !v.startsWith("t_"), "Geçersiz kimlik.");
+
+const CreateLedgerInput = z.union([
+  // Firebase uid biçimi; eğik çizgi vb. ile yol oluşturulamaz.
+  z.object({counterpartyUid: z.string().regex(/^[A-Za-z0-9]{1,128}$/)})
+    .strict(),
+  z.object({
+    counterpartyEmail: z.string().trim().min(3).max(254)
+      .refine((v) => v.includes("@"), "Geçerli bir e-posta girin."),
+  }).strict(),
+  z.object({counterpartyCode: z.string().min(1).max(200)}).strict(),
+  z.object({privateName: z.string().trim().min(1).max(80)}).strict(),
+]);
+
+const CreateEntryInput = z.object({
+  ledgerId: Id,
+  entryId: ClientId,
+  kind: z.enum(["debt", "payment"]),
+  iGave: z.boolean(),
+  asset: z.enum(ASSET_CODES),
+  amountMinor: Amount,
+  occurredOn: DateStr,
+  dueOn: DateStr.nullable().default(null),
+  description: Text.default(""),
+  linkedEntryId: Id.nullable().default(null),
+}).strict();
+
+const ConfirmInput = z.object(EntryKey).strict();
+const CancelInput = z.object(EntryKey).strict();
+
+export const DISPUTE_REASONS = {
+  amount: "Tutar yanlış",
+  date: "Tarih yanlış",
+  description: "Açıklama yanlış",
+  duplicate: "Mükerrer kayıt",
+  other: "Diğer",
+} as const;
+
+const DisputeInput = z.object({
+  ...EntryKey,
+  reason: z.enum(["amount", "date", "description", "duplicate", "other"]),
+  note: Text.default(""),
+  suggestedAmountMinor: Amount.nullable().default(null),
+}).strict();
+
+const RejectInput = z.object({
+  ...EntryKey,
+  reason: z.enum(["unknownPerson", "notAgreed", "other"]),
+  note: Text.default(""),
+}).strict();
+
+const ReviseInput = z.object({
+  ...EntryKey,
+  amountMinor: Amount.optional(),
+  asset: z.enum(ASSET_CODES).optional(),
+  occurredOn: DateStr.optional(),
+  dueOn: DateStr.nullable().optional(),
+  description: Text.optional(),
+}).strict();
+
+const ConvertInput = z.object({
+  ledgerId: Id,
+  includeDescriptions: z.boolean().default(false),
+  counterpartyUid: z.string().regex(/^[A-Za-z0-9]{1,128}$/).optional(),
+  counterpartyEmail: z.string().trim().min(3).max(254)
+    .refine((v) => v.includes("@"), "Geçerli bir e-posta girin.").optional(),
+  counterpartyCode: z.string().min(1).max(200).optional(),
+}).strict().refine(
+  (v) => [v.counterpartyUid, v.counterpartyEmail, v.counterpartyCode]
+    .filter((x) => x !== undefined).length === 1,
+  "Kişiyi e-posta ya da Pacta koduyla seçin."
+);
+
+const ReverseInput = z.object({
+  ledgerId: Id,
+  entryId: Id,
+  reversalId: ClientId,
+  note: Text.default(""),
+}).strict();
+
+type StoredEntry = Entry & {
+  confirmation: {uid: string; version: number} | null;
+  dispute?: {byUid: string} | null;
+  rejection?: {byUid: string} | null;
+};
+
+/**
+ * @param {string} ledgerId Defter.
+ * @param {string} entryId Kayıt.
+ * @return {object} Referanslar.
+ */
+function refsFor(ledgerId: string, entryId: string) {
+  const ledgerRef = db.collection("ledgers").doc(ledgerId);
+  return {ledgerRef, entryRef: ledgerRef.collection("entries").doc(entryId)};
+}
+
+/**
+ * @param {string} uid Alıcı.
+ * @param {string} entryId Kayıt.
+ * @return {DocumentReference} Gelen kutusu öğesi.
+ */
+function inboxRef(uid: string, entryId: string): DocumentReference {
+  return db.collection("users").doc(uid).collection("inbox").doc(entryId);
+}
+
+/**
+ * @param {Transaction} tx Transaction.
+ * @param {DocumentReference} ref Kayıt.
+ * @return {Promise<StoredEntry>} Kayıt.
+ */
+async function readEntry(
+  tx: Transaction,
+  ref: DocumentReference
+): Promise<StoredEntry> {
+  const snap = await tx.get(ref);
+  if (!snap.exists) fail("not-found", "Kayıt bulunamadı.");
+  return snap.data() as StoredEntry;
+}
+
+/**
+ * Kullanıcı eski bir sürüme bakarak işlem yapıyorsa reddeder.
+ * @param {Entry} entry Kayıt.
+ * @param {number} expected İstemcinin gördüğü sürüm.
+ */
+function assertVersion(entry: Entry, expected: number) {
+  if (entry.version !== expected) {
+    fail("failed-precondition", "STALE_VERSION: Kayıt değişti, yenileyin.");
+  }
+}
+
+/**
+ * Görünen ad: profildeki ad, yoksa giriş kaydındaki ad. Tek satıra indirilir
+ * ve kısaltılır; ad alanına yazılmış uzun ya da oltalama amaçlı metinler
+ * bildirimlere taşınmaz.
+ * @param {DocumentSnapshot} user Kullanıcı belgesi.
+ * @param {string | null} fallback Auth'taki ad.
+ * @return {string} Görünen ad.
+ */
+export function displayNameOf(
+  user: DocumentSnapshot,
+  fallback: string | null = null
+): string {
+  return cleanName(user.get("adSoyad")) ?? cleanName(fallback) ??
+    "Pacta kullanıcısı";
+}
+
+/** Günlük sınırlar (kişi başına). Olağan kullanımın çok üstündedir. */
+const DAILY = {ledgers: 20, entries: 300, revisions: 100, reversals: 50};
+
+/** Bir kişinin yanıtını bekleyen kayıt üst sınırı (gelen kutusu taşmasın). */
+const MAX_PENDING_PER_LEDGER = 50;
+
+/** Defterde birim başına bakiye üst sınırı (kuruş; 10 trilyon TL). */
+const MAX_BALANCE = 1e15;
+
+/**
+ * Bir kaydı alıcının bakış açısından tek cümleyle anlatır.
+ * @param {Side} recipient Alıcının tarafı.
+ * @param {Entry} e Kayıt.
+ * @param {string} from Kaydı girenin adı.
+ * @param {boolean} pending Onay bekliyor mu.
+ * @return {string} Cümle.
+ */
+function describe(
+  recipient: Side,
+  e: Pick<Entry, "kind" | "deltaMinor" | "asset" | "amountMinor">,
+  from: string,
+  pending: boolean
+): string {
+  const amount = formatMinor(e.amountMinor, e.asset);
+  const mine = deltaForSide(recipient, e.deltaMinor);
+  if (e.kind === "reversal") {
+    return pending ?
+      `${from} bir kaydı düzeltmek istiyor: ${amount}.` :
+      `${from} bir kaydı düzeltti: ${amount}.`;
+  }
+  if (e.kind === "payment") {
+    return mine < 0 ?
+      `${from} size ${amount} ödeme yaptığını bildirdi.` :
+      `${from}, sizden ${amount} ödeme aldığını kaydetti.`;
+  }
+  return mine < 0 ?
+    `${from} size ${amount} borç yazdı.` :
+    `${from}, sizden ${amount} borç aldığını kaydetti.`;
+}
+
+/**
+ * @param {string} type Öğe türü.
+ * @param {Entry} e Kayıt.
+ * @param {string} entryId Kayıt kimliği.
+ * @param {Side} recipient Alıcının tarafı.
+ * @param {string} fromName Gönderenin adı.
+ * @return {object} Gelen kutusu öğesi.
+ */
+function inboxItem(
+  type: "confirmEntry" | "reviseEntry",
+  e: Entry,
+  entryId: string,
+  recipient: Side,
+  fromName: string
+) {
+  return {
+    type,
+    ledgerId: e.ledgerId,
+    entryId,
+    fromName,
+    kind: e.kind,
+    asset: e.asset,
+    amountMinor: e.amountMinor,
+    myDeltaMinor: deltaForSide(recipient, e.deltaMinor),
+    description: e.description,
+    version: e.version,
+    createdAt: FieldValue.serverTimestamp(),
+  };
+}
+
+/**
+ * @param {Transaction} tx Transaction.
+ * @param {DocumentReference} ledgerRef Defter.
+ * @param {Entry} e Kayıt.
+ * @param {string} entryId Kayıt kimliği.
+ * @param {string} type Olay.
+ * @param {string} actorUid Yapan.
+ */
+function addEvent(
+  tx: Transaction,
+  ledgerRef: DocumentReference,
+  e: Entry,
+  entryId: string,
+  type: string,
+  actorUid: string
+) {
+  tx.set(ledgerRef.collection("events").doc(), {
+    type,
+    entryId,
+    version: e.version,
+    contentHash: e.contentHash,
+    actorUid,
+    memberUids: e.memberUids,
+    at: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Sürümün değişmez kopyası.
+ * @param {Transaction} tx Transaction.
+ * @param {DocumentReference} entryRef Kayıt.
+ * @param {Entry} e Kayıt.
+ * @param {string} byUid Sürümü oluşturan.
+ */
+function addRevision(
+  tx: Transaction,
+  entryRef: DocumentReference,
+  e: Entry,
+  byUid: string
+) {
+  tx.set(entryRef.collection("revisions").doc(String(e.version)), {
+    kind: e.kind,
+    direction: e.direction,
+    asset: e.asset,
+    amountMinor: e.amountMinor,
+    occurredOn: e.occurredOn,
+    dueOn: e.dueOn,
+    description: e.description,
+    linkedEntryId: e.linkedEntryId,
+    version: e.version,
+    contentHash: e.contentHash,
+    byUid,
+    memberUids: e.memberUids,
+    at: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Onayı deftere işler: bakiye, sıra ve zincir.
+ * @param {Transaction} tx Transaction.
+ * @param {DocumentReference} ledgerRef Defter.
+ * @param {Ledger} ledger Okunmuş defter.
+ * @param {Entry} e Kayıt.
+ * @param {number} pendingChange Bekleyen sayısındaki değişim.
+ * @return {object} Kayda yazılacak sıra ve zincir.
+ */
+function commitToLedger(
+  tx: Transaction,
+  ledgerRef: DocumentReference,
+  ledger: Ledger,
+  e: Entry,
+  pendingChange: number
+) {
+  // Tek kayıt sınırlı ama toplam da sınırlanır; JS sayıları 2^53 üstünde
+  // kuruş kaybeder.
+  const next = (ledger.balances?.[e.asset] ?? 0) + e.deltaMinor;
+  if (Math.abs(next) > MAX_BALANCE) {
+    fail("failed-precondition", "Bu kişiyle bakiye üst sınıra ulaştı.");
+  }
+  const seq = ledger.head.seq + 1;
+  const chain = chainHash(ledger.head.chainHash, e.contentHash, seq);
+  const update: {[field: string]: unknown} = {
+    [`balances.${e.asset}`]: FieldValue.increment(e.deltaMinor),
+    "head.seq": seq,
+    "head.chainHash": chain,
+    "updatedAt": FieldValue.serverTimestamp(),
+    "lastEntryAt": FieldValue.serverTimestamp(),
+  };
+  if (pendingChange !== 0) {
+    update.pendingCount = FieldValue.increment(pendingChange);
+  }
+  tx.update(ledgerRef, update);
+  return {confirmedSeq: seq, chainHash: chain};
+}
+
+/**
+ * @param {string} mode Defter türü.
+ * @param {LedgerSide} a Oluşturan.
+ * @param {LedgerSide} b Karşı taraf.
+ * @param {string[]} memberUids Üyeler.
+ * @return {object} Yeni defter.
+ */
+function newLedger(
+  mode: "shared" | "private",
+  a: LedgerSide,
+  b: LedgerSide,
+  memberUids: string[]
+) {
+  return {
+    mode,
+    status: "active",
+    sides: {a, b},
+    memberUids,
+    balances: {},
+    pendingCount: 0,
+    head: {seq: 0, chainHash: ""},
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    lastEntryAt: FieldValue.serverTimestamp(),
+  };
+}
+
+/**
+ * Yeni kaydı yazar; aleyhe ya da özel defterdeyse hemen onaylar.
+ * createEntry ve reverseEntry ortak yolu.
+ * @param {Transaction} tx Transaction.
+ * @param {object} ctx Bağlam.
+ * @return {object} Sonuç.
+ */
+function writeNewEntry(
+  tx: Transaction,
+  ctx: {
+    uid: string;
+    side: Side;
+    ledger: Ledger;
+    ledgerId: string;
+    entryId: string;
+    content: EntryContent;
+    notices: Notice[];
+    /** Taşıma satırı: bekleyen kayıt sınırına takılmaz. */
+    transfer?: boolean;
+  }
+) {
+  const {uid, side, ledger, ledgerId, entryId, content, notices} = ctx;
+  assertNotBlocked(ledger, side);
+  const {ledgerRef, entryRef} = refsFor(ledgerId, entryId);
+  const delta = deltaFor(content.direction, content.amountMinor);
+  const hash = contentHash(ledgerId, entryId, content, 1);
+  const shared = ledger.mode === "shared";
+  const auto = !shared || isAgainstProposer(side, delta);
+  const other = otherSide(side);
+  const otherUid = ledger.sides[other].uid;
+  const myName = ledger.sides[side].displayName;
+
+  const entry: Entry = {
+    ...content,
+    ledgerId,
+    memberUids: ledger.memberUids,
+    deltaMinor: delta,
+    state: auto ? "confirmed" : "pending",
+    version: 1,
+    contentHash: hash,
+    proposedBy: side,
+    proposedByUid: uid,
+    awaitingSide: auto ? null : other,
+    autoConfirmed: auto && shared,
+    reversedBy: null,
+    reversalPendingId: null,
+  };
+
+  let chain: {confirmedSeq: number | null; chainHash: string | null} = {
+    confirmedSeq: null,
+    chainHash: null,
+  };
+  if (auto) {
+    const committed = commitToLedger(tx, ledgerRef, ledger, entry, 0);
+    chain = committed;
+    // Aynı transaction'da ardışık kayıtlar (convertPrivateLedger) doğru
+    // sıra, zincir ve bakiyeyle devam etsin.
+    ledger.balances = {
+      ...ledger.balances,
+      [entry.asset]: (ledger.balances?.[entry.asset] ?? 0) + entry.deltaMinor,
+    };
+    ledger.head = {seq: committed.confirmedSeq, chainHash: committed.chainHash};
+  } else {
+    if (!ctx.transfer && (ledger.pendingCount ?? 0) >= MAX_PENDING_PER_LEDGER) {
+      fail("resource-exhausted",
+        "Bu kişide onay bekleyen çok fazla kayıt var. Önce bekleyenlerin " +
+        "yanıtlanmasını bekleyin.");
+    }
+    tx.update(ledgerRef, {
+      pendingCount: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+      lastEntryAt: FieldValue.serverTimestamp(),
+    });
+    ledger.pendingCount = (ledger.pendingCount ?? 0) + 1;
+  }
+
+  // create: aynı kimlikte kayıt varsa (ör. taşıma kimliği önceden
+  // kullanılmışsa) üzerine yazılmaz, işlem düşer.
+  tx.create(entryRef, {
+    ...entry,
+    ...chain,
+    dispute: null,
+    rejection: null,
+    confirmation: auto ? {
+      version: 1,
+      contentHash: hash,
+      uid,
+      via: shared ? "againstProposer" : "private",
+      at: FieldValue.serverTimestamp(),
+    } : null,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  addRevision(tx, entryRef, entry, uid);
+  addEvent(tx, ledgerRef, entry, entryId, "created", uid);
+  if (auto) addEvent(tx, ledgerRef, entry, entryId, "confirmed", uid);
+
+  if (shared && otherUid) {
+    if (!auto) {
+      tx.set(
+        inboxRef(otherUid, entryId),
+        inboxItem("confirmEntry", entry, entryId, other, myName)
+      );
+    }
+    notices.push({
+      uid: otherUid,
+      setting: auto ? "statusChanges" : "newDebtRequests",
+      type: auto ? "entryRecorded" : "confirmRequest",
+      title: auto ? "Yeni kayıt" : "Onayınız bekleniyor",
+      message: describe(other, entry, myName, !auto),
+      ledgerId,
+      entryId,
+    });
+  }
+  return {entryId, state: entry.state, version: 1};
+}
+
+/**
+ * Kayıt kişiyle ortak defter ya da uygulaması olmayan biri için özel defter
+ * açar. Kişi e-postası, Pacta kodu (QR, davet linki) ya da kimliğiyle
+ * bulunur. Aynı iki kişi için her zaman aynı defter döner. Ortak defterde
+ * iki tarafın giriş e-postası görünür; kişiler birbirini tanır.
+ */
+export const createLedger = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(CreateLedgerInput, req.data);
+  await consumeDaily(`ledgers_${uid}`, DAILY.ledgers,
+    "Bugün çok fazla kişi eklediniz. Yarın tekrar deneyin.");
+  const me = await db.collection("users").doc(uid).get();
+  const myAuth = await authInfo(uid);
+  const myName = displayNameOf(me, myAuth?.displayName ?? null);
+
+  if ("privateName" in input) {
+    const autoId = db.collection("ledgers").doc().id;
+    const ref = db.collection("ledgers").doc(`v_${autoId}`);
+    await ref.set(newLedger(
+      "private",
+      {uid, displayName: myName},
+      {uid: null, displayName: input.privateName},
+      [uid]
+    ));
+    return {ledgerId: ref.id, created: true};
+  }
+  return openSharedLedger(uid, input, myName, myAuth?.email ?? null);
+});
+
+type CounterpartyInput =
+  | {counterpartyUid: string}
+  | {counterpartyEmail: string}
+  | {counterpartyCode: string};
+
+/**
+ * Kişiyi (e-posta, Pacta kodu ya da kimlik) bulur ve onunla ortak defteri
+ * açar; defter varsa onu döndürür. Aynı iki kişi için her zaman aynı defter.
+ * @param {string} uid Oturumdaki kişi.
+ * @param {CounterpartyInput} input Karşı taraf.
+ * @param {string} myName Oturumdaki kişinin görünen adı.
+ * @param {string | null} myEmail Oturumdaki kişinin giriş e-postası.
+ * @return {Promise<object>} Defter kimliği, yeni mi, karşı tarafın adı.
+ */
+async function openSharedLedger(
+  uid: string,
+  input: CounterpartyInput,
+  myName: string,
+  myEmail: string | null
+): Promise<{ledgerId: string; created: boolean; displayName: string}> {
+  let otherUid: string;
+  if ("counterpartyEmail" in input) {
+    otherUid = await uidForEmail(input.counterpartyEmail);
+  } else if ("counterpartyCode" in input) {
+    otherUid = await uidForCode(uid, input.counterpartyCode);
+  } else {
+    otherUid = input.counterpartyUid;
+  }
+  if (otherUid === uid) {
+    fail("invalid-argument",
+      "Bu sizin hesabınız. Kendinizle defter açamazsınız.");
+  }
+  // Hesabını silmekte olan kişiyle yeni defter açılamaz.
+  if (await isDeletedAccount(otherUid)) {
+    fail("not-found", "Kullanıcı bulunamadı.");
+  }
+  const other = await db.collection("users").doc(otherUid).get();
+  const otherAuth = await authInfo(otherUid);
+  if (!other.exists || !otherAuth) {
+    fail("not-found", "Kullanıcı bulunamadı.");
+  }
+  // Yalnızca kimliği doğrulanmış kişiyle ortak defter açılır.
+  if (!otherAuth.verified) {
+    fail("failed-precondition",
+      "Bu kişi hesabını açmış ama e-posta adresini henüz doğrulamamış. " +
+      "Gelen doğrulama e-postasındaki bağlantıya tıklamasını isteyin.");
+  }
+  const otherEmail = otherAuth.email;
+  const otherName = displayNameOf(other, otherAuth.displayName);
+
+  const ledgerId = `p_${[uid, otherUid].sort().join("_")}`;
+  const ref = db.collection("ledgers").doc(ledgerId);
+  const created = await db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) {
+      // Eski defterlerde e-posta yoktu; tamamlanır. Kapalı defterde (bir
+      // taraf hesabını sildi) silinen kişinin e-postası geri yazılmaz.
+      const data = existing.data() as Ledger;
+      const sides = data.sides;
+      if (data.status === "closed" || sides.a.deleted || sides.b.deleted) {
+        return false;
+      }
+      const emailOf = (s: LedgerSide) => s.uid === uid ? myEmail : otherEmail;
+      if (!sides.a.email || !sides.b.email) {
+        tx.update(ref, {
+          "sides.a.email": emailOf(sides.a),
+          "sides.b.email": emailOf(sides.b),
+        });
+      }
+      return false;
+    }
+    tx.set(ref, newLedger(
+      "shared",
+      {uid, displayName: myName, email: myEmail},
+      {uid: otherUid, displayName: otherName, email: otherEmail},
+      [uid, otherUid]
+    ));
+    return true;
+  });
+  return {ledgerId, created, displayName: otherName};
+}
+
+/**
+ * Borç ya da ödeme kaydı. Kaydı girenin lehineyse karşı tarafın onayını
+ * bekler; aleyhineyse ya da defter özelse hemen bakiyeye işlenir.
+ * Aynı entryId ile tekrar çağrı aynı sonucu döner.
+ */
+export const createEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(CreateEntryInput, req.data);
+  const dateError =
+    dateRangeError(input.occurredOn, input.dueOn, todayIstanbul());
+  if (dateError) fail("invalid-argument", dateError);
+  if (input.linkedEntryId && input.kind !== "payment") {
+    fail("invalid-argument", "Yalnızca ödeme bir borca bağlanabilir.");
+  }
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const quota = await readDailyInTx(tx, `entries_${uid}`);
+    const existing = await tx.get(entryRef);
+    if (existing.exists) {
+      if (existing.get("proposedByUid") !== uid) {
+        fail("already-exists", "Kayıt kimliği kullanılmış.");
+      }
+      return {
+        entryId: input.entryId,
+        state: existing.get("state") as string,
+        version: existing.get("version") as number,
+      };
+    }
+    if (input.linkedEntryId) {
+      const linked = await tx.get(
+        ledgerRef.collection("entries").doc(input.linkedEntryId)
+      );
+      const debt = linked.data() as Entry | undefined;
+      if (!debt || debt.kind !== "debt") {
+        fail("failed-precondition", "Bağlanan borç bulunamadı.");
+      }
+      // Ödeme yalnızca geçerli bir borcu, aynı birimde ve borcu kapatan
+      // yönde karşılayabilir.
+      if (debt.state !== "confirmed" || debt.reversedBy) {
+        fail("failed-precondition",
+          "Ödeme yalnızca onaylı bir borca bağlanabilir.");
+      }
+      if (debt.asset !== input.asset) {
+        fail("invalid-argument", "Ödeme, borçla aynı birimde olmalı.");
+      }
+      if (directionFor(side, input.iGave) === debt.direction) {
+        fail("invalid-argument", "Bu ödeme bu borcu kapatmaz.");
+      }
+    }
+    const content: EntryContent = {
+      kind: input.kind,
+      direction: directionFor(side, input.iGave),
+      asset: input.asset,
+      amountMinor: input.amountMinor,
+      occurredOn: input.occurredOn,
+      dueOn: input.dueOn,
+      description: input.description,
+      linkedEntryId: input.linkedEntryId,
+    };
+    useDailyInTx(tx, quota, DAILY.entries,
+      "Bugün için kayıt sınırına ulaştınız. Yarın tekrar deneyin.");
+    return writeNewEntry(tx, {
+      uid,
+      side,
+      ledger,
+      ledgerId: input.ledgerId,
+      entryId: input.entryId,
+      content,
+      notices,
+    });
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/** Bekleyen kaydı karşı taraf onaylar; bakiye ve zincir güncellenir. */
+export const confirmEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(ConfirmInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const entry = await readEntry(tx, entryRef);
+    if (
+      entry.state === "confirmed" &&
+      entry.confirmation?.uid === uid &&
+      entry.version === input.expectedVersion
+    ) {
+      return {state: entry.state, version: entry.version};
+    }
+    assertVersion(entry, input.expectedVersion);
+    if (entry.state !== "pending" || entry.awaitingSide !== side) {
+      fail("failed-precondition", "Bu kayıt sizin onayınızı beklemiyor.");
+    }
+    let originalRef: DocumentReference | null = null;
+    if (entry.kind === "reversal" && entry.linkedEntryId) {
+      originalRef = ledgerRef.collection("entries").doc(entry.linkedEntryId);
+      const original = await readEntry(tx, originalRef);
+      if (original.state !== "confirmed" || original.reversedBy) {
+        fail("failed-precondition", "Düzeltilen kayıt artık geçerli değil.");
+      }
+    }
+
+    const chain = commitToLedger(tx, ledgerRef, ledger, entry, -1);
+    tx.update(entryRef, {
+      ...chain,
+      state: "confirmed",
+      awaitingSide: null,
+      confirmation: {
+        version: entry.version,
+        contentHash: entry.contentHash,
+        uid,
+        via: "counterparty",
+        at: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (originalRef) {
+      tx.update(originalRef, {
+        reversedBy: input.entryId,
+        reversalPendingId: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    addEvent(tx, ledgerRef, entry, input.entryId, "confirmed", uid);
+    tx.delete(inboxRef(uid, input.entryId));
+    notices.push({
+      uid: entry.proposedByUid,
+      setting: "statusChanges",
+      type: "entryConfirmed",
+      title: "Kayıt onaylandı",
+      message: `${ledger.sides[side].displayName} kaydınızı onayladı: ` +
+        `${formatMinor(entry.amountMinor, entry.asset)}.`,
+      ledgerId: input.ledgerId,
+      entryId: input.entryId,
+    });
+    return {state: "confirmed", version: entry.version};
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/** Karşı taraf itiraz eder; kayıt düzeltilmek üzere kaydı girene döner. */
+export const disputeEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(DisputeInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const entry = await readEntry(tx, entryRef);
+    assertVersion(entry, input.expectedVersion);
+    // Bağlantı kopup yeniden gönderilen istek: iş zaten yapıldı.
+    if (entry.state === "disputed" && entry.dispute?.byUid === uid) {
+      return {state: "disputed", version: entry.version};
+    }
+    if (entry.state !== "pending" || entry.awaitingSide !== side) {
+      fail("failed-precondition", "Bu kayıt sizin onayınızı beklemiyor.");
+    }
+    tx.update(entryRef, {
+      state: "disputed",
+      awaitingSide: entry.proposedBy,
+      dispute: {
+        byUid: uid,
+        reason: input.reason,
+        note: input.note,
+        suggestedAmountMinor: input.suggestedAmountMinor,
+        at: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    addEvent(tx, ledgerRef, entry, input.entryId, "disputed", uid);
+    tx.delete(inboxRef(uid, input.entryId));
+    const myName = ledger.sides[side].displayName;
+    tx.set(
+      inboxRef(entry.proposedByUid, input.entryId),
+      inboxItem("reviseEntry", entry, input.entryId, entry.proposedBy, myName)
+    );
+    const reason = DISPUTE_REASONS[input.reason];
+    notices.push({
+      uid: entry.proposedByUid,
+      setting: "statusChanges",
+      type: "entryDisputed",
+      title: "Kaydınıza itiraz edildi",
+      message: `${myName} kaydınıza itiraz etti: ${reason}` +
+        (input.note ? ` — “${input.note}”` : "."),
+      ledgerId: input.ledgerId,
+      entryId: input.entryId,
+    });
+    return {state: "disputed", version: entry.version};
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/** Karşı taraf reddeder; kayıt kapanır, bakiyeye hiç işlenmez. */
+export const rejectEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(RejectInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const entry = await readEntry(tx, entryRef);
+    assertVersion(entry, input.expectedVersion);
+    if (entry.state === "rejected" && entry.rejection?.byUid === uid) {
+      return {state: "rejected", version: entry.version};
+    }
+    if (entry.state !== "pending" || entry.awaitingSide !== side) {
+      fail("failed-precondition", "Bu kayıt sizin onayınızı beklemiyor.");
+    }
+    tx.update(entryRef, {
+      state: "rejected",
+      awaitingSide: null,
+      rejection: {
+        byUid: uid,
+        reason: input.reason,
+        note: input.note,
+        at: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(ledgerRef, {
+      pendingCount: FieldValue.increment(-1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (entry.kind === "reversal" && entry.linkedEntryId) {
+      tx.update(ledgerRef.collection("entries").doc(entry.linkedEntryId), {
+        reversalPendingId: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    addEvent(tx, ledgerRef, entry, input.entryId, "rejected", uid);
+    tx.delete(inboxRef(uid, input.entryId));
+    notices.push({
+      uid: entry.proposedByUid,
+      setting: "statusChanges",
+      type: "entryRejected",
+      title: "Kayıt reddedildi",
+      message: `${ledger.sides[side].displayName} kaydınızı reddetti: ` +
+        `${formatMinor(entry.amountMinor, entry.asset)}.`,
+      ledgerId: input.ledgerId,
+      entryId: input.entryId,
+    });
+    return {state: "rejected", version: entry.version};
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/**
+ * Kaydı giren, bekleyen ya da itiraz edilen kaydı düzeltir. Yeni sürüm
+ * oluşur ve karşı tarafın önceki onay görünümü geçersizleşir.
+ */
+export const reviseEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(ReviseInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const entry = await readEntry(tx, entryRef);
+    const quota = await readDailyInTx(tx, `revisions_${uid}`);
+    assertVersion(entry, input.expectedVersion);
+    if (entry.proposedByUid !== uid) {
+      fail("permission-denied", "Yalnızca kaydı giren düzeltebilir.");
+    }
+    assertNotBlocked(ledger, side);
+    if (entry.state !== "pending" && entry.state !== "disputed") {
+      fail("failed-precondition", "Bu kayıt artık düzeltilemez.");
+    }
+    if (entry.kind === "reversal") {
+      fail("failed-precondition", "Düzeltme kaydının tutarı değiştirilemez.");
+    }
+    if (entry.linkedEntryId && input.asset && input.asset !== entry.asset) {
+      fail("invalid-argument",
+        "Bir borca bağlı ödemenin birimi değiştirilemez.");
+    }
+    const content: EntryContent = {
+      kind: entry.kind,
+      direction: entry.direction,
+      asset: input.asset ?? entry.asset,
+      amountMinor: input.amountMinor ?? entry.amountMinor,
+      occurredOn: input.occurredOn ?? entry.occurredOn,
+      dueOn: input.dueOn !== undefined ? input.dueOn : entry.dueOn,
+      description: input.description ?? entry.description,
+      linkedEntryId: entry.linkedEntryId,
+    };
+    const dateError =
+      dateRangeError(content.occurredOn, content.dueOn, todayIstanbul());
+    if (dateError) fail("invalid-argument", dateError);
+    const unchanged = content.asset === entry.asset &&
+      content.amountMinor === entry.amountMinor &&
+      content.occurredOn === entry.occurredOn &&
+      content.dueOn === entry.dueOn &&
+      content.description === entry.description;
+    if (unchanged) fail("invalid-argument", "Hiçbir şeyi değiştirmediniz.");
+    useDailyInTx(tx, quota, DAILY.revisions,
+      "Bugün için düzenleme sınırına ulaştınız. Yarın tekrar deneyin.");
+    const version = entry.version + 1;
+    const other = otherSide(side);
+    const revised: Entry = {
+      ...entry,
+      ...content,
+      deltaMinor: deltaFor(content.direction, content.amountMinor),
+      version,
+      contentHash: contentHash(input.ledgerId, input.entryId, content, version),
+      state: "pending",
+      awaitingSide: other,
+    };
+    tx.update(entryRef, {
+      ...content,
+      deltaMinor: revised.deltaMinor,
+      version,
+      contentHash: revised.contentHash,
+      state: "pending",
+      awaitingSide: other,
+      dispute: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    addRevision(tx, entryRef, revised, uid);
+    addEvent(tx, ledgerRef, revised, input.entryId, "revised", uid);
+    tx.delete(inboxRef(uid, input.entryId));
+    const otherUid = ledger.sides[other].uid;
+    const myName = ledger.sides[side].displayName;
+    if (otherUid) {
+      tx.set(
+        inboxRef(otherUid, input.entryId),
+        inboxItem("confirmEntry", revised, input.entryId, other, myName)
+      );
+      notices.push({
+        uid: otherUid,
+        setting: "newDebtRequests",
+        type: "confirmRequest",
+        title: "Kayıt düzenlendi",
+        message: `${myName} kaydı düzenledi, onayınızı bekliyor: ` +
+          `${formatMinor(revised.amountMinor, revised.asset)}.`,
+        ledgerId: input.ledgerId,
+        entryId: input.entryId,
+      });
+    }
+    return {state: "pending", version};
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/** Kaydı giren, onaylanmamış kaydını geri çeker. Bildirim gönderilmez. */
+export const cancelEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(CancelInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+
+  return db.runTransaction(async (tx) => {
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    const entry = await readEntry(tx, entryRef);
+    assertVersion(entry, input.expectedVersion);
+    if (entry.proposedByUid !== uid) {
+      fail("permission-denied", "Yalnızca kaydı giren geri çekebilir.");
+    }
+    if (entry.state === "cancelled") {
+      return {state: "cancelled", version: entry.version};
+    }
+    if (entry.state !== "pending" && entry.state !== "disputed") {
+      fail("failed-precondition", "Bu kayıt artık geri çekilemez.");
+    }
+    tx.update(entryRef, {
+      state: "cancelled",
+      awaitingSide: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(ledgerRef, {
+      pendingCount: FieldValue.increment(-1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (entry.kind === "reversal" && entry.linkedEntryId) {
+      tx.update(ledgerRef.collection("entries").doc(entry.linkedEntryId), {
+        reversalPendingId: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    addEvent(tx, ledgerRef, entry, input.entryId, "cancelled", uid);
+    tx.delete(inboxRef(uid, input.entryId));
+    const otherUid = ledger.sides[otherSide(side)].uid;
+    if (otherUid) tx.delete(inboxRef(otherUid, input.entryId));
+    return {state: "cancelled", version: entry.version};
+  });
+});
+
+/**
+ * Onaylanmış kayıt değiştirilmez; düzeltmek için ters kayıt açılır.
+ * Ters kayıt da onay ister (aleyhe ise hemen işlenir).
+ */
+export const reverseEntry = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(ReverseInput, req.data);
+  const {ledgerRef, entryRef} = refsFor(input.ledgerId, input.entryId);
+  if (input.reversalId === input.entryId) {
+    fail("invalid-argument", "Düzeltme kaydı için yeni bir kimlik gerekir.");
+  }
+  const reversalRef = ledgerRef.collection("entries").doc(input.reversalId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const {ledger, side} = await readLedger(tx, ledgerRef, uid);
+    // Düzeltme açıp geri çekme döngüsü karşı tarafa sınırsız bildirim
+    // gönderemesin.
+    const quota = await readDailyInTx(tx, `reversals_${uid}`);
+    const existing = await tx.get(reversalRef);
+    if (existing.exists) {
+      // Tekrar gönderim yalnızca aynı kaydın düzeltmesiyse aynı sonucu döner.
+      if (
+        existing.get("proposedByUid") !== uid ||
+        existing.get("kind") !== "reversal" ||
+        existing.get("linkedEntryId") !== input.entryId
+      ) {
+        fail("already-exists", "Kayıt kimliği kullanılmış.");
+      }
+      return {
+        entryId: input.reversalId,
+        state: existing.get("state") as string,
+        version: existing.get("version") as number,
+      };
+    }
+    const target = await readEntry(tx, entryRef);
+    if (target.state !== "confirmed") {
+      fail("failed-precondition", "Yalnızca onaylı kayıt düzeltilebilir.");
+    }
+    if (target.kind === "reversal") {
+      fail("failed-precondition", "Düzeltme kaydı tekrar düzeltilemez.");
+    }
+    if (target.reversedBy || target.reversalPendingId) {
+      fail("failed-precondition", "Bu kayıt için zaten bir düzeltme var.");
+    }
+    useDailyInTx(tx, quota, DAILY.reversals,
+      "Bugün için düzeltme sınırına ulaştınız. Yarın tekrar deneyin.");
+    const description = input.note ||
+      `Düzeltme: ${target.description}`.slice(0, 280);
+    const content: EntryContent = {
+      kind: "reversal",
+      direction: target.direction === "aToB" ? "bToA" : "aToB",
+      asset: target.asset,
+      amountMinor: target.amountMinor,
+      occurredOn: todayIstanbul(),
+      dueOn: null,
+      description,
+      linkedEntryId: input.entryId,
+    };
+    const written = writeNewEntry(tx, {
+      uid,
+      side,
+      ledger,
+      ledgerId: input.ledgerId,
+      entryId: input.reversalId,
+      content,
+      notices,
+    });
+    tx.update(entryRef, written.state === "confirmed" ? {
+      reversedBy: input.reversalId,
+      updatedAt: FieldValue.serverTimestamp(),
+    } : {
+      reversalPendingId: input.reversalId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return written;
+  });
+
+  await deliver(notices);
+  return result;
+});
+
+/** Özel defterden tek tek aktarılan vade sayısı (birim başına). */
+export const MAX_TRANSFER_DUE = 10;
+
+/** Özel defterden ortak deftere aktarılacak bir kayıt. */
+export interface TransferLine {
+  asset: string;
+  amountMinor: number;
+  /** Defter sahibi alacaklı mı (karşı taraf ona borçlu). */
+  iGave: boolean;
+  occurredOn: string;
+  dueOn: string | null;
+  description: string;
+}
+
+/**
+ * Özel defterin onaylı kayıtlarından aktarılacak kayıtları çıkarır: her
+ * birimde açık vadeli parçalar (en fazla MAX_TRANSFER_DUE, vade sırasıyla)
+ * ayrı kayıt olur, bakiyenin kalanı vadesiz tek kayıt. Defter sahibi a
+ * tarafıdır. Açıklamalar istenmezse genel bir metin yazılır: özel notlar
+ * karşı tarafa gitmez.
+ * @param {DueSource[]} confirmed Özel defterin onaylı kayıtları.
+ * @param {string} today Bugün (İstanbul).
+ * @param {boolean} withDescriptions Açıklamalar aktarılsın mı.
+ * @return {TransferLine[]} Aktarılacaklar.
+ */
+export function transferLines(
+  confirmed: DueSource[],
+  today: string,
+  withDescriptions: boolean
+): TransferLine[] {
+  const lines: TransferLine[] = [];
+  const due = openDueItems(confirmed);
+  const byId = new Map(confirmed.map((e) => [e.id, e]));
+  const assets = [...new Set(confirmed.map((e) => e.asset))].sort();
+  for (const asset of assets) {
+    const balance = confirmed
+      .filter((e) => e.asset === asset)
+      .reduce((sum, e) => sum + e.deltaMinor, 0);
+    if (balance === 0) continue;
+    const iGave = balance > 0;
+    let rest = Math.abs(balance);
+    const items = due
+      .filter((i) => i.asset === asset)
+      .slice(0, MAX_TRANSFER_DUE);
+    for (const item of items) {
+      lines.push({
+        asset,
+        amountMinor: item.openMinor,
+        iGave,
+        occurredOn: byId.get(item.entryId)?.occurredOn ?? today,
+        dueOn: item.dueOn,
+        description: withDescriptions && item.description ?
+          item.description :
+          "Önceki kayıtlardan aktarıldı",
+      });
+      rest -= item.openMinor;
+    }
+    // Tek kayıt tutar sınırını aşamaz; büyük bakiye parçalara bölünür.
+    while (rest > 0) {
+      const part = Math.min(rest, MAX_MINOR);
+      lines.push({
+        asset,
+        amountMinor: part,
+        iGave,
+        occurredOn: today,
+        dueOn: null,
+        description: "Önceki kayıtlardan kalan bakiye",
+      });
+      rest -= part;
+    }
+  }
+  return lines;
+}
+
+/**
+ * Uygulaması olmayan biri için tutulan özel defteri, kişi Pacta'ya
+ * katılınca ortak deftere taşır. Geçmişin tamamı değil, açık bakiye
+ * aktarılır: vadeli parçalar vadeleriyle, kalanı tek kayıt. Karşı tarafın
+ * aleyhine olanlar onun onayını bekler (onaylamazsa bakiyeye girmez);
+ * sahibin aleyhine olanlar hemen işlenir. Özel defter kapanır ve arşivde
+ * yalnızca sahibine görünür. Tekrar çağrı aynı sonucu döner.
+ */
+export const convertPrivateLedger = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(ConvertInput, req.data);
+  const privateRef = db.collection("ledgers").doc(input.ledgerId);
+  const pre = await privateRef.get();
+  if (!pre.exists || pre.get("sides.a.uid") !== uid) {
+    fail("not-found", "Defter bulunamadı.");
+  }
+  if (pre.get("mode") !== "private") {
+    fail("failed-precondition", "Bu defter zaten ortak.");
+  }
+  const done = pre.get("convertedTo") as string | undefined;
+  if (done) {
+    return {ledgerId: done, created: false, transferred: 0, pending: 0};
+  }
+  if (pre.get("status") === "closed") {
+    fail("failed-precondition", "Defter kapalı.");
+  }
+
+  await consumeDaily(`ledgers_${uid}`, DAILY.ledgers,
+    "Bugün çok fazla kişi eklediniz. Yarın tekrar deneyin.");
+  const me = await db.collection("users").doc(uid).get();
+  const myAuth = await authInfo(uid);
+  const myName = displayNameOf(me, myAuth?.displayName ?? null);
+  const counterparty: CounterpartyInput =
+    input.counterpartyEmail !== undefined ?
+      {counterpartyEmail: input.counterpartyEmail} :
+      input.counterpartyCode !== undefined ?
+        {counterpartyCode: input.counterpartyCode} :
+        {counterpartyUid: input.counterpartyUid as string};
+  const shared = await openSharedLedger(uid, counterparty, myName,
+    myAuth?.email ?? null);
+  const sharedRef = db.collection("ledgers").doc(shared.ledgerId);
+  const notices: Notice[] = [];
+
+  const result = await db.runTransaction(async (tx) => {
+    // Çakışmada transaction yeniden çalışır; bildirimler çoğalmasın.
+    notices.length = 0;
+    const priv = await tx.get(privateRef);
+    // Aynı defter aynı anda başka birine taşındıysa gerçek hedef döner.
+    const already = priv.get("convertedTo") as string | undefined;
+    if (already) {
+      return {ledgerId: already, transferred: 0, pending: 0};
+    }
+    if (priv.get("status") === "closed") {
+      fail("failed-precondition", "Defter kapalı.");
+    }
+    const entries = await tx.get(
+      privateRef.collection("entries").where("state", "==", "confirmed")
+    );
+    const {ledger, side} = await readLedger(tx, sharedRef, uid);
+    const lines = transferLines(
+      entries.docs.map((d) => toSource(d.id, d.data())),
+      todayIstanbul(),
+      input.includeDescriptions
+    );
+    const ids = lines.map((_, i) => `t_${input.ledgerId}_${i}`);
+    if (ids.length > 0) {
+      const taken = await tx.getAll(
+        ...ids.map((id) => sharedRef.collection("entries").doc(id)));
+      if (taken.some((d) => d.exists)) {
+        fail("already-exists", "Bu defterin kayıtları daha önce taşınmış.");
+      }
+    }
+    // Kayıt başına ayrı bildirim yerine aşağıda tek özet gider.
+    const perEntry: Notice[] = [];
+    let pending = 0;
+    lines.forEach((line, i) => {
+      const written = writeNewEntry(tx, {
+        uid,
+        side,
+        ledger,
+        ledgerId: shared.ledgerId,
+        entryId: ids[i],
+        content: {
+          kind: "debt",
+          direction: directionFor(side, line.iGave),
+          asset: line.asset,
+          amountMinor: line.amountMinor,
+          occurredOn: line.occurredOn,
+          dueOn: line.dueOn,
+          description: line.description,
+          linkedEntryId: null,
+        },
+        notices: perEntry,
+        transfer: true,
+      });
+      if (written.state === "pending") pending++;
+    });
+    tx.update(privateRef, {
+      status: "closed",
+      convertedTo: shared.ledgerId,
+      convertedAt: FieldValue.serverTimestamp(),
+      dueItems: [],
+      dueDates: [],
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    const otherUid = ledger.sides[otherSide(side)].uid;
+    if (otherUid && lines.length > 0) {
+      notices.push(pending > 0 ? {
+        uid: otherUid,
+        setting: "newDebtRequests",
+        type: "confirmRequest",
+        title: "Onayınız bekleniyor",
+        message: `${myName}, sizinle ilgili önceki kayıtlarını Pacta'ya ` +
+          `taşıdı: ${pending} kayıt onayınızı bekliyor.`,
+        ledgerId: shared.ledgerId,
+        entryId: null,
+      } : {
+        uid: otherUid,
+        setting: "statusChanges",
+        type: "entryRecorded",
+        title: "Yeni kayıt",
+        message: `${myName}, size olan borcunu Pacta'ya kaydetti.`,
+        ledgerId: shared.ledgerId,
+        entryId: null,
+      });
+    }
+    return {ledgerId: shared.ledgerId, transferred: lines.length, pending};
+  });
+
+  await deliver(notices);
+  const same = result.ledgerId === shared.ledgerId;
+  return {
+    ...result,
+    created: same && shared.created,
+    displayName: same ? shared.displayName : "",
+  };
+});

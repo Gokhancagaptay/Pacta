@@ -1,59 +1,39 @@
 name: pacta
-description: "A new Flutter project."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+description: "Pacta: iki tarafın onayıyla tutulan borç ve alacak defteri."
+publish_to: 'none'
 
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+# Sürüm: ad+derleme numarası. Android'de derleme numarası versionCode olur;
+# mağazaya her yüklemede artırılır.
+version: 1.0.0+3
 
 environment:
-  sdk: ^3.8.1
+  sdk: ^3.13.0
 
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  firebase_core: ^3.15.1
-  firebase_auth: ^5.6.2
-  cloud_firestore: ^5.6.11
-  google_sign_in: ^6.1.5
+  firebase_core: ^5.2.0
+  firebase_auth: ^7.1.0
+  cloud_firestore: ^7.2.0
+  google_sign_in: ^7.2.0
   google_fonts: ^6.2.1
-  phosphor_flutter: ^2.1.0
   intl: ^0.20.2
   flutter_riverpod: ^2.4.0
-  fl_chart: ^1.0.0
-  firebase_messaging: ^15.2.10
+  firebase_messaging: ^17.1.0
   flutter_local_notifications: ^17.2.2
-  table_calendar: ^3.2.0
-  share_plus: ^11.0.0
+  share_plus: ^13.3.1
   shared_preferences: ^2.2.3
-  pdf: ^3.11.0
-  printing: ^5.12.0
-  rxdart: ^0.27.7
-  auto_size_text: ^3.0.0
+  cloud_functions: ^7.1.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
+  app_links: ^7.2.1
+  firebase_crashlytics: ^6.1.0
+  url_launcher: ^6.3.2
+  pdf: ^3.13.1
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:
@@ -78,6 +58,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/google_logo.png
+    # Poppins uygulamaya gömülü (400/500/600/700): açılışta Google Fonts'tan
+    # indirilmez, çevrimdışı da aynı görünür. Lisans: OFL.txt.
+    - assets/google_fonts/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

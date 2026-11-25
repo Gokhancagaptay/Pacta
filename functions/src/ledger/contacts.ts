@@ -1,0 +1,264 @@
+import {randomInt} from "node:crypto";
+import {FieldValue} from "firebase-admin/firestore";
+import {onCall} from "firebase-functions/v2/https";
+import {z} from "zod";
+import {admin, db} from "../common/firebase";
+import {deleteQuery} from "../common/queries";
+import {
+  OPTS,
+  Id,
+  consumeDaily,
+  fail,
+  parse,
+  readLedger,
+  requireUid,
+} from "./callable";
+import {Ledger, sideOf} from "./model";
+import {cleanName} from "./profile";
+
+// Kişi bulma: e-posta, Pacta kodu (QR ve davet linki de bu kodu taşır).
+// Kodlar codes/{KOD} altında tutulur; istemciye kapalıdır.
+
+/** Karışan harfler yok: 0/O, 1/I/L. */
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CODE_LENGTH = 6;
+const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
+
+/** Kod tahminiyle kullanıcı taramayı zorlaştırır. */
+export const DAILY_CODE_LOOKUPS = 30;
+
+/**
+ * Kullanıcının yazdığı kodu ya da davet linkini koda çevirir.
+ * "k7q-3xm", "https://…/u/K7Q3XM" → "K7Q3XM".
+ * @param {string} raw Girdi.
+ * @return {string | null} Kod ya da geçersizse null.
+ */
+export function normalizeCode(raw: string): string | null {
+  const fromLink = /\/u\/([A-Za-z0-9-]+)/.exec(raw)?.[1] ?? raw;
+  const code = fromLink.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return CODE_RE.test(code) ? code : null;
+}
+
+/**
+ * @return {string} Rastgele kod.
+ */
+function randomCode(): string {
+  let code = "";
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  }
+  return code;
+}
+
+/**
+ * Günlük kod sorgu hakkından bir tane kullanır.
+ * @param {string} uid Kullanıcı.
+ */
+async function consumeCodeLookup(uid: string): Promise<void> {
+  await consumeDaily(`codes_${uid}`, DAILY_CODE_LOOKUPS,
+    "Bugün çok fazla kod denendi. Yarın tekrar deneyin.");
+}
+
+/**
+ * Pacta kodunun sahibini bulur.
+ * @param {string} uid Soran kullanıcı.
+ * @param {string} raw Kod ya da davet linki.
+ * @return {Promise<string>} Kodun sahibi.
+ */
+export async function uidForCode(uid: string, raw: string): Promise<string> {
+  const code = normalizeCode(raw);
+  if (!code) {
+    fail("invalid-argument",
+      "Pacta kodu 6 karakterdir (ör. K7Q-3XM). Kodu kontrol edin.");
+  }
+  await consumeCodeLookup(uid);
+  const snap = await db.collection("codes").doc(code).get();
+  if (!snap.exists) {
+    fail("not-found",
+      "Bu kodla bir Pacta kullanıcısı bulunamadı. Kodu kontrol edin.");
+  }
+  return snap.get("uid") as string;
+}
+
+/**
+ * E-postası doğrulanmış kullanıcıyı bulur; bulunamazsa nedenini söyler.
+ * @param {string} email E-posta.
+ * @return {Promise<string>} Kullanıcı.
+ */
+export async function uidForEmail(email: string): Promise<string> {
+  let user: admin.auth.UserRecord;
+  try {
+    user = await admin.auth().getUserByEmail(email.trim().toLowerCase());
+  } catch (error) {
+    if ((error as {code?: string}).code === "auth/user-not-found") {
+      fail("not-found",
+        "Bu e-postayla kayıtlı bir Pacta kullanıcısı yok. Adresi kontrol " +
+        "edin ya da kişiye davet gönderin.");
+    }
+    throw error;
+  }
+  if (!user.emailVerified) {
+    fail("failed-precondition",
+      "Bu kişi hesabını açmış ama e-posta adresini henüz doğrulamamış. " +
+      "Gelen doğrulama e-postasındaki bağlantıya tıklamasını isteyin.");
+  }
+  return user.uid;
+}
+
+/** Firebase Auth kaydından gereken alanlar. */
+export interface AuthInfo {
+  email: string | null;
+  verified: boolean;
+  displayName: string | null;
+}
+
+/**
+ * Giriş kaydı: e-posta (karşı taraf kişiyi tanısın diye defterde görünür),
+ * doğrulama durumu ve Auth'taki ad.
+ * @param {string} uid Kullanıcı.
+ * @return {Promise<AuthInfo | null>} Kayıt ya da bulunamazsa null.
+ */
+export async function authInfo(uid: string): Promise<AuthInfo | null> {
+  try {
+    const user = await admin.auth().getUser(uid);
+    const byPhone = user.providerData.some((p) => p.providerId === "phone");
+    return {
+      email: user.email ?? null,
+      verified: user.emailVerified || byPhone,
+      displayName: user.displayName ?? null,
+    };
+  } catch (error) {
+    // Geçici Auth hatası "kullanıcı yok" gibi görünmesin.
+    if ((error as {code?: string}).code === "auth/user-not-found") return null;
+    throw error;
+  }
+}
+
+/** Günde en fazla bu kadar kod yenilenir. */
+export const DAILY_CODE_ROTATIONS = 3;
+
+const MyCodeInput = z.object({rotate: z.boolean().default(false)}).strict();
+
+/**
+ * Kişinin Pacta kodu; yoksa oluşturulur. rotate: kod bir yerde yayıldıysa
+ * yenisi verilir, eski kod (QR ve davet linkleri de) artık kimseyi bulmaz.
+ * Kişiyi zaten ekleyenlerin defterleri etkilenmez.
+ */
+export const myPactaCode = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const {rotate} = parse(MyCodeInput, req.data ?? {});
+  const userRef = db.collection("users").doc(uid);
+  const existing = (await userRef.get()).get("pactaCode") as string | undefined;
+  if (existing && !rotate) return {code: existing};
+  if (rotate) {
+    await consumeDaily(`coderotations_${uid}`, DAILY_CODE_ROTATIONS,
+      "Kodunuzu bugün yeterince yenilediniz. Yarın tekrar deneyin.");
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = randomCode();
+    const codeRef = db.collection("codes").doc(candidate);
+    const code = await db.runTransaction(async (tx) => {
+      const [user, taken] = await tx.getAll(userRef, codeRef);
+      const current = user.get("pactaCode") as string | undefined;
+      if (current && !rotate) return current;
+      if (taken.exists) return null;
+      if (current) {
+        const oldRef = db.collection("codes").doc(current);
+        if ((await tx.get(oldRef)).get("uid") === uid) tx.delete(oldRef);
+      }
+      tx.set(codeRef, {uid, createdAt: FieldValue.serverTimestamp()});
+      tx.set(userRef, {pactaCode: candidate}, {merge: true});
+      return candidate;
+    });
+    if (code) return {code};
+  }
+  fail("unavailable", "Kod oluşturulamadı, tekrar deneyin.");
+});
+
+const PreviewInput = z.union([
+  z.object({code: z.string().max(200)}).strict(),
+  z.object({
+    email: z.string().trim().min(3).max(254)
+      .refine((v) => v.includes("@"), "Geçerli bir e-posta girin."),
+  }).strict(),
+]);
+
+/**
+ * Koddan ya da e-postadan kişinin adını gösterir; eklemeden ya da özel
+ * defteri taşımadan (geri alınamaz) önce doğru kişi olduğu görülsün.
+ * E-posta sorgusu da kod sorgu sınırından düşer (adres taraması
+ * zorlaşsın).
+ */
+export const previewCode = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const input = parse(PreviewInput, req.data);
+  let target: string;
+  if ("email" in input) {
+    await consumeCodeLookup(uid);
+    target = await uidForEmail(input.email);
+  } else {
+    target = await uidForCode(uid, input.code);
+  }
+  const profile = await db.collection("users").doc(target).get();
+  const name = cleanName(profile.get("adSoyad")) ??
+    cleanName((await authInfo(target))?.displayName);
+  return {
+    self: target === uid,
+    displayName: name ?? "Pacta kullanıcısı",
+  };
+});
+
+/**
+ * Özel defteri (yalnızca sahibinin gördüğü) içindeki kayıtlar ve web onay
+ * istekleriyle birlikte siler. Ortak defterler silinmez; her iki tarafın
+ * kaydıdır.
+ */
+export const deletePrivateLedger = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const {ledgerId} = parse(z.object({ledgerId: Id}).strict(), req.data);
+  const ref = db.collection("ledgers").doc(ledgerId);
+  const snap = await ref.get();
+  if (snap.exists) {
+    const ledger = snap.data() as Ledger;
+    if (!sideOf(ledger, uid)) fail("not-found", "Defter bulunamadı.");
+    if (ledger.sides.a.uid !== uid || ledger.mode !== "private") {
+      fail("failed-precondition",
+        "Ortak defter silinemez; karşı tarafın da kaydıdır. Listenizden " +
+        "kaldırabilirsiniz.");
+    }
+  }
+  // Önce web onay istekleri (karşı tarafın e-postası ve IP'si): defter
+  // silindikten sonraki bir hata, tekrar denemede bunları kalıcı bırakmasın.
+  await deleteQuery(db.collection("webRequests")
+    .where("ownerUid", "==", uid)
+    .where("ledgerId", "==", ledgerId));
+  if (!snap.exists) return {deleted: false};
+  await db.recursiveDelete(ref);
+  return {deleted: true};
+});
+
+const BlockInput = z.object({ledgerId: Id, blocked: z.boolean()}).strict();
+
+/**
+ * Karşı tarafı engeller ya da engeli kaldırır. Engellenen kişi bu deftere
+ * yeni kayıt, düzeltme ve hatırlatma gönderemez; bekleyen kayıtlarını geri
+ * çekebilir ve engelleyenin kayıtlarını yanıtlayabilir. Engelleyen kişi
+ * kayıt eklemeye devam eder.
+ */
+export const setBlocked = onCall<unknown>(OPTS, async (req) => {
+  const uid = await requireUid(req);
+  const {ledgerId, blocked} = parse(BlockInput, req.data);
+  const ref = db.collection("ledgers").doc(ledgerId);
+  await db.runTransaction(async (tx) => {
+    const {ledger, side} = await readLedger(tx, ref, uid);
+    if (ledger.mode !== "shared") {
+      fail("failed-precondition", "Özel defterde engellenecek kimse yok.");
+    }
+    tx.update(ref, {
+      [`blockedBy.${side}`]: blocked ? true : FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return {blocked};
+});

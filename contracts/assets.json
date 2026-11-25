@@ -1,0 +1,7 @@
+[
+  { "code": "TRY", "scale": 2, "symbol": "₺", "label": "Türk lirası" },
+  { "code": "USD", "scale": 2, "symbol": "$", "label": "ABD doları" },
+  { "code": "EUR", "scale": 2, "symbol": "€", "label": "Euro" },
+  { "code": "GAU", "scale": 3, "symbol": "gr", "label": "Gram altın" },
+  { "code": "CEYREK", "scale": 0, "symbol": "çeyrek", "label": "Çeyrek altın" }
+]

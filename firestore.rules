@@ -1,0 +1,150 @@
+rules_version = '2';
+
+// Pacta güvenlik kuralları (v2 defterler).
+// Testler: firestore-tests/ (npm run emulator:test)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function tokenEmail() {
+      return request.auth.token.get('email', '');
+    }
+
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function changed(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys);
+    }
+
+    function validName(d) {
+      return !('adSoyad' in d) || (d.adSoyad is string && d.adSoyad.size() <= 100);
+    }
+
+    // Koşulların kabulü: hangi sürüm, ne zaman. Zaman istemciden değil
+    // sunucudan gelir (serverTimestamp), geriye tarih atılamaz.
+    function validTerms(d) {
+      return (!('termsVersion' in d) && !('termsAcceptedAt' in d))
+        || (d.termsVersion is string && d.termsVersion.size() <= 32
+          && d.termsAcceptedAt == request.time);
+    }
+
+    // Hesap silme başladı (Cloud Functions yazar): eski oturum profili ve
+    // herkese açık adı yeniden oluşturamaz.
+    function notDeleted(uid) {
+      return !exists(/databases/$(database)/documents/deletedAccounts/$(uid));
+    }
+
+    // Profil yalnızca sahibine açıktır. E-posta giriş kimliğidir: yalnızca
+    // giriş e-postasıyla ve yalnızca henüz yoksa yazılabilir, sonra değişmez.
+    // (Bildirim anahtarı belgeyi profilden önce oluşturabilir; profil sonradan
+    // tamamlanır.) Diğer kullanıcılar yalnızca publicProfiles üzerinden adı
+    // görür. pactaCode sunucuda üretilir (codes/{kod}); istemci yazamaz.
+    match /users/{uid} {
+      allow get: if isSelf(uid);
+      allow list: if false;
+      allow create: if isSelf(uid)
+        && (!('email' in request.resource.data) || request.resource.data.email == tokenEmail())
+        && (!('uid' in request.resource.data) || request.resource.data.uid == uid)
+        && !('pactaCode' in request.resource.data)
+        && validName(request.resource.data)
+        && validTerms(request.resource.data)
+        && notDeleted(uid);
+      allow update: if isSelf(uid)
+        && !changed(['pactaCode'])
+        && (!changed(['email'])
+          || (!('email' in resource.data) && request.resource.data.email == tokenEmail()))
+        && (!changed(['uid'])
+          || (!('uid' in resource.data) && request.resource.data.uid == uid))
+        && (!changed(['adSoyad']) || validName(request.resource.data))
+        && (!changed(['termsVersion', 'termsAcceptedAt'])
+          || validTerms(request.resource.data));
+      allow delete: if false;
+
+      // v2: onay bekleyenler ve bildirimler Cloud Functions tarafından yazılır.
+      match /inbox/{itemId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+      // Sahibi bildirimi okundu yapabilir ve silebilir; oluşturamaz.
+      match /notifications/{notificationId} {
+        allow read: if isSelf(uid);
+        allow update: if isSelf(uid)
+          && onlyChanges(['isRead'])
+          && request.resource.data.isRead is bool;
+        allow delete: if isSelf(uid);
+        allow create: if false;
+      }
+    }
+
+    match /publicProfiles/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if isSelf(uid)
+        && notDeleted(uid)
+        && request.resource.data.keys().hasOnly(['adSoyad'])
+        && request.resource.data.adSoyad is string
+        && request.resource.data.adSoyad.size() <= 100;
+      allow delete: if false;
+    }
+
+    // v2 defterler: istemci yalnızca taraf olduğu defteri okur. Tüm yazmalar
+    // (kayıt, onay, itiraz, bakiye) Cloud Functions komutlarıyla yapılır.
+    function isMember(data) {
+      return signedIn() && request.auth.uid in data.memberUids;
+    }
+
+    match /ledgers/{ledgerId} {
+      // Olmayan defter için "yok" yanıtı yalnızca kişinin kendi kimliğini
+      // içeren numaraya verilir; başkaları arasında defter olup olmadığı
+      // (ilişki) böyle öğrenilemez.
+      allow get: if signedIn() && (
+        (resource == null && ledgerId.matches('.*' + request.auth.uid + '.*'))
+        || (resource != null && isMember(resource.data)));
+      allow list: if isMember(resource.data);
+      allow write: if false;
+
+      match /entries/{entryId} {
+        allow read: if isMember(resource.data);
+        allow write: if false;
+
+        match /revisions/{version} {
+          allow read: if isMember(resource.data);
+          allow write: if false;
+        }
+      }
+
+      match /events/{eventId} {
+        allow read: if isMember(resource.data);
+        allow write: if false;
+      }
+    }
+
+    // Uygulama ayarı: desteklenen en düşük derleme numarası (minBuild).
+    // Giriş ekranı da okur, o yüzden herkese açıktır; gizli bilgi içermez.
+    // Yalnızca konsoldan yazılır.
+    match /config/app {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // Hareketler ekranı: kullanıcının tüm defterlerindeki son kayıtlar
+    // (collection group). Sorgu memberUids filtresi içermek zorundadır.
+    match /{path=**}/entries/{entryId} {
+      allow list: if isMember(resource.data);
+    }
+
+    // codes, pushQueue, rateLimits, deletedAccounts, webRequests, webGuests
+    // ve eski v1 koleksiyonları
+    // (debts, notifications, users/*/savedContacts) için kural yoktur:
+    // istemciye kapalıdır.
+  }
+}

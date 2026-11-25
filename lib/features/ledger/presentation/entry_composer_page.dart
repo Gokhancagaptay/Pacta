@@ -1,0 +1,670 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../app/theme.dart';
+import '../../../core/text/turkish.dart';
+import '../../../core/dates/local_date.dart';
+import '../../../core/money/asset.dart';
+import '../../../core/money/money.dart';
+import '../../../core/ui/widgets.dart';
+import '../application/providers.dart';
+import '../domain/models.dart';
+import 'common.dart';
+import 'people_page.dart';
+
+/// Kaydı girenin bakış açısından dört tür.
+enum ComposerMode { lent, borrowed, paid, received }
+
+enum _Due { none, week, month, custom }
+
+/// Yeni kayıt: tür → kişi → tutar → gönder. Tarih bugün, birim TL.
+class EntryComposerPage extends ConsumerStatefulWidget {
+  const EntryComposerPage({
+    super.key,
+    this.ledgerId,
+    this.initialMode,
+    this.initialAsset,
+    this.linkedEntry,
+    this.initialAmount,
+  }) : assert(linkedEntry == null || ledgerId != null);
+
+  final String? ledgerId;
+  final ComposerMode? initialMode;
+
+  /// Ödemenin karşıladığı borç (kayıt detayından "bu borca ödeme"). Tür ve
+  /// birim borca göre sabitlenir; borcu sunucu doğrular.
+  final LedgerEntry? linkedEntry;
+
+  /// Önerilen tutar (borcun açık kalan kısmı); kullanıcı değiştirebilir.
+  final Money? initialAmount;
+
+  /// Hızlı ödemede bakiyenin birimi (altın borcu altınla ödenir).
+  final Asset? initialAsset;
+
+  @override
+  ConsumerState<EntryComposerPage> createState() => _EntryComposerPageState();
+}
+
+class _EntryComposerPageState extends ConsumerState<EntryComposerPage> {
+  late final _amount = TextEditingController(
+    text: widget.initialAmount?.format(withSymbol: false) ?? '',
+  );
+  final _description = TextEditingController();
+  late ComposerMode _mode = widget.initialMode ?? ComposerMode.lent;
+
+  /// Belirli bir borca ödeme: tür ve birim değiştirilemez.
+  bool get _linked => widget.linkedEntry != null;
+  late String? _ledgerId = widget.ledgerId;
+
+  /// Aynı form tekrar gönderilirse aynı kimlik kullanılır (sunucu tek kayıt
+  /// üretir). Başarısız denemeden sonra form değiştiyse yeni kimlik alınır.
+  late String _entryId = ref.read(ledgerRepositoryProvider).newId();
+  String? _lastAttempt;
+  late Asset _asset =
+      widget.linkedEntry?.asset ?? widget.initialAsset ?? Asset.tryLira;
+  _Due _due = _Due.none;
+  LocalDate? _customDue;
+
+  /// İşlem tarihi; varsayılan bugün (geçmiş bir borç sonradan girilebilir).
+  LocalDate _occurredOn = LocalDate.today();
+  String? _amountError;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  bool get _isPayment =>
+      _mode == ComposerMode.paid || _mode == ComposerMode.received;
+
+  /// Değer benden çıktı mı: borç verdim, ödeme yaptım.
+  bool get _iGave => _mode == ComposerMode.lent || _mode == ComposerMode.paid;
+
+  /// Kaydı girenin aleyhine olan kayıt onay beklemeden işlenir.
+  bool get _againstMe => !_iGave;
+
+  LocalDate? get _dueOn {
+    final today = LocalDate.today();
+    return switch (_due) {
+      _Due.none => null,
+      _Due.week => today.addDays(7),
+      _Due.month => today.addMonths(1),
+      _Due.custom => _customDue,
+    };
+  }
+
+  Money? get _money {
+    try {
+      final m = Money.parse(_amount.text, _asset);
+      return m.minor > 0 ? m : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  String _preview(String me, Money amount) {
+    final a = amount.format();
+    final sentence = switch (_mode) {
+      ComposerMode.lent => '$me size $a borç yazdı.',
+      ComposerMode.borrowed => '$me, sizden $a borç aldığını kaydetti.',
+      ComposerMode.paid => '$me size $a ödeme yaptığını bildirdi.',
+      ComposerMode.received => '$me, sizden $a ödeme aldığını kaydetti.',
+    };
+    final due = _dueOn;
+    return due == null ? sentence : '$sentence Vadesi ${due.formatShort()}.';
+  }
+
+  Future<void> _pickPerson() async {
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const _PersonPickerSheet(),
+    );
+    if (id != null && mounted) setState(() => _ledgerId = id);
+  }
+
+  Future<void> _pickDate() async {
+    final today = DateTime.now();
+    // Daha önce seçilmiş tarih varsa oradan açılır.
+    final initial =
+        _customDue?.toDateTime() ?? today.add(const Duration(days: 14));
+    final picked = await showDatePicker(
+      context: context,
+      locale: const Locale('tr', 'TR'),
+      initialDate: initial.isBefore(today) ? today : initial,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 3650)),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _due = _Due.custom;
+        _customDue = LocalDate.fromDateTime(picked);
+      });
+    }
+  }
+
+  /// İşlem tarihi: en geç bugün, en fazla 10 yıl önce (sunucu 50 yıla
+  /// kadar kabul eder; arayüzde makul aralık).
+  Future<void> _pickOccurredOn() async {
+    final today = LocalDate.today();
+    final picked = await showDatePicker(
+      context: context,
+      locale: const Locale('tr', 'TR'),
+      initialDate: _occurredOn.toDateTime(),
+      firstDate: DateTime(today.year - 10),
+      lastDate: today.toDateTime(),
+    );
+    if (picked != null && mounted) {
+      setState(() => _occurredOn = LocalDate.fromDateTime(picked));
+    }
+  }
+
+  Future<void> _submit() async {
+    final ledgerId = _ledgerId;
+    if (ledgerId == null) {
+      await _pickPerson();
+      return;
+    }
+    Money amount;
+    try {
+      amount = Money.parse(_amount.text, _asset);
+      if (amount.minor <= 0) throw const FormatException('Tutar girin.');
+    } on FormatException catch (e) {
+      setState(
+        () => _amountError = e.message.isEmpty ? 'Tutar girin.' : e.message,
+      );
+      return;
+    }
+    setState(() {
+      _amountError = null;
+      _busy = true;
+    });
+    final attempt = [
+      ledgerId,
+      _mode.name,
+      amount.minor,
+      _asset.code,
+      _isPayment ? '' : _dueOn?.toIso(),
+      _description.text.trim(),
+      _occurredOn.toIso(),
+      widget.linkedEntry?.id ?? '',
+    ].join('|');
+    if (_lastAttempt != null && _lastAttempt != attempt) {
+      _entryId = ref.read(ledgerRepositoryProvider).newId();
+    }
+    _lastAttempt = attempt;
+    EntryState? state;
+    final ok = await runCommand(context, () async {
+      state = await ref
+          .read(ledgerRepositoryProvider)
+          .createEntry(
+            ledgerId: ledgerId,
+            entryId: _entryId,
+            kind: _isPayment ? EntryKind.payment : EntryKind.debt,
+            iGave: _iGave,
+            amount: amount,
+            occurredOn: _occurredOn,
+            dueOn: _isPayment ? null : _dueOn,
+            description: _description.text.trim(),
+            linkedEntryId: widget.linkedEntry?.id,
+          );
+    });
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      showSnack(
+        context,
+        state == EntryState.pending ? 'Onaya gönderildi.' : 'Kaydedildi.',
+      );
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final uid = ref.watch(currentUidProvider);
+    final ledger = _ledgerId == null
+        ? null
+        : ref.watch(ledgerProvider(_ledgerId!)).valueOrNull;
+    final other = ledger?.other(uid);
+    final isPrivate = ledger?.isPrivate ?? false;
+    final money = _money;
+    // Klavye açıkken gönder düğmesi klavyenin üstünde kalır.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+
+    final String buttonLabel;
+    if (ledger == null) {
+      buttonLabel = 'Kişi seçin';
+    } else if (isPrivate || _againstMe) {
+      buttonLabel = 'Kaydet';
+    } else {
+      buttonLabel = 'Onay için gönder';
+    }
+
+    // Kaydedilirken sayfa kapatılamaz: kayıt sessizce oluşup tekrar
+    // açılan sayfada ikinci kez girilmesin.
+    return PopScope(
+      canPop: !_busy,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            tooltip: 'Kapat',
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          ),
+          titleSpacing: 0,
+          title: Text(_linked ? 'Borca ödeme' : 'Yeni kayıt'),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [
+            if (_linked)
+              _LinkedDebtCard(
+                entry: widget.linkedEntry!,
+                received: _mode == ComposerMode.received,
+              ),
+            if (!_linked)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Borç')),
+                  ButtonSegment(value: true, label: Text('Ödeme')),
+                ],
+                selected: {_isPayment},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(
+                  () => _mode = s.first
+                      ? ComposerMode.received
+                      : ComposerMode.lent,
+                ),
+              ),
+            if (!_linked) const SizedBox(height: 8),
+            if (!_linked)
+              SegmentedButton<ComposerMode>(
+                segments: _isPayment
+                    ? const [
+                        ButtonSegment(
+                          value: ComposerMode.received,
+                          label: Text('Ödeme aldım'),
+                        ),
+                        ButtonSegment(
+                          value: ComposerMode.paid,
+                          label: Text('Ödeme yaptım'),
+                        ),
+                      ]
+                    : const [
+                        ButtonSegment(
+                          value: ComposerMode.lent,
+                          label: Text('Borç verdim'),
+                        ),
+                        ButtonSegment(
+                          value: ComposerMode.borrowed,
+                          label: Text('Borç aldım'),
+                        ),
+                      ],
+                selected: {_mode},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(() => _mode = s.first),
+              ),
+            const SizedBox(height: 12),
+            SurfaceCard(
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                onTap: widget.ledgerId == null ? _pickPerson : null,
+                leading: other == null
+                    ? CircleAvatar(
+                        backgroundColor: c.creditSoft,
+                        child: Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: c.credit,
+                        ),
+                      )
+                    : PersonAvatar(name: other.displayName, size: 38),
+                title: Text(other?.displayName ?? 'Kişi seçin'),
+                subtitle: Text(
+                  isPrivate ? 'Özel defter' : (_iGave ? 'Kime' : 'Kimden'),
+                  style: TextStyle(fontSize: 12, color: c.muted),
+                ),
+                trailing: widget.ledgerId == null
+                    ? Text(
+                        other == null ? 'Seç' : 'Değiştir',
+                        style: TextStyle(
+                          color: c.credit,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 18),
+            TextField(
+              controller: _amount,
+              autofocus: widget.ledgerId != null,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              decoration: InputDecoration(
+                // Birimin ondalık basamağına göre: 0,00 / 0,000 / 0
+                hintText: _asset.scale == 0 ? '0' : '0,${'0' * _asset.scale}',
+                errorText: _amountError,
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<Asset>(
+                      value: _asset,
+                      items: [
+                        for (final a in Asset.values)
+                          DropdownMenuItem(value: a, child: Text(a.symbol)),
+                      ],
+                      onChanged: _linked
+                          ? null
+                          : (a) => setState(() => _asset = a ?? _asset),
+                    ),
+                  ),
+                ),
+              ),
+              onChanged: (_) => setState(() => _amountError = null),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _description,
+              maxLength: 280,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Ne için?',
+                hintText: 'Örn. akşam yemeği',
+                counterText: '',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: const Text('İşlem tarihi'),
+              trailing: Text(
+                _occurredOn == LocalDate.today()
+                    ? 'Bugün'
+                    : _occurredOn.format(),
+                style: TextStyle(color: c.credit, fontWeight: FontWeight.w600),
+              ),
+              onTap: _busy ? null : _pickOccurredOn,
+            ),
+            if (!_isPayment) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Ne zamana kadar?',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  if (_dueOn != null)
+                    Text(
+                      _dueOn!.format(),
+                      style: TextStyle(fontSize: 12, color: c.muted),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (due, label) in const [
+                    (_Due.none, 'Vade yok'),
+                    (_Due.week, '1 hafta'),
+                    (_Due.month, '1 ay'),
+                  ])
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: _due == due,
+                      onSelected: (_) => setState(() => _due = due),
+                    ),
+                  ChoiceChip(
+                    label: const Text('Tarih seç'),
+                    selected: _due == _Due.custom,
+                    onSelected: (_) => _pickDate(),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (ledger != null && money != null)
+              _PreviewCard(
+                title: isPrivate
+                    ? 'Özel defter'
+                    : '${other!.displayName} şunu görecek',
+                text: isPrivate
+                    ? 'Bu kayıt yalnızca sizde tutulur ve hemen bakiyeye işlenir.'
+                    : _preview(ledger.me(uid).displayName, money),
+                note: !isPrivate && _againstMe
+                    ? 'Bu kayıt sizin aleyhinize olduğu için onay beklemeden '
+                          'bakiyeye işlenir; ${other!.displayName} bilgilendirilir.'
+                    : null,
+              ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 12 + keyboard),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  child: _busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.4),
+                        )
+                      : Text(buttonLabel),
+                ),
+                if (ledger != null &&
+                    !isPrivate &&
+                    !_againstMe &&
+                    keyboard == 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Onaylanınca ikinizin bakiyesine işlenir. O zamana kadar '
+                    'geri çekebilirsiniz.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ödemenin bağlandığı borcun özeti.
+class _LinkedDebtCard extends StatelessWidget {
+  const _LinkedDebtCard({required this.entry, required this.received});
+
+  final LedgerEntry entry;
+
+  /// Ödemeyi ben mi aldım (borcu ben vermiştim).
+  final bool received;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    final what = entry.description.isEmpty ? 'Borç' : entry.description;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.creditSoft,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link_rounded, color: c.credit),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  received
+                      ? 'Ödeme aldım · şu borca karşılık'
+                      : 'Ödeme yaptım · şu borca karşılık',
+                  style: TextStyle(fontSize: 12, color: c.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$what · ${entry.occurredOn.formatShort()} · '
+                  '${entry.amount.format()}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewCard extends StatelessWidget {
+  const _PreviewCard({required this.title, required this.text, this.note});
+
+  final String title;
+  final String text;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pacta;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.creditSoft,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: c.credit,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(text, style: const TextStyle(height: 1.5)),
+          if (note != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              note!,
+              style: TextStyle(fontSize: 12, color: c.muted, height: 1.4),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Kayıt için kişi seçimi: mevcut defterler ya da yeni kişi.
+class _PersonPickerSheet extends ConsumerStatefulWidget {
+  const _PersonPickerSheet();
+
+  @override
+  ConsumerState<_PersonPickerSheet> createState() => _PersonPickerSheetState();
+}
+
+class _PersonPickerSheetState extends ConsumerState<_PersonPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = ref.watch(currentUidProvider);
+    final q = trLower(_query.trim());
+    bool matches(Ledger l) =>
+        q.isEmpty || trLower(l.other(uid).displayName).contains(q);
+    // Hesabını silen kişinin ya da taşınmış defterin kaydı eklenemez.
+    final visible = ref.watch(visibleLedgersProvider).valueOrNull ?? const [];
+    final visibleIds = {for (final l in visible) l.id};
+    final ledgers = [
+      for (final l in visible)
+        if (!l.isClosed && matches(l)) l,
+    ];
+    // Listeden kaldırılanlara da kayıt eklenebilir (en sonda).
+    final hidden = [
+      for (final l
+          in ref.watch(ledgersProvider).valueOrNull ?? const <Ledger>[])
+        if (!visibleIds.contains(l.id) && !l.isClosed && matches(l)) l,
+    ];
+    final all = visible.length + hidden.length;
+    final favorites = ref.watch(favoriteLedgersProvider);
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            if (all > 6)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: TextField(
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Kişi ara',
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Yeni kişi ekle'),
+              onTap: () async {
+                final id = await showAddPersonSheet(context);
+                if (id != null && context.mounted) {
+                  Navigator.of(context).pop(id);
+                }
+              },
+            ),
+            for (final l in ledgers)
+              ListTile(
+                leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
+                title: Text(l.other(uid).displayName),
+                subtitle: l.isPrivate
+                    ? const Text('Özel defter')
+                    : (l.other(uid).email == null
+                          ? null
+                          : Text(l.other(uid).email!)),
+                trailing: favorites.contains(l.id)
+                    ? Icon(Icons.star_rounded, color: context.pacta.pendingDot)
+                    : null,
+                onTap: () => Navigator.of(context).pop(l.id),
+              ),
+            for (final l in hidden)
+              ListTile(
+                leading: PersonAvatar(name: l.other(uid).displayName, size: 36),
+                title: Text(l.other(uid).displayName),
+                subtitle: const Text('Listeden kaldırıldı'),
+                onTap: () => Navigator.of(context).pop(l.id),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
